@@ -39,6 +39,12 @@ impl<T: WasmModuleResources> FuncValidator<T> {
         })
     }
 
+    /// Get the type on top of the stack (if not empty) of the operator
+    /// validator in current state
+    pub fn peek(&self) -> Option<ValType> {
+        self.validator.operands.last().cloned()
+    }
+
     /// Get the current height of the operand stack.
     ///
     /// This returns the height of the whole operand stack for this function,
@@ -156,7 +162,12 @@ mod tests {
         fn type_of_function(&self, _func_idx: u32) -> Option<&Self::FuncType> {
             todo!()
         }
-        fn check_value_type(&self, _t: ValType, _features: &WasmFeatures, _offset: usize) -> Result<()> {
+        fn check_value_type(
+            &self,
+            _t: ValType,
+            _features: &WasmFeatures,
+            _offset: usize,
+        ) -> Result<()> {
             Ok(())
         }
         fn element_type_at(&self, _at: u32) -> Option<crate::RefType> {
