@@ -56,6 +56,13 @@ pub struct BrTable<'a> {
     pub(crate) default: u32,
 }
 
+/// A resume entries representation.
+#[derive(Clone)]
+pub struct ResumeTable<'a> {
+    pub(crate) reader: crate::BinaryReader<'a>,
+    pub(crate) cnt: u32,
+}
+
 /// An IEEE binary32 immediate floating point value, represented as a u32
 /// containing the bit pattern.
 ///
@@ -1014,6 +1021,35 @@ pub enum Operator<'a> {
     F32x4RelaxedMax,
     F64x2RelaxedMin,
     F64x2RelaxedMax,
+
+    // Typed continuations instructions.
+    // TODO(dhil): merge into the above list.
+    ContNew {
+        type_index: u32,
+    },
+    ContBind {
+        type_index: u32,
+    },
+    Suspend {
+        tag_index: u32,
+    },
+    Resume {
+        table: ResumeTable<'a>,
+    },
+    ResumeThrow {
+        tag_index: u32,
+    },
+    Barrier {
+        ty: BlockType,
+    }
+}
+
+/// A handler case.
+#[derive(Clone, Copy, Debug)]
+#[allow(missing_docs)]
+pub struct HandleCase {
+    pub tag_index: u32,
+    pub label_index: u32,
 }
 
 /// A reader for a core WebAssembly function's operators.

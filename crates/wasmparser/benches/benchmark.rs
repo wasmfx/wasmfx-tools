@@ -258,6 +258,7 @@ fn validate_benchmark(c: &mut Criterion) {
             mutable_global: true,
             saturating_float_to_int: true,
             sign_extension: true,
+            function_references: true,
         })
     }
     let mut inputs = collect_benchmark_inputs();

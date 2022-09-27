@@ -82,6 +82,8 @@ pub(crate) const EXTERN_REF: RefType = RefType {
 pub enum Type {
     /// The type is for a function.
     Func(FuncType),
+    /// The type is for a continuation.
+    Cont(u32),
 }
 
 /// Represents a type of a function in a WebAssembly module.
@@ -159,6 +161,8 @@ pub struct GlobalType {
 pub enum TagKind {
     /// The tag is an exception type.
     Exception,
+    /// The tag is an control type.
+    Control,
 }
 
 /// A tag's type.

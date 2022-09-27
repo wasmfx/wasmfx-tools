@@ -295,6 +295,7 @@ impl<'a> BinaryReader<'a> {
     pub(crate) fn read_type(&mut self) -> Result<Type> {
         Ok(match self.read_u8()? {
             0x60 => Type::Func(self.read_func_type()?),
+            0x5f => Type::Cont(self.read_u32()?),
             x => return self.invalid_leading_byte(x, "type"),
         })
     }
@@ -937,6 +938,19 @@ impl<'a> BinaryReader<'a> {
             reader: BinaryReader::new_with_offset(&self.buffer[start..end], start),
             cnt: cnt as u32,
             default,
+        })
+    }
+
+    fn read_resume_table(&mut self) -> Result<ResumeTable<'a>> {
+        let cnt = self.read_size(MAX_WASM_RESUME_TABLE_SIZE, "resume_table")?;
+        let start = self.position;
+        for _ in 0..(cnt*2) {
+            self.read_var_u32()?;
+        }
+        let end = self.position;
+        Ok(ResumeTable {
+            reader: BinaryReader::new_with_offset(&self.buffer[start..end], start),
+            cnt: cnt as u32,
         })
     }
 
@@ -1948,6 +1962,27 @@ impl<'a> BinaryReader<'a> {
             0xfd => self.read_0xfd_operator()?,
             0xfe => self.read_0xfe_operator()?,
 
+            // Typed continuations operators.
+            // TODO(dhil) fixme: merge into the above list.
+            0xe0 => Operator::ContNew {
+                type_index: self.read_var_u32()?,
+            },
+            0xe1 => Operator::ContBind {
+                type_index: self.read_var_u32()?,
+            },
+            0xe2 => Operator::Suspend {
+                tag_index: self.read_var_u32()?,
+            },
+            0xe3 => Operator::Resume {
+                table: self.read_resume_table()?,
+            },
+            0xe4 => Operator::ResumeThrow {
+                tag_index: self.read_var_u32()?,
+            },
+            0xe5 => Operator::Barrier {
+                ty: self.read_block_type()?,
+            },
+
             _ => {
                 return Err(BinaryReaderError::new(
                     format!("illegal opcode: 0x{:x}", code),
@@ -2560,6 +2595,98 @@ impl fmt::Debug for BrTable<'_> {
         let mut f = f.debug_struct("BrTable");
         f.field("count", &self.cnt);
         f.field("default", &self.default);
+        match self.targets().collect::<Result<Vec<_>>>() {
+            Ok(targets) => {
+                f.field("targets", &targets);
+            }
+            Err(_) => {
+                f.field("reader", &self.reader);
+            }
+        }
+        f.finish()
+    }
+}
+
+// Resume table
+impl<'a> ResumeTable<'a> {
+    /// Returns the number of `resume` entries.
+    pub fn len(&self) -> u32 {
+        self.cnt
+    }
+
+    /// Returns whether `ResumeTable` doesn't have any entries.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the list of targets that this `resume` instruction will be
+    /// jumping to.
+    ///
+    /// This method will return an iterator which parses each target
+    /// of this `resume`. The returned iterator will yield
+    /// `self.len()` elements.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let buf = [0x0e, 0x02, 0x01, 0x02, 0x00];
+    /// let mut reader = wasmparser::BinaryReader::new(&buf);
+    /// let op = reader.read_operator().unwrap();
+    /// if let wasmparser::Operator::Resume { table } = op {
+    ///     let targets = table.targets().collect::<Result<Vec<_>, _>>().unwrap();
+    ///     assert_eq!(targets, [1, 2]);
+    /// }
+    /// ```
+    pub fn targets(&self) -> ResumeTableTargets {
+        ResumeTableTargets {
+            reader: self.reader.clone(),
+            remaining: self.cnt,
+        }
+    }
+}
+
+/// An iterator over the targets of a [`ResumeTable`].
+///
+/// # Note
+///
+/// This iterator parses each target of the underlying `resume`.  The
+/// iterator will yield exactly as many targets as the `resume` has.
+pub struct ResumeTableTargets<'a> {
+    reader: crate::BinaryReader<'a>,
+    remaining: u32,
+}
+
+impl<'a> Iterator for ResumeTableTargets<'a> {
+    type Item = Result<(u32,u32)>;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = usize::try_from(self.remaining).unwrap_or_else(|error| {
+            panic!("could not convert remaining `u32` into `usize`: {}", error)
+        });
+        (remaining, Some(remaining))
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            if !self.reader.eof() {
+                return Some(Err(BinaryReaderError::new(
+                    "trailing data in resume",
+                    self.reader.original_position(),
+                )));
+            }
+            return None;
+        }
+        self.remaining -= 1;
+        let tag = self.reader.read_var_u32().ok()?;
+        let label = self.reader.read_var_u32().ok()?;
+        Some(Ok((tag, label)))
+    }
+}
+
+impl fmt::Debug for ResumeTable<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut f = f.debug_struct("ResumeTable");
+        f.field("count", &self.cnt);
         match self.targets().collect::<Result<Vec<_>>>() {
             Ok(targets) => {
                 f.field("targets", &targets);
