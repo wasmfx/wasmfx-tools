@@ -209,12 +209,14 @@ pub trait WasmModuleResources {
     /// Returns the global variable at given index.
     fn global_at(&self, at: u32) -> Option<GlobalType>;
     /// Returns the `FuncType` associated with the given type index.
-    fn func_type_at(&self, type_idx: u32) -> Option<&Self::FuncType>;
+    fn func_type_at(&self, at: u32) -> Option<&Self::FuncType>;
     /// Returns the type index associated with the given function
     /// index. type_of_function = func_type_at(type_index_of_function)
     fn type_index_of_function(&self, func_idx: u32) -> Option<u32>;
     /// Returns the `FuncType` associated with the given function index.
     fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType>;
+    /// Return the `Cont` type associated with the given type index.
+    fn cont_type_at(&self, at: u32) -> Option<u32>;
     /// Returns the element type at the given index.
     fn element_type_at(&self, at: u32) -> Option<RefType>;
     /// Under the function references proposal, returns whether t1 <=
@@ -263,6 +265,9 @@ where
     }
     fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType> {
         T::type_of_function(self, func_idx)
+    }
+    fn cont_type_at(&self, at: u32) -> Option<u32> {
+        T::cont_type_at(self, at)
     }
     fn check_value_type(
         &self,
@@ -322,6 +327,10 @@ where
 
     fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType> {
         T::type_of_function(self, func_idx)
+    }
+
+    fn cont_type_at(&self, at: u32) -> Option<u32> {
+        T::cont_type_at(self, at)
     }
 
     fn check_value_type(

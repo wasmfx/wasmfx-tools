@@ -6,9 +6,10 @@ use super::{
     types::{EntityType, Type, TypeId, TypeList},
 };
 use crate::{
-    limits::*, BinaryReaderError, ConstExpr, Data, DataKind, FUNC_REF, Element, ElementItem, ElementKind,
-    ExternalKind, FuncType, Global, GlobalType, HeapType, MemoryType, Operator, RefType, Result, TableType, TagType,
-    TypeRef, ValType, WasmFeatures, WasmFuncType, WasmModuleResources
+    limits::*, BinaryReaderError, ConstExpr, Data, DataKind, Element, ElementItem, ElementKind,
+    ExternalKind, FuncType, Global, GlobalType, HeapType, MemoryType, Operator, RefType, Result,
+    TableType, TagType, TypeRef, ValType, WasmFeatures, WasmFuncType, WasmModuleResources,
+    FUNC_REF,
 };
 use indexmap::IndexMap;
 use std::{collections::HashSet, sync::Arc};
@@ -371,6 +372,7 @@ pub(crate) struct Module {
     pub element_types: Vec<RefType>,
     pub data_count: Option<u32>,
     // Stores indexes into `types`.
+    pub continuations: Vec<u32>,
     pub functions: Vec<u32>,
     pub tags: Vec<TypeId>,
     pub function_references: HashSet<u32>,
@@ -402,6 +404,9 @@ impl Module {
                     ));
                 }
                 Type::Func(t)
+            }
+            crate::Type::Cont(_) => {
+                todo!("Implement add_type for Cont")
             }
         };
 
@@ -968,6 +973,7 @@ impl Default for Module {
             globals: Default::default(),
             element_types: Default::default(),
             data_count: Default::default(),
+            continuations: Default::default(),
             functions: Default::default(),
             tags: Default::default(),
             function_references: Default::default(),
@@ -1022,6 +1028,10 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
 
     fn type_of_function(&self, at: u32) -> Option<&Self::FuncType> {
         self.func_type_at(self.type_index_of_function(at)?)
+    }
+
+    fn cont_type_at(&self, at: u32) -> Option<u32> {
+        todo!("Implement cont_type_at")
     }
 
     fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
@@ -1096,6 +1106,10 @@ impl WasmModuleResources for ValidatorResources {
     fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
         self.0
             .check_value_type(t, features, self.0.snapshot.as_ref().unwrap(), offset)
+    }
+
+    fn cont_type_at(&self, at: u32) -> Option<u32> {
+        todo!("Implement cont_type_at")
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
