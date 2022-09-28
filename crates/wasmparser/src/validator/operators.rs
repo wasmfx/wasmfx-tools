@@ -2369,9 +2369,9 @@ fn cont_type_at<T: WasmModuleResources>(
     resources: &T,
     at: u32,
 ) -> OperatorValidatorResult<&T::FuncType> {
-    // TODO(dhil): use `u = cont_type_at(at);` to as input to func_type_at(u)
+    let u = resources.cont_type_at(at).ok_or_else(|| OperatorValidatorError::new("unknown continuation type: type index out of bounds"));
     resources
-        .func_type_at(at)
+        .func_type_at(u?)
         .ok_or_else(|| OperatorValidatorError::new("unknown type: type index out of bounds"))
 }
 

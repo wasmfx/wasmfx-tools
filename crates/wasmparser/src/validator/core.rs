@@ -392,7 +392,7 @@ impl Module {
         offset: usize,
         check_limit: bool,
     ) -> Result<()> {
-        let ty = match ty {
+        match ty {
             crate::Type::Func(t) => {
                 for ty in t.params.iter().chain(t.returns.iter()) {
                     self.check_value_type(*ty, features, types, offset)?;
@@ -403,22 +403,29 @@ impl Module {
                         offset,
                     ));
                 }
-                Type::Func(t)
+                if check_limit {
+                    check_max(self.types.len(), 1, MAX_WASM_TYPES, "types", offset)?;
+                }
+
+                let ty = Type::Func(t);
+
+                self.types.push(TypeId {
+                    type_size: ty.type_size(),
+                    index: types.len(),
+                });
+                types.push(ty);
             }
-            crate::Type::Cont(_) => {
-                todo!("Implement add_type for Cont")
+            crate::Type::Cont(type_index) => {
+                if (type_index as usize) >= types.len() {
+                    return Err(BinaryReaderError::new("invalid type index", offset,)); // TODO(dhil): tidy up error message.
+                }
+
+                if check_limit {
+                    check_max(self.continuations.len(), 1, MAX_WASM_TYPES, "continuations", offset)?; // TODO(dhil): define MAX_WASM_CONTINUATIONS
+                }
+                self.continuations.push(type_index);
             }
         };
-
-        if check_limit {
-            check_max(self.types.len(), 1, MAX_WASM_TYPES, "types", offset)?;
-        }
-
-        self.types.push(TypeId {
-            type_size: ty.type_size(),
-            index: types.len(),
-        });
-        types.push(ty);
         Ok(())
     }
 
@@ -1031,7 +1038,7 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
     }
 
     fn cont_type_at(&self, at: u32) -> Option<u32> {
-        todo!("Implement cont_type_at")
+        Some(*self.module.continuations.get(at as usize).unwrap())
     }
 
     fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
@@ -1109,7 +1116,7 @@ impl WasmModuleResources for ValidatorResources {
     }
 
     fn cont_type_at(&self, at: u32) -> Option<u32> {
-        todo!("Implement cont_type_at")
+        Some(*self.0.continuations.get(at as usize)?)
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
