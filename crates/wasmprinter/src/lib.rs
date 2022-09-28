@@ -546,6 +546,7 @@ impl Printer {
                 self.end_group();
                 ty
             }
+            wasmparser::Type::Cont(ty) => todo!(),
         };
         self.end_group(); // `type` itself
         state.core.types.push(Some(ty));
@@ -1866,6 +1867,13 @@ impl Printer {
             F32x4RelaxedMax => self.result.push_str("f32x4.relaxed_max"),
             F64x2RelaxedMin => self.result.push_str("f64x2.relaxed_min"),
             F64x2RelaxedMax => self.result.push_str("f64x2.relaxed_max"),
+
+            ContNew { .. }
+            | ContBind { .. }
+            | Suspend { .. }
+            | Resume { .. }
+            | ResumeThrow { .. }
+            | Barrier { .. } => todo!(),
         }
         Ok(())
     }
