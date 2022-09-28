@@ -817,16 +817,22 @@ impl<'a> BinaryReader<'a> {
 
     pub(crate) fn read_tag_type(&mut self) -> Result<TagType> {
         let attribute = self.read_u8()?;
-        if attribute != 0 {
-            return Err(BinaryReaderError::new(
-                "invalid tag attributes",
-                self.original_position() - 1,
-            ));
+        match attribute {
+            0 => Ok(TagType {
+                kind: TagKind::Exception,
+                func_type_idx: self.read_var_u32()?,
+            }),
+            1 => Ok(TagType {
+                kind: TagKind::Control,
+                func_type_idx: self.read_var_u32()?,
+            }),
+            _ => {
+                return Err(BinaryReaderError::new(
+                    "invalid tag attributes",
+                    self.original_position() - 1,
+                ));
+            }
         }
-        Ok(TagType {
-            kind: TagKind::Exception,
-            func_type_idx: self.read_var_u32()?,
-        })
     }
 
     pub(crate) fn read_global_type(&mut self) -> Result<GlobalType> {
