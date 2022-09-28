@@ -295,7 +295,7 @@ impl<'a> BinaryReader<'a> {
     pub(crate) fn read_type(&mut self) -> Result<Type> {
         Ok(match self.read_u8()? {
             0x60 => Type::Func(self.read_func_type()?),
-            0x5f => Type::Cont(self.read_u32()?),
+            0x5f => Type::Cont(self.read_var_u32()?),
             x => return self.invalid_leading_byte(x, "type"),
         })
     }
@@ -944,7 +944,7 @@ impl<'a> BinaryReader<'a> {
     fn read_resume_table(&mut self) -> Result<ResumeTable<'a>> {
         let cnt = self.read_size(MAX_WASM_RESUME_TABLE_SIZE, "resume_table")?;
         let start = self.position;
-        for _ in 0..(cnt*2) {
+        for _ in 0..(cnt * 2) {
             self.read_var_u32()?;
         }
         let end = self.position;
@@ -2657,7 +2657,7 @@ pub struct ResumeTableTargets<'a> {
 }
 
 impl<'a> Iterator for ResumeTableTargets<'a> {
-    type Item = Result<(u32,u32)>;
+    type Item = Result<(u32, u32)>;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = usize::try_from(self.remaining).unwrap_or_else(|error| {
