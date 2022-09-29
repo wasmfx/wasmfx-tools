@@ -648,7 +648,7 @@ impl Module {
 
                 wasmparser::TypeRef::Table(table_ty) => {
                     let table_ty = TableType {
-                        element_type: convert_type(table_ty.element_type),
+                        element_type: convert_reftype(table_ty.element_type),
                         minimum: table_ty.initial,
                         maximum: table_ty.maximum,
                     };
@@ -880,7 +880,8 @@ impl Module {
                             } else {
                                 ConstExpr::ref_null(ValType::FuncRef)
                             }
-                        }
+                        },
+                        ValType::Ref(_) => unimplemented!(),
                     }))
                 }));
 
@@ -1564,6 +1565,15 @@ fn convert_type(parsed_type: wasmparser::ValType) -> ValType {
         V128 => ValType::V128,
         FuncRef => ValType::FuncRef,
         ExternRef => ValType::ExternRef,
+    }
+}
+
+/// Convert a wasmparser's `ValType` to a `wasm_encoder::ValType`.
+fn convert_reftype(parsed_type: wasmparser::RefType) -> ValType {
+    match parsed_type {
+        wasmparser::FUNC_REF => ValType::FuncRef,
+        wasmparser::EXTERN_REF => ValType::ExternRef,
+        _ => unimplemented!(),
     }
 }
 
