@@ -876,25 +876,25 @@ impl OperatorValidator {
                 }
                 self.check_call_indirect(index, table_index, resources)?
             }
-            Operator::CallRef => {
+            Operator::CallRef { ty } => {
                 self.check_function_references_enabled()?;
                 let rt = self.pop_ref(resources)?;
+                let expected = RefType {
+                    nullable: true,
+                    heap_type: ty,
+                };
+                if !resources.matches(ValType::Ref(rt), ValType::Ref(expected)) {
+                    bail_op_err!(
+                        "type mismatch: funcref on stack does not match specified type",
+                    );
+                }
                 match rt.heap_type {
-                    HeapType::Index(type_index) =>
-                    {
-                        let ft = func_type_at(resources, type_index)?;
-                        for ty in ft.inputs().rev() {
-                            self.pop_operand(Some(ty), resources)?;
-                        }
-                        for ty in ft.outputs() {
-                            self.push_operand(ty, resources)?;
-                        }
-                    },
+                    HeapType::Index(type_index) => self.check_call(type_index, resources)?,
                     HeapType::Bot => (),
                     _ => bail_op_err!("type mismatch: instruction requires function reference type but stack has {}", ty_to_str(ValType::Ref(rt)))
                 }
             }
-            Operator::ReturnCallRef => {
+            Operator::ReturnCallRef { ty }=> {
                 self.check_function_references_enabled()?;
                 if !self.features.tail_call {
                     return Err(OperatorValidatorError::new(
@@ -902,16 +902,17 @@ impl OperatorValidator {
                     ));
                 }
                 let rt = self.pop_ref(resources)?;
+                let expected = RefType {
+                    nullable: true,
+                    heap_type: ty,
+                };
+                if !resources.matches(ValType::Ref(rt), ValType::Ref(expected)) {
+                    bail_op_err!(
+                        "type mismatch: funcref on stack does not match specified type",
+                    );
+                }
                 match rt.heap_type {
-                    HeapType::Index(type_index) => {
-                        let ft = func_type_at(resources, type_index)?;
-                        for ty in ft.inputs().rev() {
-                            self.pop_operand(Some(ty), resources)?;
-                        }
-                        for ty in ft.outputs() {
-                            self.push_operand(ty, resources)?;
-                        }
-                    },
+                    HeapType::Index(type_index) => self.check_call(type_index, resources)?,
                     HeapType::Bot => (),
                     _ => bail_op_err!("type mismatch: instruction requires function reference type but stack has {}", ty_to_str(ValType::Ref(rt)))
                 }
