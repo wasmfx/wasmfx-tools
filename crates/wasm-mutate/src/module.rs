@@ -67,6 +67,7 @@ impl TryFrom<wasmparser::Type> for TypeInfo {
                     .map(|&t| PrimitiveTypeInfo::from(t))
                     .collect(),
             })),
+            wasmparser::Type::Cont(_) => unimplemented!(),
         }
     }
 }

@@ -70,6 +70,7 @@ impl Mutator for AddTypeMutator {
                             .collect::<Result<Vec<_>, _>>()?;
                         types.function(params, results);
                     }
+                    wasmparser::Type::Cont(_) => unimplemented!(),
                 }
             }
             // And then add our new type.

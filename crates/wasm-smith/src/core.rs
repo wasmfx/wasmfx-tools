@@ -602,6 +602,7 @@ impl Module {
                     new_types.push(Type::Func(Rc::clone(&func_type)));
                     new_index
                 }
+                Some((wasmparser::Type::Cont(_), _)) => unimplemented!(),
             };
             match &new_types[serialized_sig_idx - first_type_index] {
                 Type::Func(f) => Some((serialized_sig_idx as u32, Rc::clone(f))),

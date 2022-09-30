@@ -234,6 +234,7 @@ impl ShrinkRun {
             sign_extension: true,
             component_model: false,
             function_references: false,
+            typed_continuations: false,
 
             // We'll never enable this here.
             deterministic_only: false,

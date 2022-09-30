@@ -138,6 +138,7 @@ pub fn type_def(t: &mut dyn Translator, ty: Type, s: &mut TypeSection) -> Result
             );
             Ok(())
         }
+        Type::Cont(_) => unimplemented!(),
     }
 }
 
@@ -945,6 +946,9 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         | O::ReturnCall { .. }
         | O::ReturnCallIndirect { .. }
         | O::AtomicFence { .. } => return Err(Error::no_mutations_applicable()),
+
+        // Typed continuations
+        | O::ContNew { .. } | O::ContBind { .. } | O::Suspend { .. } | O::Resume { .. } | O::ResumeThrow { .. } | O::Barrier { .. } => unimplemented!(),
     })
 }
 
