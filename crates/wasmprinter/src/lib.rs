@@ -1031,7 +1031,10 @@ impl Printer {
                 self.result.push_str("call ");
                 self.print_idx(&state.core.func_names, *function_index)?;
             }
-            CallRef => self.result.push_str("call_ref"),
+            CallRef { ty } => {
+                self.result.push_str("call_ref ");
+                self.print_heaptype(*ty)?;
+            }
             CallIndirect {
                 table_index,
                 index,
@@ -1048,7 +1051,10 @@ impl Printer {
                 self.result.push_str("return_call ");
                 self.print_idx(&state.core.func_names, *function_index)?;
             }
-            ReturnCallRef => self.result.push_str("return_call_ref"),
+            ReturnCallRef { ty } => {
+                self.result.push_str("return_call_ref");
+                self.print_heaptype(*ty)?;
+            }
             ReturnCallIndirect { table_index, index } => {
                 self.result.push_str("return_call_indirect");
                 if *table_index != 0 {

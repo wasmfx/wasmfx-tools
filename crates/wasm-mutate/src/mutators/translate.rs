@@ -60,6 +60,14 @@ pub trait Translator {
         ty(self.as_obj(), t)
     }
 
+    fn translate_refty(&mut self, t: &wasmparser::RefType) -> Result<ValType> {
+        refty(self.as_obj(), t)
+    }
+
+    fn translate_heapty(&mut self, t: &wasmparser::HeapType) -> Result<ValType> {
+        heapty(self.as_obj(), t)
+    }
+
     fn translate_global(&mut self, g: Global, s: &mut GlobalSection) -> Result<()> {
         global(self.as_obj(), g, s)
     }
@@ -130,6 +138,7 @@ pub fn type_def(t: &mut dyn Translator, ty: Type, s: &mut TypeSection) -> Result
             );
             Ok(())
         }
+        Type::Cont(_) => unimplemented!(),
     }
 }
 
@@ -138,7 +147,7 @@ pub fn table_type(
     ty: &wasmparser::TableType,
 ) -> Result<wasm_encoder::TableType> {
     Ok(wasm_encoder::TableType {
-        element_type: t.translate_ty(&ty.element_type)?,
+        element_type: t.translate_refty(&ty.element_type)?,
         minimum: ty.initial,
         maximum: ty.maximum,
     })
@@ -174,14 +183,18 @@ pub fn tag_type(t: &mut dyn Translator, ty: &wasmparser::TagType) -> Result<wasm
 }
 
 pub fn ty(_t: &mut dyn Translator, ty: &wasmparser::ValType) -> Result<ValType> {
+    crate::module::map_type(*ty)
+}
+
+pub fn refty(_t: &mut dyn Translator, ty: &wasmparser::RefType) -> Result<ValType> {
+    crate::module::map_ref_type(*ty)
+}
+
+pub fn heapty(_t: &mut dyn Translator, ty: &wasmparser::HeapType) -> Result<ValType> {
     match ty {
-        wasmparser::ValType::I32 => Ok(ValType::I32),
-        wasmparser::ValType::I64 => Ok(ValType::I64),
-        wasmparser::ValType::F32 => Ok(ValType::F32),
-        wasmparser::ValType::F64 => Ok(ValType::F64),
-        wasmparser::ValType::V128 => Ok(ValType::V128),
-        wasmparser::ValType::FuncRef => Ok(ValType::FuncRef),
-        wasmparser::ValType::ExternRef => Ok(ValType::ExternRef),
+        wasmparser::HeapType::Func => Ok(ValType::FuncRef),
+        wasmparser::HeapType::Extern => Ok(ValType::ExternRef),
+        _ => unimplemented!(),
     }
 }
 
@@ -208,7 +221,7 @@ pub fn const_expr(
         match op {
             Operator::RefFunc { .. }
             | Operator::RefNull {
-                ty: wasmparser::ValType::FuncRef,
+                ty: wasmparser::HeapType::Func,
                 ..
             }
             | Operator::GlobalGet { .. } => {}
@@ -247,7 +260,7 @@ pub fn element(
         ElementKind::Passive => ElementMode::Passive,
         ElementKind::Declared => ElementMode::Declared,
     };
-    let element_type = t.translate_ty(&element.ty)?;
+    let element_type = t.translate_refty(&element.ty)?;
     let mut functions = Vec::new();
     let mut exprs = Vec::new();
     let mut reader = element.items.get_items_reader()?;
@@ -259,7 +272,7 @@ pub fn element(
             ElementItem::Expr(expr) => {
                 exprs.push(t.translate_const_expr(
                     &expr,
-                    &element.ty,
+                    &wasmparser::ValType::Ref(element.ty),
                     ConstExprKind::ElementFunction,
                 )?);
             }
@@ -312,7 +325,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
 
         O::Return => I::Return,
         O::Call { function_index } => I::Call(t.remap(Item::Function, *function_index)?),
-        O::CallRef => I::CallRef,
+        O::CallRef { ty } => I::CallRef(t.translate_heapty(ty)?),
         O::CallIndirect {
             index,
             table_index,
@@ -321,7 +334,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
             ty: t.remap(Item::Type, *index)?,
             table: t.remap(Item::Table, *table_index)?,
         },
-        O::ReturnCallRef => I::ReturnCallRef,
+        O::ReturnCallRef { ty } => I::ReturnCallRef(t.translate_heapty(ty)?),
         O::Delegate { relative_depth } => I::Delegate(*relative_depth),
         O::CatchAll => I::CatchAll,
         O::Drop => I::Drop,
@@ -367,7 +380,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         O::F32Const { value } => I::F32Const(f32::from_bits(value.bits())),
         O::F64Const { value } => I::F64Const(f64::from_bits(value.bits())),
 
-        O::RefNull { ty } => I::RefNull(t.translate_ty(ty)?),
+        O::RefNull { ty } => I::RefNull(t.translate_heapty(ty)?),
         O::RefIsNull => I::RefIsNull,
         O::RefFunc { function_index } => I::RefFunc(t.remap(Item::Function, *function_index)?),
         O::RefAsNonNull => I::RefAsNonNull,
@@ -933,6 +946,9 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         | O::ReturnCall { .. }
         | O::ReturnCallIndirect { .. }
         | O::AtomicFence { .. } => return Err(Error::no_mutations_applicable()),
+
+        // Typed continuations
+        | O::ContNew { .. } | O::ContBind { .. } | O::Suspend { .. } | O::Resume { .. } | O::ResumeThrow { .. } | O::Barrier { .. } => unimplemented!(),
     })
 }
 

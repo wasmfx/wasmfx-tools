@@ -762,12 +762,12 @@ impl<'a> DFGBuilder {
                 }
 
                 Operator::RefNull {
-                    ty: wasmparser::ValType::ExternRef,
+                    ty: wasmparser::HeapType::Extern,
                 } => {
                     self.push_node(Lang::RefNull(RefType::Extern), idx);
                 }
                 Operator::RefNull {
-                    ty: wasmparser::ValType::FuncRef,
+                    ty: wasmparser::HeapType::Func,
                 } => {
                     self.push_node(Lang::RefNull(RefType::Func), idx);
                 }

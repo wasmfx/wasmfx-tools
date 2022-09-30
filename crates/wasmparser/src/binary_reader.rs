@@ -1689,8 +1689,12 @@ impl<'a> BinaryReader<'a> {
                 index: self.read_var_u32()?,
                 table_index: self.read_var_u32()?,
             },
-            0x14 => Operator::CallRef,
-            0x15 => Operator::ReturnCallRef,
+            0x14 => Operator::CallRef {
+                ty: self.read_heap_type()?,
+            },
+            0x15 => Operator::ReturnCallRef {
+                ty: self.read_heap_type()?,
+            },
             0x18 => Operator::Delegate {
                 relative_depth: self.read_var_u32()?,
             },

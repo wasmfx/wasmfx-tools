@@ -70,6 +70,7 @@ impl Mutator for AddTypeMutator {
                             .collect::<Result<Vec<_>, _>>()?;
                         types.function(params, results);
                     }
+                    wasmparser::Type::Cont(_) => unimplemented!(),
                 }
             }
             // And then add our new type.
@@ -94,8 +95,16 @@ fn translate_type(ty: &wasmparser::ValType) -> Result<wasm_encoder::ValType> {
         wasmparser::ValType::F32 => wasm_encoder::ValType::F32,
         wasmparser::ValType::F64 => wasm_encoder::ValType::F64,
         wasmparser::ValType::V128 => wasm_encoder::ValType::V128,
-        wasmparser::ValType::FuncRef => wasm_encoder::ValType::FuncRef,
-        wasmparser::ValType::ExternRef => wasm_encoder::ValType::ExternRef,
+        wasmparser::ValType::Ref(rt) => translate_ref_type(rt)?,
+        wasmparser::ValType::Bot => unreachable!(),
+    })
+}
+
+fn translate_ref_type(rt: &wasmparser::RefType) -> Result<wasm_encoder::ValType> {
+    Ok(match *rt {
+        wasmparser::FUNC_REF => wasm_encoder::ValType::FuncRef,
+        wasmparser::EXTERN_REF => wasm_encoder::ValType::ExternRef,
+        _ => unimplemented!(),
     })
 }
 
