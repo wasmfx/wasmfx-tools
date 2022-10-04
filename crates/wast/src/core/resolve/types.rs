@@ -55,7 +55,7 @@ impl<'a> Expander<'a> {
                     TypeDef::Func(f) => {
                         f.key().insert(self, Index::Id(id));
                     }
-                    TypeDef::Array(_) | TypeDef::Struct(_) => {}
+                    TypeDef::Array(_) | TypeDef::Struct(_) | TypeDef::Cont(_) => {}
                 }
             }
             _ => {}

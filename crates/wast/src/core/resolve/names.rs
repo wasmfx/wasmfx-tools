@@ -60,7 +60,7 @@ impl<'a> Resolver<'a> {
                 }
             }
 
-            TypeDef::Array(_) | TypeDef::Func(_) => {}
+            TypeDef::Array(_) | TypeDef::Func(_) | TypeDef::Cont(_) => {}
         }
 
         // Record function signatures as we see them to so we can
@@ -124,6 +124,7 @@ impl<'a> Resolver<'a> {
                 }
             }
             TypeDef::Array(array) => self.resolve_storagetype(&mut array.ty)?,
+            TypeDef::Cont(cont) => self.resolve_continuationtype(cont)?,
         }
         if let Some(parent) = &mut ty.parent {
             self.resolve(parent, Ns::Type)?;
@@ -295,6 +296,11 @@ impl<'a> Resolver<'a> {
             StorageType::Val(ty) => self.resolve_valtype(ty)?,
             _ => {}
         }
+        Ok(())
+    }
+
+    fn resolve_continuationtype(&self, ty: &mut ContinuationType<'a>) -> Result<(), Error> {
+        self.resolve(&mut ty.idx, Ns::Type)?;
         Ok(())
     }
 

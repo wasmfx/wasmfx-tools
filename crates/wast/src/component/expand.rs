@@ -379,6 +379,7 @@ impl<'a> Expander<'a> {
                     }
                     core::TypeDef::Struct(_) => {}
                     core::TypeDef::Array(_) => {}
+                    core::TypeDef::Cont(_) => {}
                 },
                 ModuleTypeDecl::Alias(_) => {}
                 ModuleTypeDecl::Import(ty) => {

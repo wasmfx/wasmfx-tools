@@ -539,17 +539,20 @@ impl Printer {
         self.start_group("type ");
         self.print_name(&state.core.type_names, state.core.types.len() as u32)?;
         self.result.push(' ');
-        let ty = match ty {
+        match ty {
             wasmparser::Type::Func(ty) => {
                 self.start_group("func");
                 self.print_func_type(state, &ty, None)?;
                 self.end_group();
-                ty
+                state.core.types.push(Some(ty))
             }
-            wasmparser::Type::Cont(ty) => todo!(),
+            wasmparser::Type::Cont(type_index) => {
+                self.start_group("cont");
+                self.print_idx(&state.core.type_names, type_index)?;
+                self.end_group()
+            }
         };
         self.end_group(); // `type` itself
-        state.core.types.push(Some(ty));
         Ok(())
     }
 
