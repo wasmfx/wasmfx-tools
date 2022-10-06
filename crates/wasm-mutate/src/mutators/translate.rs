@@ -325,7 +325,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
 
         O::Return => I::Return,
         O::Call { function_index } => I::Call(t.remap(Item::Function, *function_index)?),
-        O::CallRef { ty } => I::CallRef(t.translate_heapty(ty)?),
+        O::CallRef => I::CallRef,
         O::CallIndirect {
             index,
             table_index,
@@ -334,7 +334,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
             ty: t.remap(Item::Type, *index)?,
             table: t.remap(Item::Table, *table_index)?,
         },
-        O::ReturnCallRef { ty } => I::ReturnCallRef(t.translate_heapty(ty)?),
+        O::ReturnCallRef => I::ReturnCallRef,
         O::Delegate { relative_depth } => I::Delegate(*relative_depth),
         O::CatchAll => I::CatchAll,
         O::Drop => I::Drop,

@@ -160,7 +160,7 @@ pub enum Operator<'a> {
     Call {
         function_index: u32,
     },
-    CallRef { ty: HeapType },
+    CallRef,
     CallIndirect {
         index: u32,
         table_index: u32,
@@ -169,7 +169,7 @@ pub enum Operator<'a> {
     ReturnCall {
         function_index: u32,
     },
-    ReturnCallRef { ty: HeapType },
+    ReturnCallRef,
     ReturnCallIndirect {
         index: u32,
         table_index: u32,
