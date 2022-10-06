@@ -129,7 +129,7 @@ impl ModuleState {
         offset: usize,
     ) -> Result<()> {
         self.module
-            .check_global_type(&global.ty, features, types, offset)?;
+            .check_global_type(&global.ty, features, offset)?;
         self.check_const_expr(
             &global.init_expr,
             global.ty.content_type,
@@ -167,7 +167,7 @@ impl ModuleState {
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        self.module.check_ref_type(e.ty, types, offset)?;
+        self.module.check_ref_type(e.ty, offset)?;
         let RefType {
             nullable,
             heap_type,
@@ -372,8 +372,8 @@ pub(crate) struct Module {
     pub element_types: Vec<RefType>,
     pub data_count: Option<u32>,
     // Stores indexes into `types`.
-    pub continuations: Vec<u32>,
     pub functions: Vec<u32>,
+    // Stores indexes into `types`.
     pub tags: Vec<TypeId>,
     pub function_references: HashSet<u32>,
     pub imports: IndexMap<(String, String), Vec<EntityType>>,
@@ -395,7 +395,7 @@ impl Module {
         match ty {
             crate::Type::Func(t) => {
                 for ty in t.params.iter().chain(t.returns.iter()) {
-                    self.check_value_type(*ty, features, types, offset)?;
+                    self.check_value_type(*ty, features, offset)?;
                 }
                 if t.returns.len() > 1 && !features.multi_value {
                     return Err(BinaryReaderError::new(
@@ -417,13 +417,20 @@ impl Module {
             }
             crate::Type::Cont(type_index) => {
                 if (type_index as usize) >= types.len() {
-                    return Err(BinaryReaderError::new("invalid type index", offset,)); // TODO(dhil): tidy up error message.
+                    return Err(BinaryReaderError::new("invalid type index", offset));
+                    // TODO(dhil): tidy up error message.
                 }
 
                 if check_limit {
-                    check_max(self.continuations.len(), 1, MAX_WASM_TYPES, "continuations", offset)?; // TODO(dhil): define MAX_WASM_CONTINUATIONS
+                    check_max(self.types.len(), 1, MAX_WASM_TYPES, "continuations", offset)?;
+                    // TODO(dhil): define MAX_WASM_CONTINUATIONS
                 }
-                self.continuations.push(type_index);
+                let ty = Type::Cont(type_index);
+                self.types.push(TypeId {
+                    type_size: ty.type_size(),
+                    index: types.len(),
+                });
+                types.push(ty);
             }
         };
         Ok(())
@@ -606,7 +613,7 @@ impl Module {
                 EntityType::Tag(self.types[t.func_type_idx as usize])
             }
             TypeRef::Global(t) => {
-                self.check_global_type(t, features, types, offset)?;
+                self.check_global_type(t, features, offset)?;
                 EntityType::Global(*t)
             }
         })
@@ -718,13 +725,7 @@ impl Module {
         }).collect::<Result<_>>()
     }
 
-    fn check_value_type(
-        &self,
-        ty: ValType,
-        features: &WasmFeatures,
-        types: &TypeList,
-        offset: usize,
-    ) -> Result<()> {
+    fn check_value_type(&self, ty: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
         match features.check_value_type(ty) {
             Ok(()) => Ok(()),
             Err(e) => Err(BinaryReaderError::new(e, offset)),
@@ -733,20 +734,20 @@ impl Module {
         // We must check it if it's a reference.
         match ty {
             ValType::Ref(rt) => {
-                self.check_ref_type(rt, types, offset)?;
+                self.check_ref_type(rt, offset)?;
             }
             _ => (),
         }
         Ok(())
     }
 
-    fn check_ref_type(&self, ty: RefType, types: &TypeList, offset: usize) -> Result<()> {
+    fn check_ref_type(&self, ty: RefType, offset: usize) -> Result<()> {
         // Check that the heap type is valid
         match ty.heap_type {
             HeapType::Func | HeapType::Extern => (),
             HeapType::Index(type_index) => {
                 // Just check that the index is valid
-                self.func_type_at(type_index, types, offset)?;
+                self.type_at(type_index, offset)?;
             }
             HeapType::Bot => (),
         }
@@ -842,10 +843,9 @@ impl Module {
         &self,
         ty: &GlobalType,
         features: &WasmFeatures,
-        types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        self.check_value_type(ty.content_type, features, types, offset)
+        self.check_value_type(ty.content_type, features, offset)
     }
 
     fn check_limits<T>(&self, initial: T, maximum: Option<T>, offset: usize) -> Result<()>
@@ -980,7 +980,6 @@ impl Default for Module {
             globals: Default::default(),
             element_types: Default::default(),
             data_count: Default::default(),
-            continuations: Default::default(),
             functions: Default::default(),
             tags: Default::default(),
             function_references: Default::default(),
@@ -1038,12 +1037,15 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
     }
 
     fn cont_type_at(&self, at: u32) -> Option<u32> {
-        Some(*self.module.continuations.get(at as usize).unwrap())
+        Some(
+            self.types[*self.module.types.get(at as usize)?]
+                .as_cont_func_index()
+                .unwrap(),
+        )
     }
 
     fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
-        self.module
-            .check_value_type(t, features, self.types, offset)
+        self.module.check_value_type(t, features, offset)
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
@@ -1111,12 +1113,16 @@ impl WasmModuleResources for ValidatorResources {
     }
 
     fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
-        self.0
-            .check_value_type(t, features, self.0.snapshot.as_ref().unwrap(), offset)
+        self.0.check_value_type(t, features, offset)
     }
 
+    // Gives the index of the function
     fn cont_type_at(&self, at: u32) -> Option<u32> {
-        Some(*self.0.continuations.get(at as usize)?)
+        Some(
+            self.0.snapshot.as_ref().unwrap()[*self.0.types.get(at as usize)?]
+                .as_cont_func_index()
+                .unwrap(),
+        )
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
