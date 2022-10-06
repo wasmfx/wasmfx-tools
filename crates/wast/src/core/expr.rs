@@ -1158,8 +1158,8 @@ instructions! {
         F64x2RelaxedMax : [0xfd, 0xee]: "f64x2.relaxed_max",
 
         // Typed continuations proposal
-        ContNew(TypeUse<'a, ValType<'a>>)            : [0xe0] : "cont.new",
-        ContBind(TypeUse<'a, ValType<'a>>)           : [0xe1] : "cont.bind",
+        ContNew(TypeUse<'a, FunctionType<'a>>) : [0xe0] : "cont.new",
+        ContBind(TypeUse<'a, FunctionType<'a>>) : [0xe1] : "cont.bind",
         Suspend(Index<'a>)              : [0xe2] : "suspend",
         Resume(ResumeTableIndices<'a>)  : [0xe3] : "resume",
         ResumeThrow(Index<'a>)          : [0xe4] : "resume_throw",

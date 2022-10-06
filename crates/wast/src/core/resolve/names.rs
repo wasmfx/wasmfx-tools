@@ -95,12 +95,12 @@ impl<'a> Resolver<'a> {
 
             ModuleField::Type(i) => {
                 return self.register_type(i);
-            },
+            }
             ModuleField::Rec(i) => {
                 for ty in &i.types {
                     self.register_type(ty)?;
                 }
-                return Ok(())
+                return Ok(());
             }
             ModuleField::Elem(e) => self.elems.register(e.id, "elem")?,
             ModuleField::Data(d) => self.datas.register(d.id, "data")?,
@@ -538,7 +538,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_block_type(&mut t.block)?;
             }
 
-            Block(bt) | If(bt) | Loop(bt) | Try(bt) => {
+            Block(bt) | If(bt) | Loop(bt) | Try(bt) | Barrier(bt) => {
                 self.blocks.push(ExprBlock {
                     label: bt.label,
                     pushed_scope: false,
@@ -591,13 +591,10 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_label(&mut i.default)?;
             }
 
-            Throw(i) => {
-                self.resolver.resolve(i, Ns::Tag)?;
-            }
             Rethrow(i) => {
                 self.resolve_label(i)?;
             }
-            Catch(i) => {
+            Throw(i) | Catch(i) | Suspend(i) | ResumeThrow(i) => {
                 self.resolver.resolve(i, Ns::Tag)?;
             }
             Delegate(i) => {
@@ -612,8 +609,8 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolver.resolve(&mut i.r#type, Ns::Type)?;
             }
 
-            BrOnFunc(l) | BrOnData(l) | BrOnI31(l) | BrOnArray(l) |
-            BrOnNonFunc(l) | BrOnNonData(l) | BrOnNonI31(l) | BrOnNonArray(l) => {
+            BrOnFunc(l) | BrOnData(l) | BrOnI31(l) | BrOnArray(l) | BrOnNonFunc(l)
+            | BrOnNonData(l) | BrOnNonI31(l) | BrOnNonArray(l) => {
                 self.resolve_label(l)?;
             }
 
@@ -625,16 +622,8 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 }
             }
 
-            RefTest(i)
-            | RefCast(i)
-            | StructNew(i)
-            | StructNewDefault(i)
-            | ArrayNew(i)
-            | ArrayNewDefault(i)
-            | ArrayGet(i)
-            | ArrayGetS(i)
-            | ArrayGetU(i)
-            | ArraySet(i)
+            RefTest(i) | RefCast(i) | StructNew(i) | StructNewDefault(i) | ArrayNew(i)
+            | ArrayNewDefault(i) | ArrayGet(i) | ArrayGetS(i) | ArrayGetU(i) | ArraySet(i)
             | ArrayLen(i) => {
                 self.resolver.resolve(i, Ns::Type)?;
             }
@@ -661,6 +650,16 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
             }
 
             RefNull(ty) => self.resolver.resolve_heaptype(ty)?,
+
+            ContNew(ty) | ContBind(ty) => {
+                self.resolver.resolve_type_use(ty)?;
+            }
+            Resume(table) => {
+                for (tag, label) in &mut table.targets {
+                    self.resolver.resolve(tag, Ns::Tag)?;
+                    self.resolve_label(label)?;
+                }
+            }
 
             _ => {}
         }
