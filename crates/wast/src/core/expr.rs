@@ -1293,8 +1293,8 @@ impl<'a> Parse<'a> for ResumeTableIndices<'a> {
         let mut targets = vec![];
         while parser.peek2::<kw::tag>() {
             parser.parens(|p| {
-                parser.parse::<kw::tag>()?;
-                targets.push(parser.parse()?);
+                p.parse::<kw::tag>()?;
+                targets.push(p.parse()?);
                 Ok(())
             })?;
         }

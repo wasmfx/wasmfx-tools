@@ -161,8 +161,6 @@ pub struct GlobalType {
 pub enum TagKind {
     /// The tag is an exception type.
     Exception,
-    /// The tag is an control type.
-    Control,
 }
 
 /// A tag's type.

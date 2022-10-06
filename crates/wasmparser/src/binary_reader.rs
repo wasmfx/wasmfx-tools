@@ -817,22 +817,16 @@ impl<'a> BinaryReader<'a> {
 
     pub(crate) fn read_tag_type(&mut self) -> Result<TagType> {
         let attribute = self.read_u8()?;
-        match attribute {
-            0 => Ok(TagType {
-                kind: TagKind::Exception,
-                func_type_idx: self.read_var_u32()?,
-            }),
-            1 => Ok(TagType {
-                kind: TagKind::Control,
-                func_type_idx: self.read_var_u32()?,
-            }),
-            _ => {
-                return Err(BinaryReaderError::new(
-                    "invalid tag attributes",
-                    self.original_position() - 1,
-                ));
-            }
+        if attribute != 0 {
+            return Err(BinaryReaderError::new(
+                "invalid tag attributes",
+                self.original_position() - 1,
+            ));
         }
+        Ok(TagType {
+            kind: TagKind::Exception,
+            func_type_idx: self.read_var_u32()?,
+        })
     }
 
     pub(crate) fn read_global_type(&mut self) -> Result<GlobalType> {
@@ -2639,12 +2633,12 @@ impl<'a> ResumeTable<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// let buf = [0x0e, 0x02, 0x01, 0x02, 0x00];
+    /// let buf = [0xe3, 0x01, 0x00, 0x01, 0x02, 0x00];
     /// let mut reader = wasmparser::BinaryReader::new(&buf);
     /// let op = reader.read_operator().unwrap();
     /// if let wasmparser::Operator::Resume { table } = op {
-    ///     let targets = table.targets().collect::<Result<Vec<_>, _>>().unwrap();
-    ///     assert_eq!(targets, [1, 2]);
+    ///     let targets = table.targets().collect::<Result<Vec<(_,_)>, _>>().unwrap();
+    ///     assert_eq!(targets, [(1, 2)]);
     /// }
     /// ```
     pub fn targets(&self) -> ResumeTableTargets {

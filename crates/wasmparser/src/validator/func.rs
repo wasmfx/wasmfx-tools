@@ -185,6 +185,9 @@ mod tests {
         fn is_function_referenced(&self, _idx: u32) -> bool {
             todo!()
         }
+        fn cont_type_at(&self, _at: u32) -> Option<u32> {
+            todo!()
+        }
     }
 
     struct EmptyFuncType;
