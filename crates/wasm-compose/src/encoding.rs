@@ -367,7 +367,7 @@ impl<'a> TypeEncoder<'a> {
         let ty = self.0.type_from_id(id).unwrap();
 
         match ty {
-            wasmparser::types::Type::Func(_) | wasmparser::types::Type::Instance(_) => {
+            wasmparser::types::Type::Func(_) | wasmparser::types::Type::Instance(_) | wasmparser::types::Type::Cont(_) => {
                 unreachable!()
             }
             wasmparser::types::Type::Module(_) => self.module_type(encodable, types, id),
