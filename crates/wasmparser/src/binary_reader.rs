@@ -1977,6 +1977,7 @@ impl<'a> BinaryReader<'a> {
                 table: self.read_resume_table()?,
             },
             0xe4 => Operator::ResumeThrow {
+                table: self.read_resume_table()?,
                 tag_index: self.read_var_u32()?,
             },
             0xe5 => Operator::Barrier {
@@ -2629,7 +2630,7 @@ impl<'a> ResumeTable<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// let buf = [0xe3, 0x01, 0x00, 0x01, 0x02, 0x00];
+    /// let buf = [0xe3, 0x01, 0x01, 0x02, 0x00];
     /// let mut reader = wasmparser::BinaryReader::new(&buf);
     /// let op = reader.read_operator().unwrap();
     /// if let wasmparser::Operator::Resume { table } = op {
@@ -2687,7 +2688,7 @@ impl fmt::Debug for ResumeTable<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut f = f.debug_struct("ResumeTable");
         f.field("count", &self.cnt);
-        match self.targets().collect::<Result<Vec<_>>>() {
+        match self.targets().collect::<Result<Vec<(_,_)>>>() {
             Ok(targets) => {
                 f.field("targets", &targets);
             }

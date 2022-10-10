@@ -24,7 +24,7 @@
 
 use crate::{
     limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, HeapType, MemoryImmediate,
-    Operator, RefType, Result, SIMDLaneIndex, ValType, WasmFeatures, WasmFuncType,
+    Operator, RefType, Result, ResumeTable, SIMDLaneIndex, ValType, WasmFeatures, WasmFuncType,
     WasmModuleResources, EXTERN_REF, FUNC_REF,
 };
 
@@ -617,6 +617,68 @@ impl OperatorValidator {
         self.unreachable();
         Ok(())
     }
+
+    fn check_resume_table<T: WasmModuleResources>(
+        &mut self,
+        resources: &T,
+        table: &ResumeTable,
+        ctft: &T::FuncType // ctft := ts1 -> ts2
+    ) -> OperatorValidatorResult<()> {
+        // Validate resume table.
+        for pair in table.targets() {
+            let (tag, relative_depth) = pair.map_err(|mut e| {
+                e.inner.offset = usize::max_value();
+                OperatorValidatorError(e)
+            })?;
+            // tagtype := ts1' -> ts2'
+            let tagtype = tag_at(resources, tag)?;
+            let block = self.jump(relative_depth)?;
+            // tys := ts1''* (ref null? (cont $ft))
+            let mut tys = label_types(block.0, resources, block.1)?;
+
+            // Next check that ts1' <: ts1''.
+            let len = tagtype.inputs().len();
+            let mut tagins = tagtype.inputs();
+            let mut i = 0;
+            loop {
+                if i == len - 1 {
+                    break;
+                }
+                match (tagins.next(), tys.next()) {
+                    (Some(tagty), Some(lblty)) => {
+                        if !resources.matches(tagty, lblty) {
+                            panic!("type mismatch between tag type and label type") // TODO(dhil): tidy up
+                        }
+                        i += 1;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            // Retrieve the continuation reference.
+            match tys.next() {
+                Some(ValType::Ref(RefType { nullable: _, heap_type: HeapType::Index(z) })) => {
+                    let ctft2 = func_type_at(resources, cont_type_at(resources, z)?)?;
+                    // Now we must check that (ts2' -> ts2) <: $ft
+                    for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
+                        // Note: function subtyping is contravariant in input types.
+                        if !resources.matches(ct2ty, tagty) {
+                            panic!("type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                    for (ctty, ct2ty) in ctft.outputs().zip(ctft2.outputs()) {
+                        // Note: function subtyping is covariant in output types.
+                        if !resources.matches(ctty, ct2ty) {
+                            panic!("type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                }
+                _ => bail_op_err!(
+                    "type mismatch: instruction requires continuation reference type but label has none")
+            }
+        }
+        Ok(())
+}
 
     pub fn process_operator(
         &mut self,
@@ -2240,67 +2302,60 @@ impl OperatorValidator {
             // Typed continuations operators.
             // TODO(dhil) fixme: merge into the above list.
             Operator::ContNew { type_index } => {
-                let ct = cont_type_at(resources, type_index)?;
-                let ft = match self.pop_ref(resources)? {
-                    RefType { heap_type: HeapType::Index(type_index), .. } => cont_type_at(resources, type_index)?,
-                    _ => panic!("mismatch error") // TODO(dhil): tidy up
-                };
-                for (ty1, ty2) in ft.inputs().rev().zip(ct.inputs().rev()) {
-                    if !resources.matches(ty1, ty2) {
-                        panic!("type error") // TODO(dhil): tidy up
-                    }
-                }
-
-                for (ty1, ty2) in ft.outputs().zip(ct.outputs()) {
-                    if !resources.matches(ty1, ty2) {
-                        panic!("type error") // TODO(dhil): tidy up
-                    }
-                }
-
-                self.push_operand(ValType::Ref(RefType { heap_type: HeapType::Index(type_index), nullable: true }), resources)?;
-            }
-            Operator::ContBind { type_index } => {
-                let ft2 = cont_type_at(resources, type_index)?;
-                let ft1 = match self.pop_ref(resources)? {
-                    RefType { heap_type: HeapType::Index(type_index), .. } => cont_type_at(resources, type_index)?,
-                    _ => panic!("error computing tp1len"),
-                };
-
-                if ft2.inputs().len() < ft1.inputs().len() {
+                let fidx = cont_type_at(resources, type_index)?;
+                let rt = RefType { nullable: false, heap_type: HeapType::Index(fidx) };
+                if !resources.matches(ValType::Ref(self.pop_ref(resources)?), ValType::Ref(self.pop_ref(resources)?)) {
                     panic!("mismatch error") // TODO(dhil): tidy up
                 }
 
-                let mut ft2ins = ft2.inputs().rev();
-                let mut ft1ins = ft1.inputs().rev();
+                self.push_operand(ValType::Ref(rt), resources)?;
+            }
+            Operator::ContBind { type_index } => {
+                let rt = self.pop_ref(resources)?;
+                match rt.heap_type {
+                    HeapType::Index(y) => {
+                        let ft1 = func_type_at(resources, cont_type_at(resources, y)?)?;
+                        let ft2 = func_type_at(resources, cont_type_at(resources, type_index)?)?;
 
-                loop {
-                    match ft2ins.next() {
-                        None => break,
-                        Some(ty2) => {
-                            let ty1 = if let Some(ty1) = ft1ins.next() { ty1 } else { panic!("error") /* TODO(dhil): tidy up */ };
+                        // Verify that ft1's domain is at least as
+                        // large as ft2's domain.
+                        if ft1.inputs().len() < ft2.inputs().len() {
+                            panic!("|ft1.inputs()| must be greater or equal to |ft2.inputs()|") // TODO(dhil): Tidy up
+                        }
+                        // Next check that prefix of ft1's domain agrees with the domain of ft2.
+                        //let ft1ins1 = ft1.inputs().take(ft1.inputs().len() - ft2.inputs().len());
+                        let ft1ins2 = ft1.inputs().skip(ft1.inputs().len() - ft2.inputs().len());
+
+                        for (ty1, ty2) in ft1ins2.zip(ft2.inputs()) {
                             if !resources.matches(ty1, ty2) {
-                                panic!("Type error") // TODO(dhil): tidy up
+                                panic!("mismatch error") // TODO(dhil): tidy up
                             }
                         }
+
+                        // Next check their codomains agree.
+                        if ft1.outputs().len() != ft2.outputs().len() {
+                            panic!("The codomains of ft1 and ft2 must have the same size") // TODO(dhil): Tidy up
+                        }
+
+                        for (ty1, ty2) in ft1.outputs().zip(ft2.outputs()) {
+                            if !resources.matches(ty1, ty2) {
+                                panic!("mismatch error") // TODO(dhil): tidy up
+                            }
+                        }
+
+                        // Check that ft1's inputs are available on the stack.
+                        for ty in ft1.inputs().rev() {
+                            self.pop_operand(Some(ty), resources)?;
+                        }
+
+                        // Push the continuation reference.
+                        self.push_operand(ValType::Ref(RefType { nullable: rt.nullable, heap_type: HeapType::Index(type_index) }), resources)?;
                     }
+                    HeapType::Bot => self.push_operand(ValType::Ref(RefType { nullable: false, heap_type: HeapType::Index(type_index) }), resources)?,
+                    _ => bail_op_err!(
+                        "type mismatch: instruction requires continuation reference type but stack has {}",
+                        ty_to_str(ValType::Ref(rt)))
                 }
-
-                for ty in ft1ins {
-                    self.pop_operand(Some(ty), resources)?;
-                }
-
-
-                let ft2outs = ft2.outputs().rev();
-                let ft1outs = ft1.outputs().rev();
-                if ft1outs.len() != ft2outs.len() {
-                    panic!("Mismatch error") // TODO(dhil): tidy up
-                }
-                for (ty1, ty2) in ft1outs.zip(ft2outs) {
-                    if !resources.matches(ty1, ty2) {
-                        panic!("Type error") // TODO(dhil): tidy up
-                    }
-                }
-                self.push_operand(ValType::Ref(RefType { heap_type: HeapType::Index(type_index), nullable: true }), resources)?;
             }
             Operator::Suspend { tag_index } => {
                 let ft = tag_at(resources, tag_index)?;
@@ -2311,34 +2366,81 @@ impl OperatorValidator {
                     self.push_operand(ty, resources)?;
                 }
             }
-            Operator::Resume { table: _ } => {
-                // TODO(dhil): check that the table is well-formed.
-                let ct = match self.pop_ref(resources)? {
-                    RefType { heap_type: HeapType::Index(type_index), .. } => cont_type_at(resources, type_index)?,
-                    _ => panic!("mismatch error") // TODO(dhil): tidy up
-                };
+            Operator::Resume { ref table } => {
+                //                 self.pop_operand(Some(ValType::I32), resources)?;
+                // let default = self.jump(table.default())?;
+                // let default_types = label_types(default.0, resources, default.1)?;
+                // for element in table.targets() {
+                //     let relative_depth = element.map_err(|mut e| {
+                //         e.inner.offset = usize::max_value();
+                //         OperatorValidatorError(e)
+                //     })?;
+                //     let block = self.jump(relative_depth)?;
+                //     let tys = label_types(block.0, resources, block.1)?;
+                //     if tys.len() != default_types.len() {
+                //         bail_op_err!(
+                //             "type mismatch: br_table target labels have different number of types"
+                //         );
+                //     }
+                //     debug_assert!(self.br_table_tmp.is_empty());
+                //     for ty in tys.rev() {
+                //         let ty = self.pop_operand(Some(ty), resources)?;
+                //         self.br_table_tmp.push(ty);
+                //     }
+                //     self.operands.extend(self.br_table_tmp.drain(..).rev());
+                // }
+                // for ty in default_types.rev() {
+                //     self.pop_operand(Some(ty), resources)?;
+                // }
+                // self.unreachable();
+                let rt = self.pop_ref(resources)?;
+                match rt.heap_type {
+                    HeapType::Index(y) => {
+                        // ft := ts1 -> ts2
+                        let ctft = func_type_at(resources, cont_type_at(resources, y)?)?;
+                        self.check_resume_table(resources, table, ctft)?;
 
-                for ty in ct.inputs().rev() {
-                    self.pop_operand(Some(ty), resources)?;
-                }
+                        // Check that ts1 are available on the stack.
+                        for ty in ctft.inputs().rev() {
+                            self.pop_operand(Some(ty), resources)?;
+                        }
 
-                for ty in ct.outputs() {
-                    self.push_operand(ty, resources)?;
+                        // Make ts2 available on the stack.
+                        for ty in ctft.outputs() {
+                            self.push_operand(ty, resources)?;
+                        }
+                    }
+                    HeapType::Bot => {}
+                    _ => bail_op_err!(
+                           "type mismatch: instruction requires continuation reference type but stack has {}",
+                           ty_to_str(ValType::Ref(rt)))
                 }
             }
-            Operator::ResumeThrow { tag_index } => {
-                let ct = match self.pop_ref(resources)? {
-                    RefType { heap_type: HeapType::Index(type_index), .. } => cont_type_at(resources, type_index)?,
-                    _ => panic!("mismatch error") // TODO(dhil): tidy up
-                };
-                let ft = tag_at(resources, tag_index)?;
+            Operator::ResumeThrow { ref table, tag_index } => {
+                let rt = self.pop_ref(resources)?;
+                match rt.heap_type {
+                    HeapType::Index(y) => {
+                        // ct := ts1 -> ts2
+                        let ct = func_type_at(resources, cont_type_at(resources, y)?)?;
+                        self.check_resume_table(resources, table, ct)?;
 
-                for ty in ft.inputs().rev() {
-                    self.pop_operand(Some(ty), resources)?;
-                }
+                        // tagtype := ts1' -> []
+                        let tagtype = tag_at(resources, tag_index)?;
 
-                for ty in ct.outputs() {
-                    self.push_operand(ty, resources)?;
+                        // Check that ts1' are available on the stack.
+                        for tagty in tagtype.inputs().rev() {
+                            self.pop_operand(Some(tagty), resources)?;
+                        }
+
+                        // Make ts2 available on the stack
+                        for ty in ct.outputs() {
+                            self.push_operand(ty, resources)?;
+                        }
+                    },
+                    HeapType::Bot => {}
+                    _ => bail_op_err!(
+                           "type mismatch: instruction requires continuation reference type but stack has {}",
+                           ty_to_str(ValType::Ref(rt)))
                 }
             }
             Operator::Barrier { ty: _ } => {
@@ -2368,11 +2470,8 @@ fn func_type_at<T: WasmModuleResources>(
 fn cont_type_at<T: WasmModuleResources>(
     resources: &T,
     at: u32,
-) -> OperatorValidatorResult<&T::FuncType> {
-    let u = resources.cont_type_at(at).ok_or_else(|| OperatorValidatorError::new("unknown continuation type: type index out of bounds"));
-    resources
-        .func_type_at(u?)
-        .ok_or_else(|| OperatorValidatorError::new("unknown type: type index out of bounds"))
+) -> OperatorValidatorResult<u32> {
+    resources.cont_type_at(at).ok_or_else(|| OperatorValidatorError::new("unknown continuation type: type index out of bounds"))
 }
 
 fn tag_at<T: WasmModuleResources>(resources: &T, at: u32) -> OperatorValidatorResult<&T::FuncType> {

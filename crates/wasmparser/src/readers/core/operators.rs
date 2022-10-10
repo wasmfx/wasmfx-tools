@@ -1037,6 +1037,7 @@ pub enum Operator<'a> {
         table: ResumeTable<'a>,
     },
     ResumeThrow {
+        table: ResumeTable<'a>,
         tag_index: u32,
     },
     Barrier {
