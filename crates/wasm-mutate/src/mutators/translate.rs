@@ -107,10 +107,6 @@ pub trait Translator {
         memarg(self.as_obj(), arg)
     }
 
-    fn translate_resumetable(&mut self, resumetable: &wasmparser::ResumeTable<'_>) -> Result<std::borrow::Cow<'_, [(u32, u32)]>> {
-        todo!()
-    }
-
     fn remap(&mut self, item: Item, idx: u32) -> Result<u32> {
         drop(item);
         Ok(idx)
@@ -346,7 +342,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         (map $arg:ident value) => ($arg);
         (map $arg:ident lane) => (*$arg);
         (map $arg:ident lanes) => (*$arg);
-        (map $arg:ident resumetable) => (t.translate_resumetable(todo!())?);
+        (map $arg:ident resumetable) => (todo!());
 
         // This case takes the arguments of a wasmparser instruction and creates
         // a wasm-encoder instruction. There are a few special cases for where
