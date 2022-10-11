@@ -118,6 +118,7 @@ enum FrameKind {
     Try,
     Catch,
     CatchAll,
+    Barrier,
 }
 
 impl OperatorValidator {
@@ -623,7 +624,7 @@ impl OperatorValidator {
         &mut self,
         resources: &T,
         table: &ResumeTable, // The table to validate.
-        ctft: &T::FuncType // The type of the continuation applied to the resume, which `table` is attached to.
+        ctft: &T::FuncType, // The type of the continuation applied to the resume, which `table` is attached to.
     ) -> OperatorValidatorResult<()> {
         // Resume table validation is somewhat involved as we have to
         // check that the domain of each tag matches up with the
@@ -676,16 +677,17 @@ impl OperatorValidator {
                 Some(ValType::Ref(RefType { nullable: _, heap_type: HeapType::Index(z) })) => {
                     let ctft2 = func_type_at(resources, cont_type_at(resources, z)?)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
+                    // This method should be exposed by resources to make this correct
                     for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
-                        // Note: function subtyping is contravariant in input types.
+                        // Note: according to spec we should check for equality here
                         if !resources.matches(ct2ty, tagty) {
-                            panic!("type mismatch in continuation type") // TODO(dhil): tidy up
+                            bail_op_err!("type mismatch in continuation type") // TODO(dhil): tidy up
                         }
                     }
                     for (ctty, ct2ty) in ctft.outputs().zip(ctft2.outputs()) {
-                        // Note: function subtyping is covariant in output types.
+                        // Note: according to spec we should check for equality here
                         if !resources.matches(ctty, ct2ty) {
-                            panic!("type mismatch in continuation type") // TODO(dhil): tidy up
+                            bail_op_err!("type mismatch in continuation type") // TODO(dhil): tidy up
                         }
                     }
                 }
@@ -694,7 +696,7 @@ impl OperatorValidator {
             }
         }
         Ok(())
-}
+    }
 
     pub fn process_operator(
         &mut self,
@@ -2319,12 +2321,16 @@ impl OperatorValidator {
             // TODO(dhil) fixme: merge into the above list.
             Operator::ContNew { type_index } => {
                 let fidx = cont_type_at(resources, type_index)?;
-                let rt = RefType { nullable: false, heap_type: HeapType::Index(fidx) };
-                if !resources.matches(ValType::Ref(self.pop_ref(resources)?), ValType::Ref(self.pop_ref(resources)?)) {
-                    panic!("mismatch error") // TODO(dhil): tidy up
-                }
-
-                self.push_operand(ValType::Ref(rt), resources)?;
+                let rt = RefType {
+                    nullable: false,
+                    heap_type: HeapType::Index(fidx),
+                };
+                self.pop_operand(Some(ValType::Ref(rt)), resources)?;
+                let result = RefType {
+                    nullable: false,
+                    heap_type: HeapType::Index(type_index),
+                };
+                self.push_operand(ValType::Ref(result), resources)?;
             }
             Operator::ContBind { type_index } => {
                 let rt = self.pop_ref(resources)?;
@@ -2406,7 +2412,10 @@ impl OperatorValidator {
                            ty_to_str(ValType::Ref(rt)))
                 }
             }
-            Operator::ResumeThrow { ref table, tag_index } => {
+            Operator::ResumeThrow {
+                ref table,
+                tag_index,
+            } => {
                 let rt = self.pop_ref(resources)?;
                 match rt.heap_type {
                     HeapType::Index(y) => {
@@ -2433,8 +2442,12 @@ impl OperatorValidator {
                            ty_to_str(ValType::Ref(rt)))
                 }
             }
-            Operator::Barrier { ty: _ } => {
-                todo!("Implement Barrier")
+            Operator::Barrier { ty } => {
+                self.check_block_type(ty, resources)?;
+                for ty in params(ty, resources)?.rev() {
+                    self.pop_operand(Some(ty), resources)?;
+                }
+                self.push_ctrl(FrameKind::Barrier, ty, resources)?;
             }
         }
         Ok(())
@@ -2457,11 +2470,10 @@ fn func_type_at<T: WasmModuleResources>(
         .ok_or_else(|| OperatorValidatorError::new("unknown type: type index out of bounds"))
 }
 
-fn cont_type_at<T: WasmModuleResources>(
-    resources: &T,
-    at: u32,
-) -> OperatorValidatorResult<u32> {
-    resources.cont_type_at(at).ok_or_else(|| OperatorValidatorError::new("unknown continuation type: type index out of bounds"))
+fn cont_type_at<T: WasmModuleResources>(resources: &T, at: u32) -> OperatorValidatorResult<u32> {
+    resources.cont_type_at(at).ok_or_else(|| {
+        OperatorValidatorError::new("unknown continuation type: type index out of bounds")
+    })
 }
 
 fn tag_at<T: WasmModuleResources>(resources: &T, at: u32) -> OperatorValidatorResult<&T::FuncType> {
@@ -2574,6 +2586,6 @@ fn ty_to_str(ty: ValType) -> String {
                     HeapType::Bot => "bot".into(),
                 }
             ),
-        }
+        },
     }
 }

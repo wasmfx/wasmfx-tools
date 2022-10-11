@@ -793,10 +793,16 @@ impl Module {
         let matches_heap = |ty1: HeapType, ty2: HeapType, types: &TypeList| -> bool {
             match (ty1, ty2) {
                 (HeapType::Index(n1), HeapType::Index(n2)) => {
+                    // This seems to be added by typed-conts
+                    n1 == n2 ||
+                    // We also apparently should assume n1 == n2 in the
+                    // following check, which i think deals with cycles somehow
                     // Check whether the defined types are (structurally) equivalent.
-                    let n1 = self.func_type_at(n1, types, 0).unwrap();
-                    let n2 = self.func_type_at(n2, types, 0).unwrap();
-                    self.eq_fns(n1, n2, types)
+                    {
+                        let n1 = self.func_type_at(n1, types, 0).unwrap();
+                        let n2 = self.func_type_at(n2, types, 0).unwrap();
+                        self.eq_fns(n1, n2, types)
+                    }
                 }
                 (HeapType::Index(_), HeapType::Func) => true,
                 (HeapType::Bot, _) => true,

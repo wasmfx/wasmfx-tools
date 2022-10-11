@@ -900,7 +900,8 @@ fn find_names<'a>(
                         | Instruction::Block(block)
                         | Instruction::Loop(block)
                         | Instruction::Try(block)
-                        | Instruction::Let(LetType { block, .. }) => {
+                        | Instruction::Let(LetType { block, .. })
+                        | Instruction::Barrier(block) => {
                             if let Some(name) = get_name(&block.label, &block.label_name) {
                                 label_names.push((label_idx, name));
                             }
