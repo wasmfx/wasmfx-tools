@@ -132,7 +132,7 @@ impl ModuleState {
         offset: usize,
     ) -> Result<()> {
         self.module
-            .check_global_type(&global.ty, features, types, offset)?;
+            .check_global_type(&global.ty, features, offset)?;
         self.check_const_expr(&global.init_expr, global.ty.content_type, features, types)?;
         self.module.assert_mut().globals.push(global.ty);
         Ok(())
@@ -164,15 +164,26 @@ impl ModuleState {
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        // the `funcref` value type is allowed all the way back to the MVP, so
-        // don't check it here
-        if e.ty != FUNC_REF {
-            self.module
-                .check_value_type(ValType::Ref(e.ty), features, types, offset)?;
-        }
-        if let HeapType::TypedFunc(_) = e.ty.heap_type {
-            // nullable: "as long as the index is ok"
-            if !e.ty.nullable && e.items.get_items_reader()?.get_count() <= 0 {
+        self.module.check_ref_type(e.ty, offset)?;
+        let RefType {
+            nullable,
+            heap_type,
+        } = e.ty;
+        match heap_type {
+            HeapType::TypedFunc(_) => {
+                // nullable: "as long as the index is ok"
+                if !nullable && e.items.get_items_reader()?.get_count() <= 0 {
+                    return Err(BinaryReaderError::new(
+                        "a non-nullable element must come with an initialization expression",
+                        offset,
+                    ));
+                }
+            }
+            HeapType::Func | HeapType::Extern => {}
+            HeapType::Bot =>
+            // A bottom type is an artefact of validation; it
+            // should never occur in an element segment.
+            {
                 return Err(BinaryReaderError::new(
                     "a non-nullable element must come with an initialization expression",
                     offset,
@@ -447,6 +458,7 @@ pub(crate) struct Module {
     pub data_count: Option<u32>,
     // Stores indexes into `types`.
     pub functions: Vec<u32>,
+    // Stores indexes into `types`.
     pub tags: Vec<TypeId>,
     pub function_references: HashSet<u32>,
     pub imports: IndexMap<(String, String), Vec<EntityType>>,
@@ -468,7 +480,7 @@ impl Module {
         let ty = match ty {
             crate::Type::Func(t) => {
                 for ty in t.params().iter().chain(t.results()) {
-                    self.check_value_type(*ty, features, types, offset)?;
+                    self.check_value_type(*ty, features, offset)?;
                 }
                 if t.results().len() > 1 && !features.multi_value {
                     return Err(BinaryReaderError::new(
@@ -477,6 +489,14 @@ impl Module {
                     ));
                 }
                 Type::Func(t)
+            }
+            crate::Type::Cont(type_index) => {
+                if (type_index as usize) >= types.len() {
+                    return Err(BinaryReaderError::new("invalid type index", offset));
+                    // TODO(dhil): tidy up error message.
+                    // technically need to check that it points to a function type, and not just another continuation ref.
+                }
+                Type::Cont(type_index)
             }
         };
 
@@ -590,10 +610,9 @@ impl Module {
         &mut self,
         ty: TableType,
         features: &WasmFeatures,
-        types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        self.check_table_type(&ty, features, types, offset)?;
+        self.check_table_type(&ty, features, offset)?;
         self.tables.push(ty);
         Ok(())
     }
@@ -652,7 +671,7 @@ impl Module {
                 EntityType::Func(self.types[*type_index as usize])
             }
             TypeRef::Table(t) => {
-                self.check_table_type(t, features, types, offset)?;
+                self.check_table_type(t, features, offset)?;
                 EntityType::Table(*t)
             }
             TypeRef::Memory(t) => {
@@ -664,7 +683,7 @@ impl Module {
                 EntityType::Tag(self.types[t.func_type_idx as usize])
             }
             TypeRef::Global(t) => {
-                self.check_global_type(t, features, types, offset)?;
+                self.check_global_type(t, features, offset)?;
                 EntityType::Global(*t)
             }
         })
@@ -674,7 +693,6 @@ impl Module {
         &self,
         ty: &TableType,
         features: &WasmFeatures,
-        types: &TypeList,
         offset: usize,
     ) -> Result<()> {
         if !ty.element_type.nullable {
@@ -686,7 +704,7 @@ impl Module {
         // the `funcref` value type is allowed all the way back to the MVP, so
         // don't check it here
         if ty.element_type != FUNC_REF {
-            self.check_value_type(ValType::Ref(ty.element_type), features, types, offset)?
+            self.check_value_type(ValType::Ref(ty.element_type), features, offset)?
         }
 
         self.check_limits(ty.initial, ty.maximum, offset)?;
@@ -768,13 +786,7 @@ impl Module {
             .collect::<Result<_>>()
     }
 
-    fn check_value_type(
-        &self,
-        ty: ValType,
-        features: &WasmFeatures,
-        types: &TypeList,
-        offset: usize,
-    ) -> Result<()> {
+    fn check_value_type(&self, ty: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
         match features.check_value_type(ty) {
             Ok(()) => Ok(()),
             Err(e) => Err(BinaryReaderError::new(e, offset)),
@@ -783,20 +795,20 @@ impl Module {
         // We must check it if it's a reference.
         match ty {
             ValType::Ref(rt) => {
-                self.check_ref_type(rt, types, offset)?;
+                self.check_ref_type(rt, offset)?;
             }
             _ => (),
         }
         Ok(())
     }
 
-    fn check_ref_type(&self, ty: RefType, types: &TypeList, offset: usize) -> Result<()> {
+    fn check_ref_type(&self, ty: RefType, offset: usize) -> Result<()> {
         // Check that the heap type is valid
         match ty.heap_type {
             HeapType::Func | HeapType::Extern => (),
             HeapType::TypedFunc(type_index) => {
                 // Just check that the index is valid
-                self.func_type_at(type_index, types, offset)?;
+                self.type_at(type_index, offset)?;
             }
             HeapType::Bot => (),
         }
@@ -842,10 +854,16 @@ impl Module {
         let matches_heap = |ty1: HeapType, ty2: HeapType, types: &TypeList| -> bool {
             match (ty1, ty2) {
                 (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => {
+                    // This seems to be added by typed-conts
+                    n1 == n2 ||
+                    // We also apparently should assume n1 == n2 in the
+                    // following check, which i think deals with cycles somehow
                     // Check whether the defined types are (structurally) equivalent.
-                    let n1 = self.func_type_at(n1, types, 0).unwrap();
-                    let n2 = self.func_type_at(n2, types, 0).unwrap();
-                    self.eq_fns(n1, n2, types)
+                    {
+                        let n1 = self.func_type_at(n1, types, 0).unwrap();
+                        let n2 = self.func_type_at(n2, types, 0).unwrap();
+                        self.eq_fns(n1, n2, types)
+                    }
                 }
                 (HeapType::TypedFunc(_), HeapType::Func) => true,
                 (HeapType::Bot, _) => true,
@@ -891,10 +909,9 @@ impl Module {
         &self,
         ty: &GlobalType,
         features: &WasmFeatures,
-        types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        self.check_value_type(ty.content_type, features, types, offset)
+        self.check_value_type(ty.content_type, features, offset)
     }
 
     fn check_limits<T>(&self, initial: T, maximum: Option<T>, offset: usize) -> Result<()>
@@ -1081,9 +1098,16 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.func_type_at(self.type_index_of_function(at)?)
     }
 
+    fn cont_type_at(&self, at: u32) -> Option<u32> {
+        Some(
+            self.types[*self.module.types.get(at as usize)?]
+                .as_cont_func_index()
+                .unwrap(),
+        )
+    }
+
     fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
-        self.module
-            .check_value_type(t, features, self.types, offset)
+        self.module.check_value_type(t, features, offset)
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
@@ -1151,8 +1175,16 @@ impl WasmModuleResources for ValidatorResources {
     }
 
     fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
-        self.0
-            .check_value_type(t, features, self.0.snapshot.as_ref().unwrap(), offset)
+        self.0.check_value_type(t, features, offset)
+    }
+
+    // Gives the index of the function
+    fn cont_type_at(&self, at: u32) -> Option<u32> {
+        Some(
+            self.0.snapshot.as_ref().unwrap()[*self.0.types.get(at as usize)?]
+                .as_cont_func_index()
+                .unwrap(),
+        )
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {

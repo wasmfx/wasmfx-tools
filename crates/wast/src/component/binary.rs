@@ -68,6 +68,9 @@ fn encode_core_type(encoder: CoreTypeEncoder, ty: &CoreTypeDef) {
         CoreTypeDef::Module(t) => {
             encoder.module(&t.into());
         }
+        CoreTypeDef::Def(core::TypeDef::Cont(_)) => {
+            todo!("encoding of continuation types not yet implemented")
+        }
     }
 }
 
@@ -720,6 +723,9 @@ impl From<&ModuleType<'_>> for wasm_encoder::ModuleType {
                     ),
                     core::TypeDef::Struct(_) | core::TypeDef::Array(_) => {
                         todo!("encoding of GC proposal types not yet implemented")
+                    }
+                    core::TypeDef::Cont(_) => {
+                        todo!("encoding of continuation types not yet implemented")
                     }
                 },
                 ModuleTypeDecl::Alias(a) => match &a.target {

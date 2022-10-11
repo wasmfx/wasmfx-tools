@@ -2,7 +2,7 @@ use super::{Printer, State};
 use anyhow::Result;
 use std::fmt::Write;
 use wasmparser::{
-    BlockType, BrTable, HeapType, Ieee32, Ieee64, MemArg, ValType, VisitOperator, V128,
+    BlockType, BrTable, HeapType, Ieee32, Ieee64, MemArg, ResumeTable, ValType, VisitOperator, V128,
 };
 
 pub struct PrintOperator<'a, 'b> {
@@ -1943,5 +1943,23 @@ impl<'a> VisitOperator<'a> for PrintOperator<'_, '_> {
         self.mem_instr("v128.store64_lane", &memarg, 8)?;
         write!(self.result(), " {lane}")?;
         Ok(OpKind::Normal)
+    }
+    fn visit_cont_new(&mut self, _pos: usize, _type_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_cont_bind(&mut self, _pos: usize, _type_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_suspend(&mut self, _pos: usize, _tag_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_resume(&mut self, _pos: usize, _resumetable: ResumeTable) -> Self::Output {
+        todo!()
+    }
+    fn visit_resume_throw(&mut self, _pos: usize, _resumetable: ResumeTable, _tag_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_barrier(&mut self, _pos: usize, _blockty: BlockType) -> Self::Output {
+        todo!()
     }
 }

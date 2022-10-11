@@ -858,6 +858,14 @@ pub enum Instruction<'a> {
     I64AtomicRmw8CmpxchgU(MemArg),
     I64AtomicRmw16CmpxchgU(MemArg),
     I64AtomicRmw32CmpxchgU(MemArg),
+
+    // Typed continuations proposal
+    ContNew(u32),
+    ContBind(u32),
+    Suspend(u32),
+    Resume(Cow<'a, [(u32, u32)]>),
+    ResumeThrow(Cow<'a, [(u32, u32)]>, u32),
+    Barrier(BlockType),
 }
 
 impl Encode for Instruction<'_> {
@@ -2780,6 +2788,24 @@ impl Encode for Instruction<'_> {
                 sink.push(0xFE);
                 sink.push(0x4E);
                 memarg.encode(sink);
+            }
+            Instruction::ContNew(_type_index) => {
+                todo!()
+            }
+            Instruction::ContBind(_type_index) => {
+                todo!()
+            }
+            Instruction::Suspend(_tag_index) => {
+                todo!()
+            }
+            Instruction::Resume(ref _resumetable) => {
+                todo!()
+            }
+            Instruction::ResumeThrow(ref _resumetable, _tag_index) => {
+                todo!()
+            }
+            Instruction::Barrier(_blockty) => {
+                todo!()
             }
         }
     }

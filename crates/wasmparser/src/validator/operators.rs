@@ -24,7 +24,7 @@
 
 use crate::{
     limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, HeapType, Ieee32,
-    Ieee64, MemArg, RefType, Result, ValType, VisitOperator, WasmFeatures, WasmFuncType,
+    Ieee64, MemArg, RefType, Result, ResumeTable, ValType, VisitOperator, WasmFeatures, WasmFuncType,
     WasmModuleResources, EXTERN_REF, FUNC_REF, V128,
 };
 use std::ops::{Deref, DerefMut};
@@ -124,6 +124,12 @@ pub enum FrameKind {
     ///
     /// This belongs to the Wasm exception handling proposal.
     CatchAll,
+    /// A Wasm `barrier` control block.
+    ///
+    /// # Note
+    ///
+    /// This belongs to the Wasm typed continuations proposal.
+    Barrier,
 }
 
 struct OperatorValidatorTemp<'validator, 'resources, T> {
@@ -901,6 +907,11 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
         Ok(())
     }
 
+    fn cont_type_at(&self, at: u32, offset: usize) -> Result<u32> {
+        self.resources.cont_type_at(at).ok_or_else(||
+            format_err!(offset, "unknown continuation tyoe: type index out of bounds"))
+    }
+
     fn func_type_at(&self, at: u32, offset: usize) -> Result<&'resources R::FuncType> {
         self.resources
             .func_type_at(at)
@@ -946,6 +957,82 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
             FrameKind::Loop => Either::A(self.params(offset, ty)?),
             _ => Either::B(self.results(offset, ty)?),
         })
+    }
+
+        /// Validates a resume table.
+    fn check_resume_table(
+        &mut self,
+        offset: usize,
+        table: ResumeTable, // The table to validate.
+        ctft: &'resources R::FuncType, // The type of the continuation applied to the resume, which `table` is attached to.
+    ) -> Result<()> {
+        // Resume table validation is somewhat involved as we have to
+        // check that the domain of each tag matches up with the
+        // expected type at its associated label. In addition, we also
+        // need to check that the continuation type matches the
+        // expectation at each label.
+        //
+        // Concretely, let's say the given continuation type has the
+        // form
+        //     ctft := ts1 -> ts2
+        // and that each tag type has the form
+        //     tagtype := ts1' -> ts2'
+        // and each label type has the form
+        //     labeltype := ts1'' (ref null? (cont $ft))
+        // then for each tag-label pair we have to check that domain
+        // (ts1') of the tag type matches the prefix of the label
+        // type, i.e.  ts1' <: ts1''
+        //
+        // Subsequently, we must check that the codomain of each
+        // tagtype matches the domain of the dynamic continuation type
+        // at its label. Moreover, we also need to check that the
+        // codomain of continuation type matches the overall return
+        // type of the context --- this type is given by the provided
+        // continuation $ctft. In essence, we need to check that
+        //     (ts2' -> ts2) <: $ft
+        for pair in table.targets() {
+            let (tag, relative_depth) = pair?;
+            // tagtype := ts1' -> ts2'
+            let tagtype = self.tag_at(tag, offset)?;
+            let block = self.jump(offset, relative_depth)?;
+
+            // label_types(offset, block.0, block.1) := ts1''* (ref null? (cont $ft))
+            if tagtype.inputs().len() != self.label_types(offset, block.0, block.1)?.len() - 1 {
+                panic!("type mismatch between label and tag types") // TODO(dhil): tidy up
+            }
+            let labeltys = self.label_types(offset, block.0, block.1)?.take(tagtype.inputs().len());
+
+            // Next check that ts1' <: ts1''.
+            for (tagty, lblty) in labeltys.zip(tagtype.inputs()) {
+                if !self.resources.matches(tagty, lblty) {
+                    panic!("type mismatch between tag type and label type") // TODO(dhil): tidy up
+                }
+            }
+
+            // Retrieve the continuation reference type (i.e. (cont $ft)).
+            match self.label_types(offset, block.0, block.1)?.last() {
+                Some(ValType::Ref(RefType { nullable: _, heap_type: HeapType::TypedFunc(z) })) => {
+                    let ctft2 = self.func_type_at(self.cont_type_at(z, offset)?, offset)?;
+                    // Now we must check that (ts2' -> ts2) <: $ft
+                    // This method should be exposed by resources to make this correct
+                    for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
+                        // Note: according to spec we should check for equality here
+                        if !self.resources.matches(ct2ty, tagty) {
+                            bail!(offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                    for (ctty, ct2ty) in ctft.outputs().zip(ctft2.outputs()) {
+                        // Note: according to spec we should check for equality here
+                        if !self.resources.matches(ctty, ct2ty) {
+                            bail!(offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                }
+                _ => bail!(offset,
+                    "type mismatch: instruction requires continuation reference type but label has none")
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1031,6 +1118,7 @@ macro_rules! validate_proposal {
     (desc exceptions) => ("exceptions");
     (desc tail_call) => ("tail calls");
     (desc function_references) => ("function references");
+    (desc typed_continuations) => ("typed continuations");
 }
 
 impl<'a, T> VisitOperator<'a> for WasmProposalValidator<'_, '_, T>
@@ -3299,6 +3387,142 @@ where
         self.pop_operand(offset, Some(ValType::I32))?;
         self.pop_operand(offset, Some(ValType::Ref(ty)))?;
         self.pop_operand(offset, Some(ValType::I32))?;
+        Ok(())
+    }
+
+    // Typed continuations operators.
+    // TODO(dhil) fixme: merge into the above list.
+    fn visit_cont_new(&mut self, offset: usize, type_index: u32) -> Self::Output {
+        let fidx = self.cont_type_at(type_index, offset)?;
+        let rt = RefType {
+            nullable: false,
+            heap_type: HeapType::TypedFunc(fidx),
+        };
+        self.pop_operand(offset, Some(ValType::Ref(rt)))?;
+        let result = RefType {
+            nullable: false,
+            heap_type: HeapType::TypedFunc(type_index),
+        };
+        self.push_operand(ValType::Ref(result))?;
+        Ok(())
+    }
+    fn visit_cont_bind(&mut self, offset: usize, type_index: u32) -> Self::Output {
+        let rt = self.pop_ref(offset)?;
+        match rt.heap_type {
+            HeapType::TypedFunc(y) => {
+                let ft1 = self.func_type_at(self.cont_type_at(y, offset)?, offset)?;
+                let ft2 = self.func_type_at(self.cont_type_at(type_index, offset)?, offset)?;
+
+                // Verify that ft1's domain is at least as
+                // large as ft2's domain.
+                if ft1.inputs().len() < ft2.inputs().len() {
+                    panic!("|ft1.inputs()| must be greater or equal to |ft2.inputs()|") // TODO(dhil): Tidy up
+                }
+                // Next check that prefix of ft1's domain agrees with the domain of ft2.
+                //let ft1ins1 = ft1.inputs().take(ft1.inputs().len() - ft2.inputs().len());
+                let ft1ins2 = ft1.inputs().skip(ft1.inputs().len() - ft2.inputs().len());
+
+                for (ty1, ty2) in ft1ins2.zip(ft2.inputs()) {
+                    if !self.resources.matches(ty1, ty2) {
+                        panic!("mismatch error") // TODO(dhil): tidy up
+                    }
+                }
+
+                // Next check their codomains agree.
+                if ft1.outputs().len() != ft2.outputs().len() {
+                    panic!("The codomains of ft1 and ft2 must have the same size") // TODO(dhil): Tidy up
+                }
+
+                for (ty1, ty2) in ft1.outputs().zip(ft2.outputs()) {
+                    if !self.resources.matches(ty1, ty2) {
+                        panic!("mismatch error") // TODO(dhil): tidy up
+                    }
+                }
+
+                // Check that ft1's inputs are available on the stack.
+                for ty in ft1.inputs().rev() {
+                    self.pop_operand(offset, Some(ty))?;
+                }
+
+                // Push the continuation reference.
+                self.push_operand(ValType::Ref(RefType { nullable: rt.nullable, heap_type: HeapType::TypedFunc(type_index) }))?;
+            }
+            HeapType::Bot => self.push_operand(ValType::Ref(RefType { nullable: false, heap_type: HeapType::TypedFunc(type_index) }))?,
+            _ => bail!(offset,
+                "type mismatch: instruction requires continuation reference type but stack has {}",
+                ty_to_str(ValType::Ref(rt)))
+        }
+        Ok(())
+    }
+    fn visit_suspend(&mut self, offset: usize, tag_index: u32) -> Self::Output {
+        let ft = self.tag_at(tag_index, offset)?;
+        for ty in ft.inputs().rev() {
+            self.pop_operand(offset, Some(ty))?;
+        }
+        for ty in ft.outputs() {
+            self.push_operand(ty)?;
+        }
+        Ok(())
+    }
+    fn visit_resume(&mut self, offset: usize, resumetable: ResumeTable) -> Self::Output {
+        let rt = self.pop_ref(offset)?;
+        match rt.heap_type {
+            HeapType::TypedFunc(y) => {
+                // ft := ts1 -> ts2
+                let ctft = self.func_type_at(self.cont_type_at(y, offset)?, offset)?;
+                self.check_resume_table(offset, resumetable, ctft)?;
+
+                // Check that ts1 are available on the stack.
+                for ty in ctft.inputs().rev() {
+                    self.pop_operand(offset, Some(ty))?;
+                }
+
+                // Make ts2 available on the stack.
+                for ty in ctft.outputs() {
+                    self.push_operand(ty)?;
+                }
+            }
+            HeapType::Bot => {}
+            _ => bail!(offset,
+                "type mismatch: instruction requires continuation reference type but stack has {}",
+                ty_to_str(ValType::Ref(rt)))
+        }
+        Ok(())
+    }
+    fn visit_resume_throw(&mut self, offset: usize, resumetable: ResumeTable, tag_index: u32) -> Self::Output {
+        let rt = self.pop_ref(offset)?;
+        match rt.heap_type {
+            HeapType::TypedFunc(y) => {
+                // ct := ts1 -> ts2
+                let ct = self.func_type_at(self.cont_type_at(y, offset)?, offset)?;
+                self.check_resume_table(offset, resumetable, ct)?;
+
+                // tagtype := ts1' -> []
+                let tagtype = self.tag_at(tag_index, offset)?;
+
+                // Check that ts1' are available on the stack.
+                for tagty in tagtype.inputs().rev() {
+                    self.pop_operand(offset, Some(tagty))?;
+                }
+
+                // Make ts2 available on the stack
+                for ty in ct.outputs() {
+                    self.push_operand(ty)?;
+                }
+            },
+            HeapType::Bot => {}
+            _ => bail!(offset,
+                "type mismatch: instruction requires continuation reference type but stack has {}",
+                ty_to_str(ValType::Ref(rt)))
+        }
+        Ok(())
+    }
+    fn visit_barrier(&mut self, offset: usize, blockty: BlockType) -> Self::Output {
+        self.check_block_type(offset, blockty)?;
+        for ty in self.params(offset, blockty)?.rev() {
+            self.pop_operand(offset, Some(ty))?;
+        }
+        self.push_ctrl(offset, FrameKind::Barrier, blockty)?;
         Ok(())
     }
 }

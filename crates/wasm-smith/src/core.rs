@@ -610,6 +610,7 @@ impl Module {
                     new_types.push(Type::Func(Rc::clone(&func_type)));
                     new_index
                 }
+                Some((wasmparser::Type::Cont(_), _)) => unimplemented!(),
             };
             match &new_types[serialized_sig_idx - first_type_index] {
                 Type::Func(f) => Some((serialized_sig_idx as u32, Rc::clone(f))),
@@ -1571,7 +1572,7 @@ fn convert_type(parsed_type: wasmparser::ValType) -> ValType {
         F32 => ValType::F32,
         F64 => ValType::F64,
         V128 => ValType::V128,
-        Ref(ty) => convert_reftype(ty),
+        Ref(rt) => convert_reftype(rt),
     }
 }
 

@@ -107,6 +107,10 @@ pub trait Translator {
         memarg(self.as_obj(), arg)
     }
 
+    fn translate_resumetable(&mut self, resumetable: &wasmparser::ResumeTable<'_>) -> Result<std::borrow::Cow<'_, [(u32, u32)]>> {
+        todo!()
+    }
+
     fn remap(&mut self, item: Item, idx: u32) -> Result<u32> {
         drop(item);
         Ok(idx)
@@ -136,6 +140,7 @@ pub fn type_def(t: &mut dyn Translator, ty: Type, s: &mut TypeSection) -> Result
             );
             Ok(())
         }
+        Type::Cont(_) => unimplemented!(),
     }
 }
 
@@ -341,12 +346,15 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         (map $arg:ident value) => ($arg);
         (map $arg:ident lane) => (*$arg);
         (map $arg:ident lanes) => (*$arg);
+        (map $arg:ident resumetable) => (t.translate_resumetable(todo!())?);
 
         // This case takes the arguments of a wasmparser instruction and creates
         // a wasm-encoder instruction. There are a few special cases for where
         // the structure of a wasmparser instruction differs from that of
         // wasm-encoder.
         (build $op:ident) => (I::$op);
+        (build Resume $arg:ident) => (I::Resume($arg));
+        (build ResumeThrow $($arg:ident)*) => (I::ResumeThrow(todo!(), todo!()));
         (build BrTable $arg:ident) => (I::BrTable($arg.0, $arg.1));
         (build I32Const $arg:ident) => (I::I32Const(*$arg));
         (build I64Const $arg:ident) => (I::I64Const(*$arg));

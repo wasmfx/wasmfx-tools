@@ -1830,7 +1830,7 @@ fn inverse_scalar_canonical_abi_for(
         ValType::F64 => Ok(ComponentValType::Primitive(PrimitiveValType::Float64)),
         ValType::V128 | ValType::FuncRef | ValType::ExternRef | ValType::Ref(_) => {
             unreachable!("not used in canonical ABI")
-        }
+        },
     };
 
     let mut names = HashSet::default();

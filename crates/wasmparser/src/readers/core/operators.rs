@@ -56,6 +56,13 @@ pub struct BrTable<'a> {
     pub(crate) default: u32,
 }
 
+/// A resume entries representation.
+#[derive(Clone)]
+pub struct ResumeTable<'a> {
+    pub(crate) reader: crate::BinaryReader<'a>,
+    pub(crate) cnt: u32,
+}
+
 /// An IEEE binary32 immediate floating point value, represented as a u32
 /// containing the bit pattern.
 ///

@@ -233,6 +233,8 @@ pub struct WasmFeatures {
     pub component_model: bool,
     /// The WebAssembly typed function references proposal
     pub function_references: bool,
+    /// The typed continuations proposals
+    pub typed_continuations: bool,
 }
 
 impl WasmFeatures {
@@ -287,6 +289,7 @@ impl Default for WasmFeatures {
             component_model: false,
             deterministic_only: cfg!(feature = "deterministic"),
             function_references: false,
+            typed_continuations: false,
 
             // on-by-default features
             mutable_global: true,
@@ -619,11 +622,11 @@ impl Validator {
                 state.module.assert_mut().tables.reserve(count as usize);
                 Ok(())
             },
-            |state, features, types, ty, offset| {
+            |state, features, _types, ty, offset| {
                 state
                     .module
                     .assert_mut()
-                    .add_table(ty, features, types, offset)
+                    .add_table(ty, features, offset)
             },
         )
     }

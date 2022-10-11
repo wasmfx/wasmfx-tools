@@ -60,7 +60,7 @@ impl<'a> Resolver<'a> {
                 }
             }
 
-            TypeDef::Array(_) | TypeDef::Func(_) => {}
+            TypeDef::Array(_) | TypeDef::Func(_) | TypeDef::Cont(_) => {}
         }
 
         // Record function signatures as we see them to so we can
@@ -124,6 +124,7 @@ impl<'a> Resolver<'a> {
                 }
             }
             TypeDef::Array(array) => self.resolve_storagetype(&mut array.ty)?,
+            TypeDef::Cont(cont) => self.resolve_continuationtype(cont)?,
         }
         if let Some(parent) = &mut ty.parent {
             self.resolve(parent, Ns::Type)?;
@@ -295,6 +296,11 @@ impl<'a> Resolver<'a> {
             StorageType::Val(ty) => self.resolve_valtype(ty)?,
             _ => {}
         }
+        Ok(())
+    }
+
+    fn resolve_continuationtype(&self, ty: &mut ContinuationType<'a>) -> Result<(), Error> {
+        self.resolve(&mut ty.idx, Ns::Type)?;
         Ok(())
     }
 
@@ -532,7 +538,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_block_type(&mut t.block)?;
             }
 
-            Block(bt) | If(bt) | Loop(bt) | Try(bt) => {
+            Block(bt) | If(bt) | Loop(bt) | Try(bt) | Barrier(bt) => {
                 self.blocks.push(ExprBlock {
                     label: bt.label,
                     pushed_scope: false,
@@ -585,13 +591,10 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_label(&mut i.default)?;
             }
 
-            Throw(i) => {
-                self.resolver.resolve(i, Ns::Tag)?;
-            }
             Rethrow(i) => {
                 self.resolve_label(i)?;
             }
-            Catch(i) => {
+            Throw(i) | Catch(i) | Suspend(i) | ResumeThrow(i) => {
                 self.resolver.resolve(i, Ns::Tag)?;
             }
             Delegate(i) => {
@@ -647,6 +650,16 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
             }
 
             RefNull(ty) | CallRef(ty) | ReturnCallRef(ty) => self.resolver.resolve_heaptype(ty)?,
+
+            ContNew(ty) | ContBind(ty) => {
+                self.resolver.resolve_type_use(ty)?;
+            }
+            Resume(table) => {
+                for (tag, label) in &mut table.targets {
+                    self.resolver.resolve(tag, Ns::Tag)?;
+                    self.resolve_label(label)?;
+                }
+            }
 
             _ => {}
         }

@@ -90,6 +90,8 @@ impl ValType {
 pub enum Type {
     /// The type is for a function.
     Func(FuncType),
+    /// The type is for a continuation.
+    Cont(u32),
 }
 
 /// Represents a type of a function in a WebAssembly module.

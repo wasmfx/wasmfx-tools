@@ -55,7 +55,7 @@ impl<'a> Expander<'a> {
                     TypeDef::Func(f) => {
                         f.key().insert(self, Index::Id(id));
                     }
-                    TypeDef::Array(_) | TypeDef::Struct(_) => {}
+                    TypeDef::Array(_) | TypeDef::Struct(_) | TypeDef::Cont(_) => {}
                 }
             }
             _ => {}
@@ -132,7 +132,8 @@ impl<'a> Expander<'a> {
             | Instruction::If(bt)
             | Instruction::Loop(bt)
             | Instruction::Let(LetType { block: bt, .. })
-            | Instruction::Try(bt) => {
+            | Instruction::Try(bt)
+            | Instruction::Barrier(bt) => {
                 // No expansion necessary, a type reference is already here.
                 // We'll verify that it's the same as the inline type, if any,
                 // later.
@@ -170,6 +171,9 @@ impl<'a> Expander<'a> {
             }
             Instruction::CallIndirect(c) | Instruction::ReturnCallIndirect(c) => {
                 self.expand_type_use(&mut c.ty);
+            }
+            Instruction::ContNew(c) | Instruction::ContBind(c) => {
+                self.expand_type_use(c);
             }
             _ => {}
         }

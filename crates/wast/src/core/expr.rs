@@ -1,7 +1,7 @@
 use crate::core::*;
 use crate::encode::Encode;
 use crate::kw;
-use crate::parser::{Cursor, Parse, Parser, Result};
+use crate::parser::{Cursor, Parse, Parser, Peek, Result};
 use crate::token::*;
 use std::mem;
 
@@ -153,7 +153,8 @@ impl<'a> ExpressionParser<'a> {
                         // seen
                         i @ Instruction::Block(_)
                         | i @ Instruction::Loop(_)
-                        | i @ Instruction::Let(_) => {
+                        | i @ Instruction::Let(_)
+                        | i @ Instruction::Barrier(_) => {
                             self.instrs.push(i);
                             self.stack.push(Level::EndWith(Instruction::End(None)));
                         }
@@ -1160,6 +1161,14 @@ instructions! {
         I16x8DotI8x16I7x16S: [0xfd, 0x112]: "i16x8.dot_i8x16_i7x16_s",
         I32x4DotI8x16I7x16AddS: [0xfd, 0x113]: "i32x4.dot_i8x16_i7x16_add_s",
         F32x4RelaxedDotBf16x8AddF32x4: [0xfd, 0x114]: "f32x4.relaxed_dot_bf16x8_add_f32x4",
+
+        // Typed continuations proposal
+        ContNew(TypeUse<'a, FunctionType<'a>>) : [0xe0] : "cont.new",
+        ContBind(TypeUse<'a, FunctionType<'a>>) : [0xe1] : "cont.bind",
+        Suspend(Index<'a>)              : [0xe2] : "suspend",
+        Resume(ResumeTableIndices<'a>)  : [0xe3] : "resume",
+        ResumeThrow(Index<'a>)          : [0xe4] : "resume_throw",
+        Barrier(BlockType<'a>)          : [0xe5] : "barrier",
     }
 }
 
@@ -1248,6 +1257,53 @@ impl<'a> Parse<'a> for BrTableIndices<'a> {
         }
         let default = labels.pop().unwrap();
         Ok(BrTableIndices { labels, default })
+    }
+}
+
+/// Extra information associated with the `resume` instruction.
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct ResumeTableIndices<'a> {
+    pub targets: Vec<(Index<'a>, Index<'a>)>,
+}
+
+impl Peek for (Index<'_>, Index<'_>) {
+    fn peek(cursor: Cursor<'_>) -> bool {
+        Index::peek(cursor) && Index::peek2(cursor)
+    }
+
+    fn display() -> &'static str {
+        "index pair"
+    }
+}
+
+impl<'a> Parse<'a> for (Index<'a>, Index<'a>) {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        if parser.peek::<Index>() {
+            let fst = parser.parse()?;
+            if parser.peek::<Index>() {
+                let snd = parser.parse()?;
+                Ok((fst, snd))
+            } else {
+                Err(parser.error("expected index"))
+            }
+        } else {
+            Err(parser.error("expected index"))
+        }
+    }
+}
+
+impl<'a> Parse<'a> for ResumeTableIndices<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        let mut targets = vec![];
+        while parser.peek2::<kw::tag>() {
+            parser.parens(|p| {
+                p.parse::<kw::tag>()?;
+                targets.push(p.parse()?);
+                Ok(())
+            })?;
+        }
+        Ok(ResumeTableIndices { targets })
     }
 }
 

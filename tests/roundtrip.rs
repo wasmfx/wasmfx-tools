@@ -355,7 +355,8 @@ impl TestState {
             | WastDirective::AssertReturn { .. }
             | WastDirective::AssertExhaustion { .. }
             | WastDirective::AssertUnlinkable { .. }
-            | WastDirective::AssertException { .. } => {}
+            | WastDirective::AssertException { .. }
+            | WastDirective::AssertSuspension { .. } => {}
         }
         Ok(())
     }
@@ -451,6 +452,7 @@ impl TestState {
             sign_extension: true,
             mutable_global: true,
             function_references: true,
+            typed_continuations: true,
         };
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
