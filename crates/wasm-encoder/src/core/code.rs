@@ -318,9 +318,13 @@ pub enum Instruction<'a> {
     Br(u32),
     BrIf(u32),
     BrTable(Cow<'a, [u32]>, u32),
+    BrOnNull(u32),
+    BrOnNonNull(u32),
     Return,
     Call(u32),
+    CallRef(ValType),
     CallIndirect { ty: u32, table: u32 },
+    ReturnCallRef(ValType),
     ReturnCall(u32),
     ReturnCallIndirect { ty: u32, table: u32 },
     Throw(u32),
@@ -515,6 +519,7 @@ pub enum Instruction<'a> {
     RefNull(ValType),
     RefIsNull,
     RefFunc(u32),
+    RefAsNonNull,
 
     // Bulk memory instructions.
     TableInit { elem_index: u32, table: u32 },
@@ -853,6 +858,14 @@ pub enum Instruction<'a> {
     I64AtomicRmw8CmpxchgU(MemArg),
     I64AtomicRmw16CmpxchgU(MemArg),
     I64AtomicRmw32CmpxchgU(MemArg),
+
+    // Typed continuations proposal
+    ContNew(u32),
+    ContBind(u32),
+    Suspend(u32),
+    Resume(Cow<'a, [(u32, u32)]>),
+    ResumeThrow(Cow<'a, [(u32, u32)]>, u32),
+    Barrier(BlockType),
 }
 
 impl Encode for Instruction<'_> {
@@ -904,16 +917,33 @@ impl Encode for Instruction<'_> {
                 ls.encode(sink);
                 l.encode(sink);
             }
+            Instruction::BrOnNull(l) => {
+                sink.push(0xD4);
+                l.encode(sink);
+            }
+            Instruction::BrOnNonNull(l) => {
+                sink.push(0xD6);
+                l.encode(sink);
+            }
             Instruction::Return => sink.push(0x0F),
             Instruction::Call(f) => {
                 sink.push(0x10);
                 f.encode(sink);
+            }
+            Instruction::CallRef(ty) => {
+                sink.push(0x14);
+                ty.encode(sink);
             }
             Instruction::CallIndirect { ty, table } => {
                 sink.push(0x11);
                 ty.encode(sink);
                 table.encode(sink);
             }
+            Instruction::ReturnCallRef(ty) => {
+                sink.push(0x15);
+                ty.encode(sink);
+            }
+
             Instruction::ReturnCall(f) => {
                 sink.push(0x12);
                 f.encode(sink);
@@ -1284,6 +1314,7 @@ impl Encode for Instruction<'_> {
                 sink.push(0xd2);
                 f.encode(sink);
             }
+            Instruction::RefAsNonNull => sink.push(0xD3),
 
             // Bulk memory instructions.
             Instruction::TableInit { elem_index, table } => {
@@ -2757,6 +2788,24 @@ impl Encode for Instruction<'_> {
                 sink.push(0xFE);
                 sink.push(0x4E);
                 memarg.encode(sink);
+            }
+            Instruction::ContNew(_type_index) => {
+                todo!()
+            }
+            Instruction::ContBind(_type_index) => {
+                todo!()
+            }
+            Instruction::Suspend(_tag_index) => {
+                todo!()
+            }
+            Instruction::Resume(ref _resumetable) => {
+                todo!()
+            }
+            Instruction::ResumeThrow(ref _resumetable, _tag_index) => {
+                todo!()
+            }
+            Instruction::Barrier(_blockty) => {
+                todo!()
             }
         }
     }

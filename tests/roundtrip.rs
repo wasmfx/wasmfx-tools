@@ -65,7 +65,7 @@ fn main() {
 
     if !errors.is_empty() {
         for msg in errors.iter() {
-            eprintln!("{:?}", msg);
+            eprintln!("{:?}\n", msg);
         }
 
         panic!("{} tests failed", errors.len())
@@ -124,14 +124,10 @@ fn skip_test(test: &Path, contents: &[u8]) -> bool {
         "exception-handling/try_delegate.wast",
         "exception-handling/try_catch.wast",
         "exception-handling/throw.wast",
-        // TODO: The call_ref instructions formats changed: the testsuite needs
-        // to be updated. Remove local/function-references/call_ref/ as well.
-        "function-references/br_on_non_null.wast",
-        "function-references/br_on_null.wast",
-        "function-references/call_ref.wast",
-        "function-references/func_bind.wast",
-        "function-references/ref_as_non_null.wast",
-        "function-references/return_call_ref.wast",
+        // TODO: Initialization checking
+        "function-references/func.wast",
+        // TODO: Initialization checking
+        "function-references/local_get.wast",
         // TODO: new syntax for table types has been added with an optional
         // initializer which needs parsing in the text format.
         "function-references/table.wast",
@@ -199,11 +195,13 @@ impl TestState {
         // If we can, convert the string back to bytes and assert it has the
         // same binary representation.
         if test_roundtrip {
-            let binary2 =
-                wat::parse_str(&string).context("failed to parse `wat` from `wasmprinter`")?;
+            let binary2 = wat::parse_str(&string)
+                .context("failed to parse `wat` from `wasmprinter`")
+                .context(format!("text:\n{}", string))?;
             self.bump_ntests();
             self.binary_compare(&binary2, contents)
-                .context("failed to compare original `wat` with roundtrip `wat`")?;
+                .context("failed to compare original `wat` with roundtrip `wat`")
+                .context(format!("as parsed:\n{}", string))?;
         }
 
         Ok(())
@@ -261,7 +259,18 @@ impl TestState {
     fn test_wast_directive(&self, test: &Path, directive: WastDirective) -> Result<()> {
         // Only test parsing and encoding of modules which wasmparser doesn't
         // support test (basically just test `wast`, nothing else)
-        let skip_verify = test.iter().any(|t| t == "function-references" || t == "gc");
+        let skip_verify = test.iter().any(|t| t == "gc")
+            || (test.iter().any(|t| t == "function-references")
+                && test.iter().any(|t| {
+                    // These shouldn't pass (we don't plan to support them as
+                    // they are in spec limbo)
+                    t == "let.wast"
+                        || t == "let-bad.wast"
+                        || t == "func_bind.wast"
+                        // I think this test may be broken or out of sync with the spec
+                        // https://bytecodealliance.zulipchat.com/#narrow/stream/329587-wasmfx/topic/br_table.2Ewast.20.2F.20.28table.20.2E.2E.2E.20.28elem.20.2E.2E.2E.29.29.20issue/near/290806324
+                        || t == "br_table.wast"
+                }));
 
         match directive {
             WastDirective::Wat(mut module) => {
@@ -321,7 +330,7 @@ impl TestState {
                 }
                 match result {
                     Ok(_) => bail!(
-                        "parsed successfully but should have failed with: {}",
+                        "encoded and validated successfully but should have failed with: {}",
                         message,
                     ),
                     Err(e) => {
@@ -342,7 +351,8 @@ impl TestState {
             | WastDirective::AssertReturn { .. }
             | WastDirective::AssertExhaustion { .. }
             | WastDirective::AssertUnlinkable { .. }
-            | WastDirective::AssertException { .. } => {}
+            | WastDirective::AssertException { .. }
+            | WastDirective::AssertSuspension { .. } => {}
         }
         Ok(())
     }
@@ -437,6 +447,8 @@ impl TestState {
             saturating_float_to_int: true,
             sign_extension: true,
             mutable_global: true,
+            function_references: true,
+            typed_continuations: true,
         };
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
@@ -450,6 +462,7 @@ impl TestState {
                     features.saturating_float_to_int = false;
                     features.mutable_global = false;
                     features.bulk_memory = false;
+                    features.function_references = false;
                 }
                 "threads" => {
                     features.threads = true;
@@ -466,6 +479,10 @@ impl TestState {
                 "component-model" => features.component_model = true,
                 "multi-memory" => features.multi_memory = true,
                 "extended-const" => features.extended_const = true,
+                "function-references" => features.function_references = true,
+                // function-references has tests for return_call_ref which
+                // depend on tail calls
+                "return_call_ref.wast" => features.tail_call = true,
                 "relaxed-simd" => features.relaxed_simd = true,
                 "reference-types" => features.reference_types = true,
                 _ => {}
@@ -578,10 +595,16 @@ fn error_matches(error: &str, message: &str) -> bool {
     // section counts/lengths.
     if message == "length out of bounds" || message == "unexpected end of section or function" {
         return error.contains("unexpected end-of-file")
-            || error.contains("control frames remain at end of function");
+            || error.contains("control frames remain at end of function")
+            // This is the same case as "unexpected end" (below) but in
+            // function-references fsr it includes "of section or function"
+            || error.contains("type index out of bounds");
     }
 
-    // this feels like a busted test in the spec suite
+    // binary.wast includes a test in which a 0b (End) is eaten by a botched
+    // br_table.  The test assumes that the parser (not the validator) errors on
+    // a missing End before failing to validate the botched instruction.  However
+    // wasmparser fails to validate the botched instruction first
     if message == "unexpected end" {
         return error.contains("type index out of bounds");
     }
@@ -610,8 +633,18 @@ fn error_matches(error: &str, message: &str) -> bool {
         return error.contains("invalid u32 number: constant out of range");
     }
 
+    // The test suite includes "bad opcodes" that later became valid opcodes
+    // (0xd3, function references proposal). However, they are still not constant
+    // expressions, so we can sidestep by checking for that error instead
+    if message == "illegal opcode" {
+        return error.contains("constant expression required");
+    }
     if message == "unknown global" {
         return error.contains("global.get of locally defined global");
+    }
+
+    if message == "immutable global" {
+        return error.contains("global is immutable");
     }
 
     return false;

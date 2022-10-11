@@ -157,6 +157,12 @@ impl Encode for ExportType<'_> {
     }
 }
 
+impl Encode for ContinuationType<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.idx.encode(e);
+    }
+}
+
 enum RecOrType<'a> {
     Type(&'a Type<'a>),
     Rec(&'a Rec<'a>),
@@ -190,6 +196,10 @@ impl Encode for Type<'_> {
             TypeDef::Array(array) => {
                 e.push(0x5e);
                 array.encode(e)
+            }
+            TypeDef::Cont(u) => {
+                e.push(0x5f);
+                u.encode(e)
             }
         }
     }
@@ -735,6 +745,12 @@ impl Encode for BrTableIndices<'_> {
     }
 }
 
+impl Encode for ResumeTableIndices<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.targets.encode(e);
+    }
+}
+
 impl Encode for Float32 {
     fn encode(&self, e: &mut Vec<u8>) {
         e.extend_from_slice(&self.bits.to_le_bytes());
@@ -884,7 +900,8 @@ fn find_names<'a>(
                         | Instruction::Block(block)
                         | Instruction::Loop(block)
                         | Instruction::Try(block)
-                        | Instruction::Let(LetType { block, .. }) => {
+                        | Instruction::Let(LetType { block, .. })
+                        | Instruction::Barrier(block) => {
                             if let Some(name) = get_name(&block.label, &block.label_name) {
                                 label_names.push((label_idx, name));
                             }

@@ -3,8 +3,8 @@
 use super::{component::ComponentState, core::Module};
 use crate::{
     ComponentExport, ComponentExternalKind, ComponentImport, ComponentTypeRef, Export,
-    ExternalKind, FuncType, GlobalType, Import, MemoryType, PrimitiveValType, TableType, TypeRef,
-    ValType,
+    ExternalKind, FuncType, GlobalType, Import, MemoryType, PrimitiveValType, RefType, TableType,
+    TypeRef, ValType,
 };
 use indexmap::{IndexMap, IndexSet};
 use std::{
@@ -156,6 +156,8 @@ pub struct TypeId {
 pub enum Type {
     /// The definition is for a core function type.
     Func(FuncType),
+    /// The definition is for a continuation type.
+    Cont(u32),
     /// The definition is for a core module type.
     ///
     /// This variant is only supported when parsing a component.
@@ -187,6 +189,15 @@ impl Type {
     pub fn as_func_type(&self) -> Option<&FuncType> {
         match self {
             Self::Func(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    /// If the given type is a continuation type, give the index of its
+    /// corresponding function type
+    pub fn as_cont_func_index(&self) -> Option<u32> {
+        match self {
+            Self::Cont(fi) => Some(*fi),
             _ => None,
         }
     }
@@ -242,6 +253,7 @@ impl Type {
     pub(crate) fn type_size(&self) -> usize {
         match self {
             Self::Func(ty) => 1 + ty.params().len() + ty.results().len(),
+            Self::Cont(_) => 1,
             Self::Module(ty) => ty.type_size,
             Self::Instance(ty) => ty.type_size,
             Self::Component(ty) => ty.type_size,
@@ -1287,7 +1299,7 @@ impl<'a> TypesRef<'a> {
     ///
     /// Returns `None` if the type index is out of bounds or the type has not
     /// been parsed yet.
-    pub fn element_at(&self, index: u32) -> Option<ValType> {
+    pub fn element_at(&self, index: u32) -> Option<RefType> {
         match &self.kind {
             TypesRefKind::Module(module) => module.element_types.get(index as usize).copied(),
             TypesRefKind::Component(_) => None,
@@ -1633,8 +1645,11 @@ impl Types {
     /// Gets the type of an element segment at the given element segment index.
     ///
     /// Returns `None` if the index is out of bounds.
-    pub fn element_at(&self, index: u32) -> Option<ValType> {
-        self.as_ref().element_at(index)
+    pub fn element_at(&self, index: u32) -> Option<RefType> {
+        match &self.kind {
+            TypesKind::Module(module) => module.element_types.get(index as usize).copied(),
+            TypesKind::Component(_) => None,
+        }
     }
 
     /// Gets the count of element segments.

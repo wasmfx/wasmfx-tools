@@ -30,11 +30,72 @@ pub enum ValType {
     F64,
     /// The value type is v128.
     V128,
-    /// The value type is a function reference.
-    FuncRef,
-    /// The value type is an extern reference.
-    ExternRef,
+    /// The value type is a reference. Which type of reference is decided by
+    /// RefType. This is a change in syntax from the function references proposal,
+    /// which now provides FuncRef and ExternRef as sugar for the generic ref
+    /// construct.
+    Ref(RefType),
 }
+
+/// A reference type. When the function references feature is disabled, this
+/// only represents funcref and externref, using the following format:
+/// RefType { nullable: true, heap_type: Func | Extern })
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(packed)]
+pub struct RefType {
+    /// Whether it's nullable
+    pub nullable: bool,
+    /// The relevant heap type
+    pub heap_type: HeapType,
+}
+
+/// Used as a performance optimization in HeapType. Call `.into()` to get the u32
+// A u16 forces 2-byte alignment, which forces HeapType to be 4 bytes,
+// which forces ValType to 5 bytes. This newtype is annotated as unaligned to
+// store the necessary bits compactly
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(packed)]
+pub struct PackedIndex(u16);
+
+impl From<PackedIndex> for u32 {
+    fn from(x: PackedIndex) -> u32 {
+        x.0 as u32
+    }
+}
+impl TryFrom<u32> for HeapType {
+    type Error = <u16 as TryFrom<u32>>::Error;
+    fn try_from(x: u32) -> Result<HeapType, Self::Error> {
+        Ok(HeapType::TypedFunc(PackedIndex(x.try_into()?)))
+    }
+}
+
+/// A heap type from function references. When the proposal is disabled, Index
+/// is an invalid type.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum HeapType {
+    /// Function type index
+    /// Note: [PackedIndex] may need to be unpacked
+    TypedFunc(PackedIndex),
+    /// From reference types
+    Func,
+    /// From reference types
+    Extern,
+    /// Special bottom heap type
+    Bot,
+}
+
+/// funcref, in both reference types and function references, represented
+/// using the general ref syntax
+pub const FUNC_REF: RefType = RefType {
+    nullable: true,
+    heap_type: HeapType::Func,
+};
+/// externref, in both reference types and function references, represented
+/// using the general ref syntax
+pub const EXTERN_REF: RefType = RefType {
+    nullable: true,
+    heap_type: HeapType::Extern,
+};
 
 impl ValType {
     /// Returns whether this value type is a "reference type".
@@ -42,7 +103,7 @@ impl ValType {
     /// Only reference types are allowed in tables, for example, and with some
     /// instructions. Current reference types include `funcref` and `externref`.
     pub fn is_reference_type(&self) -> bool {
-        matches!(self, ValType::FuncRef | ValType::ExternRef)
+        matches!(self, ValType::Ref(_))
     }
 }
 
@@ -51,6 +112,8 @@ impl ValType {
 pub enum Type {
     /// The type is for a function.
     Func(FuncType),
+    /// The type is for a continuation.
+    Cont(u32),
 }
 
 /// Represents a type of a function in a WebAssembly module.
@@ -117,7 +180,7 @@ impl FuncType {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TableType {
     /// The table's element type.
-    pub element_type: ValType,
+    pub element_type: RefType,
     /// Initial size of this table, in elements.
     pub initial: u32,
     /// Optional maximum size of the table, in elements.

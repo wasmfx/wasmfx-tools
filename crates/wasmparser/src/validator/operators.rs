@@ -23,8 +23,9 @@
 // the various methods here.
 
 use crate::{
-    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, Ieee32, Ieee64,
-    MemArg, Result, ValType, VisitOperator, WasmFeatures, WasmFuncType, WasmModuleResources, V128,
+    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, HeapType, Ieee32,
+    Ieee64, MemArg, RefType, Result, ResumeTable, ValType, VisitOperator, WasmFeatures, WasmFuncType,
+    WasmModuleResources, EXTERN_REF, FUNC_REF, V128,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -123,6 +124,12 @@ pub enum FrameKind {
     ///
     /// This belongs to the Wasm exception handling proposal.
     CatchAll,
+    /// A Wasm `barrier` control block.
+    ///
+    /// # Note
+    ///
+    /// This belongs to the Wasm typed continuations proposal.
+    Barrier,
 }
 
 struct OperatorValidatorTemp<'validator, 'resources, T> {
@@ -219,10 +226,27 @@ impl OperatorValidator {
         ret
     }
 
-    pub fn define_locals(&mut self, offset: usize, count: u32, ty: ValType) -> Result<()> {
-        self.features
-            .check_value_type(ty)
-            .map_err(|e| BinaryReaderError::new(e, offset))?;
+    pub fn define_locals(
+        &mut self,
+        offset: usize,
+        count: u32,
+        ty: ValType,
+        resources: &impl WasmModuleResources,
+    ) -> Result<()> {
+        resources.check_value_type(ty, &self.features, offset)?;
+        // As far as i can tell, this isn't specified in the spec for function
+        // references, it's only tested and mentioned in the overview
+        match ty {
+            ValType::Ref(RefType {
+                nullable: false, ..
+            }) => {
+                return Err(BinaryReaderError::new(
+                    format!("non-defaultable local type: {}", ty_to_str(ty)),
+                    offset,
+                ))
+            }
+            _ => (),
+        }
         if count == 0 {
             return Ok(());
         }
@@ -350,7 +374,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
     /// simply that something is needed to be popped.
     ///
     /// If `expected` is `Some(T)` then this will be guaranteed to return
-    /// `Some(T)`, and it will only return success if the current block is
+    /// `T`, and it will only return success if the current block is
     /// unreachable or if `T` was found at the top of the operand stack.
     ///
     /// If `expected` is `None` then it indicates that something must be on the
@@ -358,9 +382,8 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
     /// is useful for polymorphic instructions like `select`.
     ///
     /// If `Some(T)` is returned then `T` was popped from the operand stack and
-    /// matches `expected`. If `None` is returned then it means that `None` was
-    /// expected and a type was successfully popped, but its exact type is
-    /// indeterminate because the current block is unreachable.
+    /// matches `expected`. If `Bot` is returned then it means that `None` was
+    /// expected and the current block is unreachable.
     fn pop_operand(&mut self, offset: usize, expected: Option<ValType>) -> Result<Option<ValType>> {
         // This method is one of the hottest methods in the validator so to
         // improve codegen this method contains a fast-path success case where
@@ -404,10 +427,10 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
             Some(c) => c,
             None => return Err(self.err_beyond_end(offset)),
         };
-        let actual = if self.operands.len() == control.height {
-            if control.unreachable {
-                None
-            } else {
+        let actual = if self.operands.len() == control.height && control.unreachable {
+            None
+        } else {
+            if self.operands.len() == control.height {
                 let desc = match expected {
                     Some(ty) => ty_to_str(ty),
                     None => "a type",
@@ -416,21 +439,36 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
                     offset,
                     "type mismatch: expected {desc} but nothing on stack"
                 )
+            } else {
+                self.operands.pop().unwrap()
             }
-        } else {
-            self.operands.pop().unwrap()
         };
         if let (Some(actual_ty), Some(expected_ty)) = (actual, expected) {
-            if actual_ty != expected_ty {
+            if !self.resources.matches(actual_ty, expected_ty) {
                 bail!(
                     offset,
                     "type mismatch: expected {}, found {}",
                     ty_to_str(expected_ty),
                     ty_to_str(actual_ty)
-                )
+                );
             }
         }
         Ok(actual)
+    }
+
+    fn pop_ref(&mut self, offset: usize) -> Result<RefType> {
+        match self.pop_operand(offset, None)? {
+            None => Ok(RefType {
+                nullable: false,
+                heap_type: HeapType::Bot,
+            }),
+            Some(ValType::Ref(rt)) => Ok(rt),
+            Some(ty) => bail!(
+                offset,
+                "type mismatch: expected ref but found {}",
+                ty_to_str(ty)
+            ),
+        }
     }
 
     /// Fetches the type for the local at `idx`, returning an error if it's out
@@ -560,6 +598,20 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
         Ok(())
     }
 
+    fn check_function_references_enabled(&self, offset: usize) -> Result<()> {
+        if !self.features.function_references {
+            bail!(offset, "function references support is not enabled",);
+        }
+        Ok(())
+    }
+
+    fn check_tail_call_enabled(&self, offset: usize) -> Result<()> {
+        if !self.features.tail_call {
+            bail!(offset, "tail call support is not enabled",);
+        }
+        Ok(())
+    }
+
     fn check_shared_memarg_wo_align(&self, offset: usize, memarg: MemArg) -> Result<ValType> {
         self.check_memory_index(offset, memarg.memory)
     }
@@ -575,10 +627,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
     fn check_block_type(&self, offset: usize, ty: BlockType) -> Result<()> {
         match ty {
             BlockType::Empty => Ok(()),
-            BlockType::Type(ty) => self
-                .features
-                .check_value_type(ty)
-                .map_err(|e| BinaryReaderError::new(e, offset)),
+            BlockType::Type(t) => self.resources.check_value_type(t, &self.features, offset),
             BlockType::FuncType(idx) => {
                 if !self.features.multi_value {
                     bail!(
@@ -596,13 +645,25 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
     /// Validates a `call` instruction, ensuring that the function index is
     /// in-bounds and the right types are on the stack to call the function.
     fn check_call(&mut self, offset: usize, function_index: u32) -> Result<()> {
-        let ty = match self.resources.type_of_function(function_index) {
+        let ty = match self.resources.type_index_of_function(function_index) {
             Some(i) => i,
             None => {
                 bail!(
                     offset,
-                    "unknown function {}: function index out of bounds",
-                    function_index
+                    "unknown function {function_index}: function index out of bounds",
+                );
+            }
+        };
+        self.check_call_ty(offset, ty)
+    }
+
+    fn check_call_ty(&mut self, offset: usize, type_index: u32) -> Result<()> {
+        let ty = match self.resources.func_type_at(type_index) {
+            Some(i) => i,
+            None => {
+                bail!(
+                    offset,
+                    "unknown type {type_index}: type index out of bounds",
                 );
             }
         };
@@ -622,8 +683,14 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
                 bail!(offset, "unknown table: table index out of bounds");
             }
             Some(tab) => {
-                if tab.element_type != ValType::FuncRef {
-                    bail!(offset, "indirect calls must go through a table of funcref");
+                if !self
+                    .resources
+                    .matches(ValType::Ref(tab.element_type), ValType::Ref(FUNC_REF))
+                {
+                    bail!(
+                        offset,
+                        "indirect calls must go through a table with type <= funcref",
+                    );
                 }
             }
         }
@@ -840,6 +907,11 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
         Ok(())
     }
 
+    fn cont_type_at(&self, at: u32, offset: usize) -> Result<u32> {
+        self.resources.cont_type_at(at).ok_or_else(||
+            format_err!(offset, "unknown continuation tyoe: type index out of bounds"))
+    }
+
     fn func_type_at(&self, at: u32, offset: usize) -> Result<&'resources R::FuncType> {
         self.resources
             .func_type_at(at)
@@ -886,6 +958,82 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
             _ => Either::B(self.results(offset, ty)?),
         })
     }
+
+        /// Validates a resume table.
+    fn check_resume_table(
+        &mut self,
+        offset: usize,
+        table: ResumeTable, // The table to validate.
+        ctft: &'resources R::FuncType, // The type of the continuation applied to the resume, which `table` is attached to.
+    ) -> Result<()> {
+        // Resume table validation is somewhat involved as we have to
+        // check that the domain of each tag matches up with the
+        // expected type at its associated label. In addition, we also
+        // need to check that the continuation type matches the
+        // expectation at each label.
+        //
+        // Concretely, let's say the given continuation type has the
+        // form
+        //     ctft := ts1 -> ts2
+        // and that each tag type has the form
+        //     tagtype := ts1' -> ts2'
+        // and each label type has the form
+        //     labeltype := ts1'' (ref null? (cont $ft))
+        // then for each tag-label pair we have to check that domain
+        // (ts1') of the tag type matches the prefix of the label
+        // type, i.e.  ts1' <: ts1''
+        //
+        // Subsequently, we must check that the codomain of each
+        // tagtype matches the domain of the dynamic continuation type
+        // at its label. Moreover, we also need to check that the
+        // codomain of continuation type matches the overall return
+        // type of the context --- this type is given by the provided
+        // continuation $ctft. In essence, we need to check that
+        //     (ts2' -> ts2) <: $ft
+        for pair in table.targets() {
+            let (tag, relative_depth) = pair?;
+            // tagtype := ts1' -> ts2'
+            let tagtype = self.tag_at(tag, offset)?;
+            let block = self.jump(offset, relative_depth)?;
+
+            // label_types(offset, block.0, block.1) := ts1''* (ref null? (cont $ft))
+            if tagtype.inputs().len() != self.label_types(offset, block.0, block.1)?.len() - 1 {
+                panic!("type mismatch between label and tag types") // TODO(dhil): tidy up
+            }
+            let labeltys = self.label_types(offset, block.0, block.1)?.take(tagtype.inputs().len());
+
+            // Next check that ts1' <: ts1''.
+            for (tagty, lblty) in labeltys.zip(tagtype.inputs()) {
+                if !self.resources.matches(tagty, lblty) {
+                    panic!("type mismatch between tag type and label type") // TODO(dhil): tidy up
+                }
+            }
+
+            // Retrieve the continuation reference type (i.e. (cont $ft)).
+            match self.label_types(offset, block.0, block.1)?.last() {
+                Some(ValType::Ref(RefType { nullable: _, heap_type: HeapType::TypedFunc(z) })) => {
+                    let ctft2 = self.func_type_at(self.cont_type_at(z.into(), offset)?, offset)?;
+                    // Now we must check that (ts2' -> ts2) <: $ft
+                    // This method should be exposed by resources to make this correct
+                    for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
+                        // Note: according to spec we should check for equality here
+                        if !self.resources.matches(ct2ty, tagty) {
+                            bail!(offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                    for (ctty, ct2ty) in ctft.outputs().zip(ctft2.outputs()) {
+                        // Note: according to spec we should check for equality here
+                        if !self.resources.matches(ctty, ct2ty) {
+                            bail!(offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                }
+                _ => bail!(offset,
+                    "type mismatch: instruction requires continuation reference type but label has none")
+            }
+        }
+        Ok(())
+    }
 }
 
 fn ty_to_str(ty: ValType) -> &'static str {
@@ -895,8 +1043,32 @@ fn ty_to_str(ty: ValType) -> &'static str {
         ValType::F32 => "f32",
         ValType::F64 => "f64",
         ValType::V128 => "v128",
-        ValType::FuncRef => "funcref",
-        ValType::ExternRef => "externref",
+        ValType::Ref(FUNC_REF) => "funcref",
+        ValType::Ref(EXTERN_REF) => "externref",
+        ValType::Ref(RefType {
+            nullable: false,
+            heap_type: HeapType::Func,
+        }) => "(ref func)",
+        ValType::Ref(RefType {
+            nullable: false,
+            heap_type: HeapType::Extern,
+        }) => "(ref extern)",
+        ValType::Ref(RefType {
+            nullable: false,
+            heap_type: HeapType::TypedFunc(_),
+        }) => "(ref $type)",
+        ValType::Ref(RefType {
+            nullable: true,
+            heap_type: HeapType::TypedFunc(_),
+        }) => "(ref null $type)",
+        ValType::Ref(RefType {
+            nullable: true,
+            heap_type: HeapType::Bot,
+        }) => "(ref null bot)",
+        ValType::Ref(RefType {
+            nullable: false,
+            heap_type: HeapType::Bot,
+        }) => "(ref bot)",
     }
 }
 
@@ -945,6 +1117,8 @@ macro_rules! validate_proposal {
     (desc sign_extension) => ("sign extension operations");
     (desc exceptions) => ("exceptions");
     (desc tail_call) => ("tail calls");
+    (desc function_references) => ("function references");
+    (desc typed_continuations) => ("typed continuations");
 }
 
 impl<'a, T> VisitOperator<'a> for WasmProposalValidator<'_, '_, T>
@@ -1162,9 +1336,41 @@ where
         Ok(())
     }
     fn visit_return_call(&mut self, offset: usize, function_index: u32) -> Self::Output {
+        self.check_tail_call_enabled(offset)?;
         self.check_call(offset, function_index)?;
         self.check_return(offset)?;
         Ok(())
+    }
+    fn visit_call_ref(&mut self, offset: usize, hty: HeapType) -> Self::Output {
+        self.check_function_references_enabled(offset)?;
+        let rt = self.pop_ref(offset)?;
+        let expected = RefType {
+            nullable: true,
+            heap_type: hty,
+        };
+        if !self
+            .resources
+            .matches(ValType::Ref(rt), ValType::Ref(expected))
+        {
+            bail!(
+                offset,
+                "type mismatch: funcref on stack does not match specified type",
+            );
+        }
+        match hty {
+            HeapType::TypedFunc(type_index) => self.check_call_ty(offset, type_index.into())?,
+            HeapType::Bot => (),
+            _ => bail!(
+                offset,
+                "type mismatch: instruction requires function reference type",
+            ),
+        }
+        Ok(())
+    }
+    fn visit_return_call_ref(&mut self, offset: usize, hty: HeapType) -> Self::Output {
+        self.check_tail_call_enabled(offset)?;
+        self.visit_call_ref(offset, hty)?;
+        self.check_return(offset)
     }
     fn visit_call_indirect(
         &mut self,
@@ -1185,6 +1391,7 @@ where
         index: u32,
         table_index: u32,
     ) -> Self::Output {
+        self.check_tail_call_enabled(offset)?;
         self.check_call_indirect(offset, index, table_index)?;
         self.check_return(offset)?;
         Ok(())
@@ -1215,15 +1422,14 @@ where
             bail!(
                 offset,
                 "type mismatch: select operands have different types"
-            )
+            );
         }
         self.push_operand(ty1.or(ty2))?;
         Ok(())
     }
     fn visit_typed_select(&mut self, offset: usize, ty: ValType) -> Self::Output {
-        self.features
-            .check_value_type(ty)
-            .map_err(|e| BinaryReaderError::new(e, offset))?;
+        self.resources
+            .check_value_type(ty, &self.features, offset)?;
         self.pop_operand(offset, Some(ValType::I32))?;
         self.pop_operand(offset, Some(ty))?;
         self.pop_operand(offset, Some(ty))?;
@@ -2053,43 +2259,103 @@ where
     fn visit_atomic_fence(&mut self, _offset: usize) -> Self::Output {
         Ok(())
     }
-    fn visit_ref_null(&mut self, offset: usize, ty: ValType) -> Self::Output {
-        self.features
-            .check_value_type(ty)
-            .map_err(|e| BinaryReaderError::new(e, offset))?;
-        if !ty.is_reference_type() {
-            bail!(offset, "invalid non-reference type in ref.null");
+    fn visit_ref_null(&mut self, offset: usize, heap_type: HeapType) -> Self::Output {
+        match heap_type {
+            HeapType::Extern | HeapType::Func | HeapType::Bot => {}
+            HeapType::TypedFunc(_) => self.check_function_references_enabled(offset)?,
         }
-        self.push_operand(ty)?;
+        self.push_operand(ValType::Ref(RefType {
+            nullable: true,
+            heap_type,
+        }))?;
+        Ok(())
+    }
+    fn visit_ref_as_non_null(&mut self, offset: usize) -> Self::Output {
+        self.check_function_references_enabled(offset)?;
+        let rt = self.pop_ref(offset)?;
+        self.push_operand(ValType::Ref(RefType {
+            nullable: false,
+            heap_type: rt.heap_type,
+        }))?;
+        Ok(())
+    }
+    fn visit_br_on_null(&mut self, offset: usize, relative_depth: u32) -> Self::Output {
+        self.check_function_references_enabled(offset)?;
+        let rt = self.pop_ref(offset)?;
+        let (ft, kind) = self.jump(offset, relative_depth)?;
+        for ty in self.label_types(offset, ft, kind)?.rev() {
+            self.pop_operand(offset, Some(ty))?;
+        }
+        for ty in self.label_types(offset, ft, kind)? {
+            self.push_operand(ty)?;
+        }
+        self.push_operand(ValType::Ref(RefType {
+            nullable: false,
+            heap_type: rt.heap_type,
+        }))?;
+        Ok(())
+    }
+    fn visit_br_on_non_null(&mut self, offset: usize, relative_depth: u32) -> Self::Output {
+        self.check_function_references_enabled(offset)?;
+        let RefType { heap_type, .. } = self.pop_ref(offset)?;
+        let rt0 = ValType::Ref(RefType {
+            nullable: false,
+            heap_type: heap_type,
+        });
+        let (ft, kind) = self.jump(offset, relative_depth)?;
+        let mut lts = self.label_types(offset, ft, kind)?;
+        match lts.next_back() {
+            None => bail!(
+                offset,
+                "type mismatch: expected {} but stack has nothing",
+                ty_to_str(rt0)
+            ),
+            Some(rt1 @ ValType::Ref(_)) => {
+                if !self.resources.matches(rt0, rt1) {
+                    bail!(
+                        offset,
+                        "type mismatch: expected {} but found {}",
+                        ty_to_str(rt0),
+                        ty_to_str(rt1)
+                    )
+                }
+            }
+            Some(ty) => bail!(
+                offset,
+                "type mismatch: expected {} but found {}",
+                ty_to_str(rt0),
+                ty_to_str(ty)
+            ),
+        }
+        for ty in self.label_types(offset, ft, kind)?.rev().skip(1) {
+            self.pop_operand(offset, Some(ty))?;
+        }
+        for ty in lts {
+            self.push_operand(ty)?;
+        }
         Ok(())
     }
     fn visit_ref_is_null(&mut self, offset: usize) -> Self::Output {
-        match self.pop_operand(offset, None)? {
-            None => {}
-            Some(t) => {
-                if !t.is_reference_type() {
-                    bail!(
-                        offset,
-                        "type mismatch: invalid reference type in ref.is_null"
-                    );
-                }
-            }
-        }
+        self.pop_ref(offset)?;
         self.push_operand(ValType::I32)?;
         Ok(())
     }
     fn visit_ref_func(&mut self, offset: usize, function_index: u32) -> Self::Output {
-        if self.resources.type_of_function(function_index).is_none() {
-            bail!(
+        let type_index = match self.resources.type_index_of_function(function_index) {
+            Some(idx) => idx,
+            None => bail!(
                 offset,
                 "unknown function {}: function index out of bounds",
                 function_index,
-            );
-        }
+            ),
+        };
         if !self.resources.is_function_referenced(function_index) {
             bail!(offset, "undeclared function reference");
         }
-        self.push_operand(ValType::FuncRef)?;
+        self.push_operand(ValType::Ref(RefType {
+            nullable: false,
+            heap_type: type_index.try_into().expect("ref.func on function > 2^16"),
+        }))?;
         Ok(())
     }
     fn visit_v128_load(&mut self, offset: usize, memarg: MemArg) -> Self::Output {
@@ -3067,7 +3333,10 @@ where
             (Some(a), Some(b)) => (a, b),
             _ => bail!(offset, "table index out of bounds"),
         };
-        if src.element_type != dst.element_type {
+        if !self.resources.matches(
+            ValType::Ref(src.element_type),
+            ValType::Ref(dst.element_type),
+        ) {
             bail!(offset, "type mismatch");
         }
         self.pop_operand(offset, Some(ValType::I32))?;
@@ -3081,7 +3350,7 @@ where
             None => bail!(offset, "table index out of bounds"),
         };
         self.pop_operand(offset, Some(ValType::I32))?;
-        self.push_operand(ty)?;
+        self.push_operand(ValType::Ref(ty))?;
         Ok(())
     }
     fn visit_table_set(&mut self, offset: usize, table: u32) -> Self::Output {
@@ -3089,7 +3358,7 @@ where
             Some(ty) => ty.element_type,
             None => bail!(offset, "table index out of bounds"),
         };
-        self.pop_operand(offset, Some(ty))?;
+        self.pop_operand(offset, Some(ValType::Ref(ty)))?;
         self.pop_operand(offset, Some(ValType::I32))?;
         Ok(())
     }
@@ -3099,7 +3368,7 @@ where
             None => bail!(offset, "table index out of bounds"),
         };
         self.pop_operand(offset, Some(ValType::I32))?;
-        self.pop_operand(offset, Some(ty))?;
+        self.pop_operand(offset, Some(ValType::Ref(ty)))?;
         self.push_operand(ValType::I32)?;
         Ok(())
     }
@@ -3116,8 +3385,144 @@ where
             None => bail!(offset, "table index out of bounds"),
         };
         self.pop_operand(offset, Some(ValType::I32))?;
-        self.pop_operand(offset, Some(ty))?;
+        self.pop_operand(offset, Some(ValType::Ref(ty)))?;
         self.pop_operand(offset, Some(ValType::I32))?;
+        Ok(())
+    }
+
+    // Typed continuations operators.
+    // TODO(dhil) fixme: merge into the above list.
+    fn visit_cont_new(&mut self, offset: usize, type_index: u32) -> Self::Output {
+        let fidx = self.cont_type_at(type_index, offset)?;
+        let rt = RefType {
+            nullable: false,
+            heap_type: fidx.try_into().expect("function reference index larger than 2^16"),
+        };
+        self.pop_operand(offset, Some(ValType::Ref(rt)))?;
+        let result = RefType {
+            nullable: false,
+            heap_type: type_index.try_into().expect("function reference index larger than 2^16"),
+        };
+        self.push_operand(ValType::Ref(result))?;
+        Ok(())
+    }
+    fn visit_cont_bind(&mut self, offset: usize, type_index: u32) -> Self::Output {
+        let rt = self.pop_ref(offset)?;
+        match rt.heap_type {
+            HeapType::TypedFunc(y) => {
+                let ft1 = self.func_type_at(self.cont_type_at(y.into(), offset)?, offset)?;
+                let ft2 = self.func_type_at(self.cont_type_at(type_index.into(), offset)?, offset)?;
+
+                // Verify that ft1's domain is at least as
+                // large as ft2's domain.
+                if ft1.inputs().len() < ft2.inputs().len() {
+                    panic!("|ft1.inputs()| must be greater or equal to |ft2.inputs()|") // TODO(dhil): Tidy up
+                }
+                // Next check that prefix of ft1's domain agrees with the domain of ft2.
+                //let ft1ins1 = ft1.inputs().take(ft1.inputs().len() - ft2.inputs().len());
+                let ft1ins2 = ft1.inputs().skip(ft1.inputs().len() - ft2.inputs().len());
+
+                for (ty1, ty2) in ft1ins2.zip(ft2.inputs()) {
+                    if !self.resources.matches(ty1, ty2) {
+                        panic!("mismatch error") // TODO(dhil): tidy up
+                    }
+                }
+
+                // Next check their codomains agree.
+                if ft1.outputs().len() != ft2.outputs().len() {
+                    panic!("The codomains of ft1 and ft2 must have the same size") // TODO(dhil): Tidy up
+                }
+
+                for (ty1, ty2) in ft1.outputs().zip(ft2.outputs()) {
+                    if !self.resources.matches(ty1, ty2) {
+                        panic!("mismatch error") // TODO(dhil): tidy up
+                    }
+                }
+
+                // Check that ft1's inputs are available on the stack.
+                for ty in ft1.inputs().rev() {
+                    self.pop_operand(offset, Some(ty))?;
+                }
+
+                // Push the continuation reference.
+                self.push_operand(ValType::Ref(RefType { nullable: rt.nullable, heap_type: type_index.try_into().expect("function reference index larger than 2^16") }))?;
+            }
+            HeapType::Bot => self.push_operand(ValType::Ref(RefType { nullable: false, heap_type: type_index.try_into().expect("function reference index larger than 2^16") }))?,
+            _ => bail!(offset,
+                "type mismatch: instruction requires continuation reference type but stack has {}",
+                ty_to_str(ValType::Ref(rt)))
+        }
+        Ok(())
+    }
+    fn visit_suspend(&mut self, offset: usize, tag_index: u32) -> Self::Output {
+        let ft = self.tag_at(tag_index, offset)?;
+        for ty in ft.inputs().rev() {
+            self.pop_operand(offset, Some(ty))?;
+        }
+        for ty in ft.outputs() {
+            self.push_operand(ty)?;
+        }
+        Ok(())
+    }
+    fn visit_resume(&mut self, offset: usize, resumetable: ResumeTable) -> Self::Output {
+        let rt = self.pop_ref(offset)?;
+        match rt.heap_type {
+            HeapType::TypedFunc(y) => {
+                // ft := ts1 -> ts2
+                let ctft = self.func_type_at(self.cont_type_at(y.into(), offset)?, offset)?;
+                self.check_resume_table(offset, resumetable, ctft)?;
+
+                // Check that ts1 are available on the stack.
+                for ty in ctft.inputs().rev() {
+                    self.pop_operand(offset, Some(ty))?;
+                }
+
+                // Make ts2 available on the stack.
+                for ty in ctft.outputs() {
+                    self.push_operand(ty)?;
+                }
+            }
+            HeapType::Bot => {}
+            _ => bail!(offset,
+                "type mismatch: instruction requires continuation reference type but stack has {}",
+                ty_to_str(ValType::Ref(rt)))
+        }
+        Ok(())
+    }
+    fn visit_resume_throw(&mut self, offset: usize, resumetable: ResumeTable, tag_index: u32) -> Self::Output {
+        let rt = self.pop_ref(offset)?;
+        match rt.heap_type {
+            HeapType::TypedFunc(y) => {
+                // ct := ts1 -> ts2
+                let ct = self.func_type_at(self.cont_type_at(y.into(), offset)?, offset)?;
+                self.check_resume_table(offset, resumetable, ct)?;
+
+                // tagtype := ts1' -> []
+                let tagtype = self.tag_at(tag_index, offset)?;
+
+                // Check that ts1' are available on the stack.
+                for tagty in tagtype.inputs().rev() {
+                    self.pop_operand(offset, Some(tagty))?;
+                }
+
+                // Make ts2 available on the stack
+                for ty in ct.outputs() {
+                    self.push_operand(ty)?;
+                }
+            },
+            HeapType::Bot => {}
+            _ => bail!(offset,
+                "type mismatch: instruction requires continuation reference type but stack has {}",
+                ty_to_str(ValType::Ref(rt)))
+        }
+        Ok(())
+    }
+    fn visit_barrier(&mut self, offset: usize, blockty: BlockType) -> Self::Output {
+        self.check_block_type(offset, blockty)?;
+        for ty in self.params(offset, blockty)?.rev() {
+            self.pop_operand(offset, Some(ty))?;
+        }
+        self.push_ctrl(offset, FrameKind::Barrier, blockty)?;
         Ok(())
     }
 }

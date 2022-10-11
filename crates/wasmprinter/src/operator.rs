@@ -1,7 +1,9 @@
 use super::{Printer, State};
 use anyhow::Result;
 use std::fmt::Write;
-use wasmparser::{BlockType, BrTable, Ieee32, Ieee64, MemArg, ValType, VisitOperator, V128};
+use wasmparser::{
+    BlockType, BrTable, HeapType, Ieee32, Ieee64, MemArg, ResumeTable, ValType, VisitOperator, V128,
+};
 
 pub struct PrintOperator<'a, 'b> {
     pub(super) printer: &'a mut Printer,
@@ -192,6 +194,16 @@ impl<'a> VisitOperator<'a> for PrintOperator<'_, '_> {
         self.print_func_idx(function_index)?;
         Ok(OpKind::Normal)
     }
+    fn visit_call_ref(&mut self, _pos: usize, ty: HeapType) -> Self::Output {
+        self.push_str("call_ref ");
+        self.printer.print_heaptype(ty)?;
+        Ok(OpKind::Normal)
+    }
+    fn visit_return_call_ref(&mut self, _pos: usize, ty: HeapType) -> Self::Output {
+        self.push_str("return_call_ref ");
+        self.printer.print_heaptype(ty)?;
+        Ok(OpKind::Normal)
+    }
     fn visit_call_indirect(
         &mut self,
         _pos: usize,
@@ -234,9 +246,22 @@ impl<'a> VisitOperator<'a> for PrintOperator<'_, '_> {
         self.instr(")")
     }
 
-    fn visit_ref_null(&mut self, _pos: usize, ty: ValType) -> Self::Output {
+    fn visit_ref_null(&mut self, _pos: usize, ty: HeapType) -> Self::Output {
         self.push_str("ref.null ");
-        self.printer.print_reftype(ty)?;
+        self.printer.print_heaptype(ty)?;
+        Ok(OpKind::Normal)
+    }
+    fn visit_ref_as_non_null(&mut self, _pos: usize) -> Self::Output {
+        self.instr("ref.as_non_null")
+    }
+    fn visit_br_on_null(&mut self, _pos: usize, relative_depth: u32) -> Self::Output {
+        let label = self.label(relative_depth);
+        write!(self.result(), "br_on_null {relative_depth} (;{label};)")?;
+        Ok(OpKind::Normal)
+    }
+    fn visit_br_on_non_null(&mut self, _pos: usize, relative_depth: u32) -> Self::Output {
+        let label = self.label(relative_depth);
+        write!(self.result(), "br_on_non_null {relative_depth} (;{label};)")?;
         Ok(OpKind::Normal)
     }
     fn visit_ref_is_null(&mut self, _pos: usize) -> Self::Output {
@@ -1918,5 +1943,23 @@ impl<'a> VisitOperator<'a> for PrintOperator<'_, '_> {
         self.mem_instr("v128.store64_lane", &memarg, 8)?;
         write!(self.result(), " {lane}")?;
         Ok(OpKind::Normal)
+    }
+    fn visit_cont_new(&mut self, _pos: usize, _type_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_cont_bind(&mut self, _pos: usize, _type_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_suspend(&mut self, _pos: usize, _tag_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_resume(&mut self, _pos: usize, _resumetable: ResumeTable) -> Self::Output {
+        todo!()
+    }
+    fn visit_resume_throw(&mut self, _pos: usize, _resumetable: ResumeTable, _tag_index: u32) -> Self::Output {
+        todo!()
+    }
+    fn visit_barrier(&mut self, _pos: usize, _blockty: BlockType) -> Self::Output {
+        todo!()
     }
 }

@@ -200,14 +200,21 @@ impl<'a> TypeEncoder<'a> {
             wasmparser::ValType::F32 => ValType::F32,
             wasmparser::ValType::F64 => ValType::F64,
             wasmparser::ValType::V128 => ValType::V128,
-            wasmparser::ValType::FuncRef => ValType::FuncRef,
-            wasmparser::ValType::ExternRef => ValType::ExternRef,
+            wasmparser::ValType::Ref(ty) => Self::ref_type(ty),
+        }
+    }
+
+    fn ref_type(ty: wasmparser::RefType) -> ValType {
+        match ty {
+            wasmparser::FUNC_REF => ValType::FuncRef,
+            wasmparser::EXTERN_REF => ValType::ExternRef,
+            _ => unimplemented!(),
         }
     }
 
     fn table_type(ty: wasmparser::TableType) -> TableType {
         TableType {
-            element_type: Self::val_type(ty.element_type),
+            element_type: Self::ref_type(ty.element_type),
             minimum: ty.initial,
             maximum: ty.maximum,
         }
@@ -417,7 +424,7 @@ impl<'a> TypeEncoder<'a> {
         let ty = self.0.type_from_id(id).unwrap();
 
         match ty {
-            wasmparser::types::Type::Func(_) | wasmparser::types::Type::Instance(_) => {
+            wasmparser::types::Type::Func(_) | wasmparser::types::Type::Instance(_) | wasmparser::types::Type::Cont(_) => {
                 unreachable!()
             }
             wasmparser::types::Type::Module(_) => self.module_type(encodable, types, id),

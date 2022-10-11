@@ -550,16 +550,20 @@ impl Printer {
         self.start_group("type ");
         self.print_name(&state.core.type_names, state.core.types.len() as u32)?;
         self.result.push(' ');
-        let ty = match ty {
+        match ty {
             wasmparser::Type::Func(ty) => {
                 self.start_group("func");
                 self.print_func_type(state, &ty, None)?;
                 self.end_group();
-                ty
+                state.core.types.push(Some(ty))
+            }
+            wasmparser::Type::Cont(type_index) => {
+                self.start_group("cont");
+                self.print_idx(&state.core.type_names, type_index)?;
+                self.end_group()
             }
         };
         self.end_group(); // `type` itself
-        state.core.types.push(Some(ty));
         Ok(())
     }
 
@@ -650,17 +654,33 @@ impl Printer {
             ValType::F32 => self.result.push_str("f32"),
             ValType::F64 => self.result.push_str("f64"),
             ValType::V128 => self.result.push_str("v128"),
-            ValType::FuncRef => self.result.push_str("funcref"),
-            ValType::ExternRef => self.result.push_str("externref"),
+            ValType::Ref(rt) => self.print_reftype(rt)?,
         }
         Ok(())
     }
 
-    fn print_reftype(&mut self, ty: ValType) -> Result<()> {
+    fn print_reftype(&mut self, ty: RefType) -> Result<()> {
+        if ty == FUNC_REF {
+            self.result.push_str("funcref");
+        } else if ty == EXTERN_REF {
+            self.result.push_str("externref");
+        } else {
+            self.result.push_str("(ref ");
+            if ty.nullable {
+                self.result.push_str("null ");
+            }
+            self.print_heaptype(ty.heap_type)?;
+            self.result.push_str(")");
+        }
+        Ok(())
+    }
+
+    fn print_heaptype(&mut self, ty: HeapType) -> Result<()> {
         match ty {
-            ValType::FuncRef => self.result.push_str("func"),
-            ValType::ExternRef => self.result.push_str("extern"),
-            _ => bail!("invalid reference type {:?}", ty),
+            HeapType::Func => self.result.push_str("func"),
+            HeapType::Extern => self.result.push_str("extern"),
+            HeapType::TypedFunc(i) => self.result.push_str(&format!("{}", u32::from(i))),
+            HeapType::Bot => self.result.push_str("bot"),
         }
         Ok(())
     }
@@ -719,7 +739,7 @@ impl Printer {
         }
         self.print_limits(ty.initial, ty.maximum)?;
         self.result.push(' ');
-        self.print_valtype(ty.element_type)?;
+        self.print_reftype(ty.element_type)?;
         Ok(())
     }
 
@@ -1136,9 +1156,12 @@ impl Printer {
             let mut items_reader = elem.items.get_items_reader()?;
             self.result.push(' ');
             if items_reader.uses_exprs() {
-                self.print_valtype(elem.ty)?;
-            } else {
                 self.print_reftype(elem.ty)?;
+            } else {
+                // This is semantically different from funcref in that
+                // it allows and forces index abbreviations rather than full
+                // reference expressions
+                self.result.push_str("func");
             }
             for _ in 0..items_reader.get_count() {
                 self.result.push(' ');

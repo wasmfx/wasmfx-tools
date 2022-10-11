@@ -60,7 +60,7 @@ impl<'a> FunctionBody<'a> {
         let count = reader.read_var_u32()?;
         for _ in 0..count {
             reader.read_var_u32()?;
-            reader.read_var_u32()?;
+            reader.read_val_type()?;
         }
         Ok(())
     }

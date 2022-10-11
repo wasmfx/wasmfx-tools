@@ -644,6 +644,7 @@ fn dummy_value_inst<'a>(ty: ValType) -> Instruction<'a> {
         ValType::F64 => Instruction::F64Const(0.0),
         ValType::V128 => Instruction::V128Const(0),
         ValType::FuncRef | ValType::ExternRef => Instruction::RefNull(ty),
+        ValType::Ref(_) => unimplemented!(),
     }
 }
 
@@ -818,6 +819,6 @@ fn size_of_type_in_memory(ty: ValType) -> u64 {
         ValType::F32 => 4,
         ValType::F64 => 8,
         ValType::V128 => 16,
-        ValType::FuncRef | ValType::ExternRef => panic!("not a memory type"),
+        ValType::Ref(_) | ValType::FuncRef | ValType::ExternRef => panic!("not a memory type"),
     }
 }

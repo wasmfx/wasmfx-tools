@@ -386,6 +386,7 @@ pub mod kw {
     custom_keyword!(assert_invalid);
     custom_keyword!(assert_malformed);
     custom_keyword!(assert_return);
+    custom_keyword!(assert_suspension);
     custom_keyword!(assert_trap);
     custom_keyword!(assert_unlinkable);
     custom_keyword!(before);
@@ -395,6 +396,7 @@ pub mod kw {
     custom_keyword!(catch_all);
     custom_keyword!(code);
     custom_keyword!(component);
+    custom_keyword!(cont);
     custom_keyword!(data);
     custom_keyword!(dataref);
     custom_keyword!(declare);
@@ -504,6 +506,13 @@ pub mod kw {
     custom_keyword!(core);
     custom_keyword!(true_ = "true");
     custom_keyword!(false_ = "false");
+
+    // custom_keyword!(cont_new = "cont.new");
+    // custom_keyword!(cont_bind = "cont.bind");
+    // custom_keyword!(suspend);
+    // custom_keyword!(resume);
+    // custom_keyword!(resume_throw);
+    // custom_keyword!(barrier);
 }
 
 /// Common annotations used to parse WebAssembly text files.

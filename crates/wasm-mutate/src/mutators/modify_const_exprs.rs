@@ -124,8 +124,9 @@ impl<'cfg, 'wasm> Translator for InitTranslator<'cfg, 'wasm> {
                 } else {
                     f64::from_bits(self.config.rng().gen())
                 }),
-                T::FuncRef => CE::ref_null(wasm_encoder::ValType::FuncRef),
-                T::ExternRef => CE::ref_null(wasm_encoder::ValType::ExternRef),
+                T::Ref(wasmparser::FUNC_REF) => CE::ref_null(wasm_encoder::ValType::FuncRef),
+                T::Ref(wasmparser::EXTERN_REF) => CE::ref_null(wasm_encoder::ValType::ExternRef),
+                T::Ref(_) => unimplemented!(),
             }
         } else {
             // FIXME: implement non-reducing mutations for constant expressions.

@@ -194,14 +194,21 @@ impl<'a> BinaryReader<'a> {
 
     /// Reads a core WebAssembly value type from the binary reader.
     pub fn read_val_type(&mut self) -> Result<ValType> {
-        match Self::val_type_from_byte(self.peek()?) {
-            Some(ty) => {
-                self.position += 1;
-                Ok(ty)
-            }
+        match self.maybe_read_val_type()? {
+            Some(ty) => Ok(ty),
             None => Err(BinaryReaderError::new(
                 "invalid value type",
                 self.original_position(),
+            )),
+        }
+    }
+
+    pub(crate) fn read_ref_type(&mut self) -> Result<RefType> {
+        match self.read_val_type()? {
+            ValType::Ref(r) => Ok(r),
+            _ => Err(BinaryReaderError::new(
+                "malformed reference type",
+                self.original_position() - 1,
             )),
         }
     }
@@ -294,6 +301,7 @@ impl<'a> BinaryReader<'a> {
     pub(crate) fn read_type(&mut self) -> Result<Type> {
         Ok(match self.read_u8()? {
             0x60 => Type::Func(self.read_func_type()?),
+            0x5f => Type::Cont(self.read_var_u32()?),
             x => return self.invalid_leading_byte(x, "type"),
         })
     }
@@ -762,7 +770,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     pub(crate) fn read_table_type(&mut self) -> Result<TableType> {
-        let element_type = self.read_val_type()?;
+        let element_type = self.read_ref_type()?;
         let has_max = match self.read_u8()? {
             0x00 => false,
             0x01 => true,
@@ -941,6 +949,19 @@ impl<'a> BinaryReader<'a> {
             reader: BinaryReader::new_with_offset(&self.buffer[start..end], start),
             cnt: cnt as u32,
             default,
+        })
+    }
+
+    fn read_resume_table(&mut self) -> Result<ResumeTable<'a>> {
+        let cnt = self.read_size(MAX_WASM_RESUME_TABLE_SIZE, "resume_table")?;
+        let start = self.position;
+        for _ in 0..(cnt * 2) {
+            self.read_var_u32()?;
+        }
+        let end = self.position;
+        Ok(ResumeTable {
+            reader: BinaryReader::new_with_offset(&self.buffer[start..end], start),
+            cnt: cnt as u32,
         })
     }
 
@@ -1329,17 +1350,72 @@ impl<'a> BinaryReader<'a> {
         Ok(self.buffer[self.position])
     }
 
-    fn val_type_from_byte(byte: u8) -> Option<ValType> {
-        match byte {
-            0x7F => Some(ValType::I32),
-            0x7E => Some(ValType::I64),
-            0x7D => Some(ValType::F32),
-            0x7C => Some(ValType::F64),
-            0x7B => Some(ValType::V128),
-            0x70 => Some(ValType::FuncRef),
-            0x6F => Some(ValType::ExternRef),
-            _ => None,
+    fn read_heap_type(&mut self) -> Result<HeapType> {
+        match self.peek()? {
+            0x70 => {
+                self.position += 1;
+                Ok(HeapType::Func)
+            }
+            0x6F => {
+                self.position += 1;
+                Ok(HeapType::Extern)
+            }
+            x if 0x80 & x == 0 => {
+                let idx = self.read_var_s33()?;
+                if idx < 0 || idx > (std::u16::MAX as i64) {
+                    return Err(BinaryReaderError::new(
+                        "invalid function heap type",
+                        self.original_position(),
+                    ));
+                }
+                Ok((idx as u32).try_into().unwrap())
+            }
+            x => Err(BinaryReaderError::new(
+                format!("unknown heap type subopcode: 0x{:x}", x),
+                self.original_position(),
+            )),
         }
+    }
+
+    fn maybe_read_val_type(&mut self) -> Result<Option<ValType>> {
+        Ok(match self.peek()? {
+            0x7F => {
+                self.position += 1;
+                Some(ValType::I32)
+            }
+            0x7E => {
+                self.position += 1;
+                Some(ValType::I64)
+            }
+            0x7D => {
+                self.position += 1;
+                Some(ValType::F32)
+            }
+            0x7C => {
+                self.position += 1;
+                Some(ValType::F64)
+            }
+            0x7B => {
+                self.position += 1;
+                Some(ValType::V128)
+            }
+            0x70 => {
+                self.position += 1;
+                Some(ValType::Ref(FUNC_REF))
+            }
+            0x6F => {
+                self.position += 1;
+                Some(ValType::Ref(EXTERN_REF))
+            }
+            x @ (0x6B | 0x6C) => {
+                self.position += 1;
+                Some(ValType::Ref(RefType {
+                    nullable: x == 0x6C,
+                    heap_type: self.read_heap_type()?,
+                }))
+            }
+            _ => None,
+        })
     }
 
     fn read_block_type(&mut self) -> Result<BlockType> {
@@ -1352,8 +1428,7 @@ impl<'a> BinaryReader<'a> {
         }
 
         // Check for a block type of form [] -> [t].
-        if let Some(ty) = Self::val_type_from_byte(b) {
-            self.position += 1;
+        if let Some(ty) = self.maybe_read_val_type()? {
             return Ok(BlockType::Type(ty));
         }
 
@@ -1407,6 +1482,8 @@ impl<'a> BinaryReader<'a> {
             0x13 => {
                 visitor.visit_return_call_indirect(pos, self.read_var_u32()?, self.read_var_u32()?)
             }
+            0x14 => visitor.visit_call_ref(pos, self.read_heap_type()?),
+            0x15 => visitor.visit_return_call_ref(pos, self.read_heap_type()?),
             0x18 => visitor.visit_delegate(pos, self.read_var_u32()?),
             0x19 => visitor.visit_catch_all(pos),
             0x1a => visitor.visit_drop(pos),
@@ -1597,13 +1674,25 @@ impl<'a> BinaryReader<'a> {
             0xc3 => visitor.visit_i64_extend16_s(pos),
             0xc4 => visitor.visit_i64_extend32_s(pos),
 
-            0xd0 => visitor.visit_ref_null(pos, self.read_val_type()?),
+            0xd0 => visitor.visit_ref_null(pos, self.read_heap_type()?),
             0xd1 => visitor.visit_ref_is_null(pos),
             0xd2 => visitor.visit_ref_func(pos, self.read_var_u32()?),
+            0xd3 => visitor.visit_ref_as_non_null(pos),
+            0xd4 => visitor.visit_br_on_null(pos, self.read_var_u32()?),
+            0xd6 => visitor.visit_br_on_non_null(pos, self.read_var_u32()?),
 
             0xfc => self.visit_0xfc_operator(pos, visitor)?,
             0xfd => self.visit_0xfd_operator(pos, visitor)?,
             0xfe => self.visit_0xfe_operator(pos, visitor)?,
+
+            // Typed continuations operators.
+            // TODO(dhil) fixme: merge into the above list.
+            0xe0 => visitor.visit_cont_new(pos, self.read_var_u32()?),
+            0xe1 => visitor.visit_cont_bind(pos, self.read_var_u32()?),
+            0xe2 => visitor.visit_suspend(pos, self.read_var_u32()?),
+            0xe3 => visitor.visit_resume(pos, self.read_resume_table()?),
+            0xe4 => visitor.visit_resume_throw(pos, self.read_resume_table()?, self.read_var_u32()?),
+            0xe5 => visitor.visit_barrier(pos, self.read_block_type()?),
 
             _ => bail!(pos, "illegal opcode: 0x{code:x}"),
         })
@@ -2272,6 +2361,98 @@ impl fmt::Debug for BrTable<'_> {
         f.field("count", &self.cnt);
         f.field("default", &self.default);
         match self.targets().collect::<Result<Vec<_>>>() {
+            Ok(targets) => {
+                f.field("targets", &targets);
+            }
+            Err(_) => {
+                f.field("reader", &self.reader);
+            }
+        }
+        f.finish()
+    }
+}
+
+// Resume table
+impl<'a> ResumeTable<'a> {
+    /// Returns the number of `resume` entries.
+    pub fn len(&self) -> u32 {
+        self.cnt
+    }
+
+    /// Returns whether `ResumeTable` doesn't have any entries.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the list of targets that this `resume` instruction will be
+    /// jumping to.
+    ///
+    /// This method will return an iterator which parses each target
+    /// of this `resume`. The returned iterator will yield
+    /// `self.len()` elements.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let buf = [0xe3, 0x01, 0x01, 0x02, 0x00];
+    /// let mut reader = wasmparser::BinaryReader::new(&buf);
+    /// let op = reader.read_operator().unwrap();
+    /// if let wasmparser::Operator::Resume { table } = op {
+    ///     let targets = table.targets().collect::<Result<Vec<(_,_)>, _>>().unwrap();
+    ///     assert_eq!(targets, [(1, 2)]);
+    /// }
+    /// ```
+    pub fn targets(&self) -> ResumeTableTargets {
+        ResumeTableTargets {
+            reader: self.reader.clone(),
+            remaining: self.cnt,
+        }
+    }
+}
+
+/// An iterator over the targets of a [`ResumeTable`].
+///
+/// # Note
+///
+/// This iterator parses each target of the underlying `resume`.  The
+/// iterator will yield exactly as many targets as the `resume` has.
+pub struct ResumeTableTargets<'a> {
+    reader: crate::BinaryReader<'a>,
+    remaining: u32,
+}
+
+impl<'a> Iterator for ResumeTableTargets<'a> {
+    type Item = Result<(u32, u32)>;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = usize::try_from(self.remaining).unwrap_or_else(|error| {
+            panic!("could not convert remaining `u32` into `usize`: {}", error)
+        });
+        (remaining, Some(remaining))
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            if !self.reader.eof() {
+                return Some(Err(BinaryReaderError::new(
+                    "trailing data in resume",
+                    self.reader.original_position(),
+                )));
+            }
+            return None;
+        }
+        self.remaining -= 1;
+        let tag = self.reader.read_var_u32().ok()?;
+        let label = self.reader.read_var_u32().ok()?;
+        Some(Ok((tag, label)))
+    }
+}
+
+impl fmt::Debug for ResumeTable<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut f = f.debug_struct("ResumeTable");
+        f.field("count", &self.cnt);
+        match self.targets().collect::<Result<Vec<(_,_)>>>() {
             Ok(targets) => {
                 f.field("targets", &targets);
             }

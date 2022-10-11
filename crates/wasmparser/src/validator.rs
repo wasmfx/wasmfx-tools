@@ -14,8 +14,8 @@
  */
 
 use crate::{
-    limits::*, BinaryReaderError, Encoding, FunctionBody, Parser, Payload, Result, SectionReader,
-    SectionWithLimitedItems, ValType, WASM_COMPONENT_VERSION, WASM_MODULE_VERSION,
+    limits::*, BinaryReaderError, Encoding, FunctionBody, HeapType, Parser, Payload, Result,
+    SectionReader, SectionWithLimitedItems, ValType, WASM_COMPONENT_VERSION, WASM_MODULE_VERSION,
 };
 use std::mem;
 use std::ops::Range;
@@ -231,15 +231,35 @@ pub struct WasmFeatures {
     pub extended_const: bool,
     /// The WebAssembly component model proposal.
     pub component_model: bool,
+    /// The WebAssembly typed function references proposal
+    pub function_references: bool,
+    /// The typed continuations proposals
+    pub typed_continuations: bool,
 }
 
 impl WasmFeatures {
+    /// NOTE: This only checks that the value type corresponds to the feature set!!
+    ///
+    /// To check that reference types are valid, we need access to the module
+    /// types. Use module.check_value_type.
     pub(crate) fn check_value_type(&self, ty: ValType) -> Result<(), &'static str> {
         match ty {
             ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 => Ok(()),
-            ValType::FuncRef | ValType::ExternRef => {
+            ValType::Ref(r) => {
                 if self.reference_types {
-                    Ok(())
+                    if !self.function_references {
+                        match (r.heap_type, r.nullable) {
+                            (_, false) => {
+                                Err("function references required for non-nullable types")
+                            }
+                            (HeapType::TypedFunc(_), _) => {
+                                Err("function references required for index reference types")
+                            }
+                            _ => Ok(()),
+                        }
+                    } else {
+                        Ok(())
+                    }
                 } else {
                     Err("reference types support is not enabled")
                 }
@@ -268,6 +288,8 @@ impl Default for WasmFeatures {
             extended_const: false,
             component_model: false,
             deterministic_only: cfg!(feature = "deterministic"),
+            function_references: false,
+            typed_continuations: false,
 
             // on-by-default features
             mutable_global: true,
@@ -600,8 +622,11 @@ impl Validator {
                 state.module.assert_mut().tables.reserve(count as usize);
                 Ok(())
             },
-            |state, features, _, ty, offset| {
-                state.module.assert_mut().add_table(ty, features, offset)
+            |state, features, _types, ty, offset| {
+                state
+                    .module
+                    .assert_mut()
+                    .add_table(ty, features, offset)
             },
         )
     }
@@ -1325,7 +1350,7 @@ impl Validator {
 
 #[cfg(test)]
 mod tests {
-    use crate::{GlobalType, MemoryType, TableType, ValType, Validator, WasmFeatures};
+    use crate::{GlobalType, MemoryType, TableType, ValType, Validator, WasmFeatures, FUNC_REF};
     use anyhow::Result;
 
     #[test]
@@ -1394,7 +1419,7 @@ mod tests {
             Some(TableType {
                 initial: 10,
                 maximum: None,
-                element_type: ValType::FuncRef,
+                element_type: FUNC_REF,
             })
         );
 
@@ -1422,7 +1447,7 @@ mod tests {
             _ => unreachable!(),
         }
 
-        assert_eq!(types.element_at(0), Some(ValType::FuncRef));
+        assert_eq!(types.element_at(0), Some(FUNC_REF));
 
         Ok(())
     }
@@ -1466,5 +1491,10 @@ mod tests {
         ));
 
         Ok(())
+    }
+
+    #[test]
+    fn valtype_is_small() {
+        assert_eq!(std::mem::size_of::<ValType>(), 4);
     }
 }

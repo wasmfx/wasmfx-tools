@@ -174,7 +174,7 @@ macro_rules! for_each_operator {
             @mvp I64Const { value: i64 } => visit_i64_const
             @mvp F32Const { value: $crate::Ieee32 } => visit_f32_const
             @mvp F64Const { value: $crate::Ieee64 } => visit_f64_const
-            @reference_types RefNull { ty: $crate::ValType } => visit_ref_null
+            @reference_types RefNull { hty: $crate::HeapType } => visit_ref_null
             @reference_types RefIsNull => visit_ref_is_null
             @reference_types RefFunc { function_index: u32 } => visit_ref_func
             @mvp I32Eqz => visit_i32_eqz
@@ -673,6 +673,21 @@ macro_rules! for_each_operator {
             @relaxed_simd I16x8DotI8x16I7x16S => visit_i16x8_dot_i8x16_i7x16_s
             @relaxed_simd I32x4DotI8x16I7x16AddS => visit_i32x4_dot_i8x16_i7x16_add_s
             @relaxed_simd F32x4RelaxedDotBf16x8AddF32x4 => visit_f32x4_relaxed_dot_bf16x8_add_f32x4
+
+            // Typed Function references
+            @function_references CallRef { hty: $crate::HeapType } => visit_call_ref
+            @function_references ReturnCallRef { hty: $crate::HeapType } => visit_return_call_ref
+            @function_references RefAsNonNull => visit_ref_as_non_null
+            @function_references BrOnNull { relative_depth: u32 } => visit_br_on_null
+            @function_references BrOnNonNull { relative_depth: u32 } => visit_br_on_non_null
+
+            // Typed continuations
+            @typed_continuations ContNew { type_index: u32 } => visit_cont_new
+            @typed_continuations ContBind { type_index: u32 } => visit_cont_bind
+            @typed_continuations Suspend { tag_index: u32 } => visit_suspend
+            @typed_continuations Resume { resumetable: $crate::ResumeTable<'a> } => visit_resume
+            @typed_continuations ResumeThrow { resumetable: $crate::ResumeTable<'a>, tag_index: u32 } => visit_resume_throw
+            @typed_continuations Barrier { blockty: $crate::BlockType } => visit_barrier
         }
     };
 }

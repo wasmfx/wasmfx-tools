@@ -58,6 +58,14 @@ pub trait Translator {
         ty(self.as_obj(), t)
     }
 
+    fn translate_refty(&mut self, t: &wasmparser::RefType) -> Result<ValType> {
+        refty(self.as_obj(), t)
+    }
+
+    fn translate_heapty(&mut self, t: &wasmparser::HeapType) -> Result<ValType> {
+        heapty(self.as_obj(), t)
+    }
+
     fn translate_global(&mut self, g: Global, s: &mut GlobalSection) -> Result<()> {
         global(self.as_obj(), g, s)
     }
@@ -99,6 +107,10 @@ pub trait Translator {
         memarg(self.as_obj(), arg)
     }
 
+    fn translate_resumetable(&mut self, resumetable: &wasmparser::ResumeTable<'_>) -> Result<std::borrow::Cow<'_, [(u32, u32)]>> {
+        todo!()
+    }
+
     fn remap(&mut self, item: Item, idx: u32) -> Result<u32> {
         drop(item);
         Ok(idx)
@@ -128,6 +140,7 @@ pub fn type_def(t: &mut dyn Translator, ty: Type, s: &mut TypeSection) -> Result
             );
             Ok(())
         }
+        Type::Cont(_) => unimplemented!(),
     }
 }
 
@@ -136,7 +149,7 @@ pub fn table_type(
     ty: &wasmparser::TableType,
 ) -> Result<wasm_encoder::TableType> {
     Ok(wasm_encoder::TableType {
-        element_type: t.translate_ty(&ty.element_type)?,
+        element_type: t.translate_refty(&ty.element_type)?,
         minimum: ty.initial,
         maximum: ty.maximum,
     })
@@ -172,14 +185,18 @@ pub fn tag_type(t: &mut dyn Translator, ty: &wasmparser::TagType) -> Result<wasm
 }
 
 pub fn ty(_t: &mut dyn Translator, ty: &wasmparser::ValType) -> Result<ValType> {
+    crate::module::map_type(*ty)
+}
+
+pub fn refty(_t: &mut dyn Translator, ty: &wasmparser::RefType) -> Result<ValType> {
+    crate::module::map_ref_type(*ty)
+}
+
+pub fn heapty(_t: &mut dyn Translator, ty: &wasmparser::HeapType) -> Result<ValType> {
     match ty {
-        wasmparser::ValType::I32 => Ok(ValType::I32),
-        wasmparser::ValType::I64 => Ok(ValType::I64),
-        wasmparser::ValType::F32 => Ok(ValType::F32),
-        wasmparser::ValType::F64 => Ok(ValType::F64),
-        wasmparser::ValType::V128 => Ok(ValType::V128),
-        wasmparser::ValType::FuncRef => Ok(ValType::FuncRef),
-        wasmparser::ValType::ExternRef => Ok(ValType::ExternRef),
+        wasmparser::HeapType::Func => Ok(ValType::FuncRef),
+        wasmparser::HeapType::Extern => Ok(ValType::ExternRef),
+        _ => unimplemented!(),
     }
 }
 
@@ -206,7 +223,7 @@ pub fn const_expr(
         match op {
             Operator::RefFunc { .. }
             | Operator::RefNull {
-                ty: wasmparser::ValType::FuncRef,
+                hty: wasmparser::HeapType::Func,
                 ..
             }
             | Operator::GlobalGet { .. } => {}
@@ -245,7 +262,7 @@ pub fn element(
         ElementKind::Passive => ElementMode::Passive,
         ElementKind::Declared => ElementMode::Declared,
     };
-    let element_type = t.translate_ty(&element.ty)?;
+    let element_type = t.translate_refty(&element.ty)?;
     let mut functions = Vec::new();
     let mut exprs = Vec::new();
     let mut reader = element.items.get_items_reader()?;
@@ -257,7 +274,7 @@ pub fn element(
             ElementItem::Expr(expr) => {
                 exprs.push(t.translate_const_expr(
                     &expr,
-                    &element.ty,
+                    &wasmparser::ValType::Ref(element.ty),
                     ConstExprKind::ElementFunction,
                 )?);
             }
@@ -323,17 +340,21 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         (map $arg:ident mem_byte) => (());
         (map $arg:ident flags) => (());
         (map $arg:ident ty) => (t.translate_ty($arg)?);
+        (map $arg:ident hty) => (t.translate_heapty($arg)?);
         (map $arg:ident memarg) => (t.translate_memarg($arg)?);
         (map $arg:ident local_index) => (*$arg);
         (map $arg:ident value) => ($arg);
         (map $arg:ident lane) => (*$arg);
         (map $arg:ident lanes) => (*$arg);
+        (map $arg:ident resumetable) => (t.translate_resumetable(todo!())?);
 
         // This case takes the arguments of a wasmparser instruction and creates
         // a wasm-encoder instruction. There are a few special cases for where
         // the structure of a wasmparser instruction differs from that of
         // wasm-encoder.
         (build $op:ident) => (I::$op);
+        (build Resume $arg:ident) => (I::Resume($arg));
+        (build ResumeThrow $($arg:ident)*) => (I::ResumeThrow(todo!(), todo!()));
         (build BrTable $arg:ident) => (I::BrTable($arg.0, $arg.1));
         (build I32Const $arg:ident) => (I::I32Const(*$arg));
         (build I64Const $arg:ident) => (I::I64Const(*$arg));

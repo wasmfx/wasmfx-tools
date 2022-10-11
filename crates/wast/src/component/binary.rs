@@ -68,6 +68,9 @@ fn encode_core_type(encoder: CoreTypeEncoder, ty: &CoreTypeDef) {
         CoreTypeDef::Module(t) => {
             encoder.module(&t.into());
         }
+        CoreTypeDef::Def(core::TypeDef::Cont(_)) => {
+            todo!("encoding of continuation types not yet implemented")
+        }
     }
 }
 
@@ -420,9 +423,9 @@ impl From<core::ValType<'_>> for wasm_encoder::ValType {
 
 impl From<core::RefType<'_>> for wasm_encoder::ValType {
     fn from(r: core::RefType<'_>) -> Self {
-        match r.heap {
-            core::HeapType::Func => Self::FuncRef,
-            core::HeapType::Extern => Self::ExternRef,
+        match (r.nullable, r.heap) {
+            (true, core::HeapType::Func) => Self::FuncRef,
+            (true, core::HeapType::Extern) => Self::ExternRef,
             _ => {
                 todo!("encoding of GC proposal types not yet implemented")
             }
@@ -720,6 +723,9 @@ impl From<&ModuleType<'_>> for wasm_encoder::ModuleType {
                     ),
                     core::TypeDef::Struct(_) | core::TypeDef::Array(_) => {
                         todo!("encoding of GC proposal types not yet implemented")
+                    }
+                    core::TypeDef::Cont(_) => {
+                        todo!("encoding of continuation types not yet implemented")
                     }
                 },
                 ModuleTypeDecl::Alias(a) => match &a.target {
