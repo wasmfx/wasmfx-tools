@@ -8,8 +8,9 @@ use super::{
 use crate::validator::core::arc::MaybeOwned;
 use crate::{
     limits::*, BinaryReaderError, ConstExpr, Data, DataKind, Element, ElementItem, ElementKind,
-    ExternalKind, FuncType, Global, GlobalType, HeapType, MemoryType, RefType, Result, TableType, TagType, TypeRef,
-    ValType, VisitOperator, WasmFeatures, WasmFuncType, WasmModuleResources, FUNC_REF,
+    ExternalKind, FuncType, Global, GlobalType, HeapType, MemoryType, RefType, Result, TableType,
+    TagType, TypeRef, ValType, VisitOperator, WasmFeatures, WasmFuncType, WasmModuleResources,
+    FUNC_REF,
 };
 use indexmap::IndexMap;
 use std::mem;
@@ -808,7 +809,7 @@ impl Module {
             HeapType::Func | HeapType::Extern => (),
             HeapType::TypedFunc(type_index) => {
                 // Just check that the index is valid
-                self.type_at(type_index, offset)?;
+                self.type_at(type_index.into(), offset)?;
             }
             HeapType::Bot => (),
         }
@@ -823,8 +824,8 @@ impl Module {
                         (HeapType::Func, HeapType::Func) => true,
                         (HeapType::Extern, HeapType::Extern) => true,
                         (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => {
-                            let n1 = self.func_type_at(n1, types, 0).unwrap();
-                            let n2 = self.func_type_at(n2, types, 0).unwrap();
+                            let n1 = self.func_type_at(n1.into(), types, 0).unwrap();
+                            let n2 = self.func_type_at(n2.into(), types, 0).unwrap();
                             self.eq_fns(n1, n2, types)
                         }
                         (_, _) => false,
@@ -855,13 +856,13 @@ impl Module {
             match (ty1, ty2) {
                 (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => {
                     // This seems to be added by typed-conts
-                    n1 == n2 ||
+                    u32::from(n1) == u32::from(n2) ||
                     // We also apparently should assume n1 == n2 in the
                     // following check, which i think deals with cycles somehow
                     // Check whether the defined types are (structurally) equivalent.
                     {
-                        let n1 = self.func_type_at(n1, types, 0).unwrap();
-                        let n2 = self.func_type_at(n2, types, 0).unwrap();
+                        let n1 = self.func_type_at(n1.into(), types, 0).unwrap();
+                        let n2 = self.func_type_at(n2.into(), types, 0).unwrap();
                         self.eq_fns(n1, n2, types)
                     }
                 }

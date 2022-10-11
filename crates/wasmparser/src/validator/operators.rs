@@ -360,7 +360,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
     /// Otherwise the push operation always succeeds.
     fn push_operand<T>(&mut self, ty: T) -> Result<()>
     where
-        T: Into<Option<ValType>>
+        T: Into<Option<ValType>>,
     {
         let maybe_ty = ty.into();
         self.operands.push(maybe_ty);
@@ -445,12 +445,12 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
         };
         if let (Some(actual_ty), Some(expected_ty)) = (actual, expected) {
             if !self.resources.matches(actual_ty, expected_ty) {
-                    bail!(
-                        offset,
-                        "type mismatch: expected {}, found {}",
-                        ty_to_str(expected_ty),
-                        ty_to_str(actual_ty)
-                    );
+                bail!(
+                    offset,
+                    "type mismatch: expected {}, found {}",
+                    ty_to_str(expected_ty),
+                    ty_to_str(actual_ty)
+                );
             }
         }
         Ok(actual)
@@ -467,7 +467,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
                 offset,
                 "type mismatch: expected ref but found {}",
                 ty_to_str(ty)
-            )
+            ),
         }
     }
 
@@ -1012,7 +1012,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
             // Retrieve the continuation reference type (i.e. (cont $ft)).
             match self.label_types(offset, block.0, block.1)?.last() {
                 Some(ValType::Ref(RefType { nullable: _, heap_type: HeapType::TypedFunc(z) })) => {
-                    let ctft2 = self.func_type_at(self.cont_type_at(z, offset)?, offset)?;
+                    let ctft2 = self.func_type_at(self.cont_type_at(z.into(), offset)?, offset)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
                     // This method should be exposed by resources to make this correct
                     for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
@@ -1358,7 +1358,7 @@ where
             );
         }
         match hty {
-            HeapType::TypedFunc(type_index) => self.check_call_ty(offset, type_index)?,
+            HeapType::TypedFunc(type_index) => self.check_call_ty(offset, type_index.into())?,
             HeapType::Bot => (),
             _ => bail!(
                 offset,
@@ -2354,7 +2354,7 @@ where
         }
         self.push_operand(ValType::Ref(RefType {
             nullable: false,
-            heap_type: HeapType::TypedFunc(type_index),
+            heap_type: type_index.try_into().expect("ref.func on function > 2^16"),
         }))?;
         Ok(())
     }
@@ -3396,12 +3396,12 @@ where
         let fidx = self.cont_type_at(type_index, offset)?;
         let rt = RefType {
             nullable: false,
-            heap_type: HeapType::TypedFunc(fidx),
+            heap_type: fidx.try_into().expect("function reference index larger than 2^16"),
         };
         self.pop_operand(offset, Some(ValType::Ref(rt)))?;
         let result = RefType {
             nullable: false,
-            heap_type: HeapType::TypedFunc(type_index),
+            heap_type: type_index.try_into().expect("function reference index larger than 2^16"),
         };
         self.push_operand(ValType::Ref(result))?;
         Ok(())
@@ -3410,8 +3410,8 @@ where
         let rt = self.pop_ref(offset)?;
         match rt.heap_type {
             HeapType::TypedFunc(y) => {
-                let ft1 = self.func_type_at(self.cont_type_at(y, offset)?, offset)?;
-                let ft2 = self.func_type_at(self.cont_type_at(type_index, offset)?, offset)?;
+                let ft1 = self.func_type_at(self.cont_type_at(y.into(), offset)?, offset)?;
+                let ft2 = self.func_type_at(self.cont_type_at(type_index.into(), offset)?, offset)?;
 
                 // Verify that ft1's domain is at least as
                 // large as ft2's domain.
@@ -3445,9 +3445,9 @@ where
                 }
 
                 // Push the continuation reference.
-                self.push_operand(ValType::Ref(RefType { nullable: rt.nullable, heap_type: HeapType::TypedFunc(type_index) }))?;
+                self.push_operand(ValType::Ref(RefType { nullable: rt.nullable, heap_type: type_index.try_into().expect("function reference index larger than 2^16") }))?;
             }
-            HeapType::Bot => self.push_operand(ValType::Ref(RefType { nullable: false, heap_type: HeapType::TypedFunc(type_index) }))?,
+            HeapType::Bot => self.push_operand(ValType::Ref(RefType { nullable: false, heap_type: type_index.try_into().expect("function reference index larger than 2^16") }))?,
             _ => bail!(offset,
                 "type mismatch: instruction requires continuation reference type but stack has {}",
                 ty_to_str(ValType::Ref(rt)))
@@ -3469,7 +3469,7 @@ where
         match rt.heap_type {
             HeapType::TypedFunc(y) => {
                 // ft := ts1 -> ts2
-                let ctft = self.func_type_at(self.cont_type_at(y, offset)?, offset)?;
+                let ctft = self.func_type_at(self.cont_type_at(y.into(), offset)?, offset)?;
                 self.check_resume_table(offset, resumetable, ctft)?;
 
                 // Check that ts1 are available on the stack.
@@ -3494,7 +3494,7 @@ where
         match rt.heap_type {
             HeapType::TypedFunc(y) => {
                 // ct := ts1 -> ts2
-                let ct = self.func_type_at(self.cont_type_at(y, offset)?, offset)?;
+                let ct = self.func_type_at(self.cont_type_at(y.into(), offset)?, offset)?;
                 self.check_resume_table(offset, resumetable, ct)?;
 
                 // tagtype := ts1' -> []
