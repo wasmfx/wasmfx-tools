@@ -1167,7 +1167,7 @@ instructions! {
         ContBind(TypeUse<'a, FunctionType<'a>>) : [0xe1] : "cont.bind",
         Suspend(Index<'a>)              : [0xe2] : "suspend",
         Resume(ResumeTableIndices<'a>)  : [0xe3] : "resume",
-        ResumeThrow(Index<'a>)          : [0xe4] : "resume_throw",
+        ResumeThrow(ResumeThrow<'a>)    : [0xe4] : "resume_throw",
         Barrier(BlockType<'a>)          : [0xe5] : "barrier",
     }
 }
@@ -1203,6 +1203,23 @@ impl<'a> Parse<'a> for BlockType<'a> {
             ty: parser
                 .parse::<TypeUse<'a, FunctionTypeNoNames<'a>>>()?
                 .into(),
+        })
+    }
+}
+
+/// Extra information associated with the resume_throw instruction
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub struct ResumeThrow<'a> {
+    pub index: Index<'a>,
+    pub table: ResumeTableIndices<'a>,
+}
+
+impl<'a> Parse<'a> for ResumeThrow<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        Ok(ResumeThrow {
+            index: parser.parse()?,
+            table: parser.parse()?,
         })
     }
 }

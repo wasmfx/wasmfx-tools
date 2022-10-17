@@ -101,10 +101,12 @@ pub enum WastDirective<'a> {
     AssertException {
         span: Span,
         exec: WastExecute<'a>,
+        message: &'a str,
     },
     AssertSuspension {
         span: Span,
         exec: WastExecute<'a>,
+        message: &'a str,
     },
 }
 
@@ -196,12 +198,14 @@ impl<'a> Parse<'a> for WastDirective<'a> {
             Ok(WastDirective::AssertException {
                 span,
                 exec: parser.parens(|p| p.parse())?,
+                message: parser.parse()?,
             })
         } else if l.peek::<kw::assert_suspension>() {
             let span = parser.parse::<kw::assert_suspension>()?.0;
             Ok(WastDirective::AssertSuspension {
                 span,
                 exec: parser.parens(|p| p.parse())?,
+                message: parser.parse()?,
             })
         } else {
             Err(l.error())

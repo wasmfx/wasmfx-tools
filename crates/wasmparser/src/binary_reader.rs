@@ -1691,7 +1691,9 @@ impl<'a> BinaryReader<'a> {
             0xe1 => visitor.visit_cont_bind(pos, self.read_var_u32()?),
             0xe2 => visitor.visit_suspend(pos, self.read_var_u32()?),
             0xe3 => visitor.visit_resume(pos, self.read_resume_table()?),
-            0xe4 => visitor.visit_resume_throw(pos, self.read_resume_table()?, self.read_var_u32()?),
+            0xe4 => {
+                visitor.visit_resume_throw(pos, self.read_var_u32()?, self.read_resume_table()?)
+            }
             0xe5 => visitor.visit_barrier(pos, self.read_block_type()?),
 
             _ => bail!(pos, "illegal opcode: 0x{code:x}"),
@@ -2452,7 +2454,7 @@ impl fmt::Debug for ResumeTable<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut f = f.debug_struct("ResumeTable");
         f.field("count", &self.cnt);
-        match self.targets().collect::<Result<Vec<(_,_)>>>() {
+        match self.targets().collect::<Result<Vec<(_, _)>>>() {
             Ok(targets) => {
                 f.field("targets", &targets);
             }

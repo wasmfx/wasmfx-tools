@@ -594,7 +594,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
             Rethrow(i) => {
                 self.resolve_label(i)?;
             }
-            Throw(i) | Catch(i) | Suspend(i) | ResumeThrow(i) => {
+            Throw(i) | Catch(i) | Suspend(i) => {
                 self.resolver.resolve(i, Ns::Tag)?;
             }
             Delegate(i) => {
@@ -660,7 +660,13 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                     self.resolve_label(label)?;
                 }
             }
-
+            ResumeThrow(rt) => {
+                self.resolver.resolve(&mut rt.index, Ns::Tag)?;
+                for (tag, label) in &mut rt.table.targets {
+                    self.resolver.resolve(tag, Ns::Tag)?;
+                    self.resolve_label(label)?;
+                }
+            }
             _ => {}
         }
         Ok(())

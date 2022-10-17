@@ -751,6 +751,13 @@ impl Encode for ResumeTableIndices<'_> {
     }
 }
 
+impl Encode for ResumeThrow<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.index.encode(e);
+        self.table.encode(e);
+    }
+}
+
 impl Encode for Float32 {
     fn encode(&self, e: &mut Vec<u8>) {
         e.extend_from_slice(&self.bits.to_le_bytes());

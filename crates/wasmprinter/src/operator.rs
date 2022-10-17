@@ -1956,7 +1956,12 @@ impl<'a> VisitOperator<'a> for PrintOperator<'_, '_> {
     fn visit_resume(&mut self, _pos: usize, _resumetable: ResumeTable) -> Self::Output {
         todo!()
     }
-    fn visit_resume_throw(&mut self, _pos: usize, _resumetable: ResumeTable, _tag_index: u32) -> Self::Output {
+    fn visit_resume_throw(
+        &mut self,
+        _pos: usize,
+        _tag_index: u32,
+        _resumetable: ResumeTable,
+    ) -> Self::Output {
         todo!()
     }
     fn visit_barrier(&mut self, _pos: usize, _blockty: BlockType) -> Self::Output {
