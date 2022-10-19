@@ -14,7 +14,7 @@
  */
 
 use crate::{BinaryReader, Result, SectionIteratorLimited, SectionReader, SectionWithLimitedItems};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::ops::Range;
 
 /// Represents the types of values in a WebAssembly module.
@@ -68,6 +68,12 @@ impl TryFrom<u32> for HeapType {
         Ok(HeapType::TypedFunc(PackedIndex(x.try_into()?)))
     }
 }
+impl Display for PackedIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let i = self.0;
+        write!(f, "{}", i)
+    }
+}
 
 /// A heap type from function references. When the proposal is disabled, Index
 /// is an invalid type.
@@ -104,6 +110,17 @@ impl ValType {
     /// instructions. Current reference types include `funcref` and `externref`.
     pub fn is_reference_type(&self) -> bool {
         matches!(self, ValType::Ref(_))
+    }
+    /// Whether the type is defaultable according to function references
+    /// spec. This amounts to whether it's a non-nullable ref
+    pub fn is_defaultable(&self) -> bool {
+        !matches!(
+            self,
+            ValType::Ref(RefType {
+                nullable: false,
+                ..
+            })
+        )
     }
 }
 
