@@ -691,9 +691,10 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
     fn check_block_type(&self, ty: BlockType) -> Result<()> {
         match ty {
             BlockType::Empty => Ok(()),
-            BlockType::Type(t) => self
+            BlockType::Type(t) =>
+                self
                 .resources
-                .check_value_type(t, &self.features, self.offset),
+                    .check_value_type(t, &self.features, self.offset),
             BlockType::FuncType(idx) => {
                 if !self.features.multi_value {
                     bail!(

@@ -603,7 +603,7 @@ impl Printer {
                 state.core.types.push(Some(ty))
             }
             wasmparser::Type::Cont(type_index) => {
-                self.start_group("cont");
+                self.start_group("cont ");
                 self.print_idx(&state.core.type_names, type_index)?;
                 self.end_group()
             }

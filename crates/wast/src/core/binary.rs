@@ -198,7 +198,7 @@ impl Encode for Type<'_> {
                 array.encode(e)
             }
             TypeDef::Cont(u) => {
-                e.push(0x5f);
+                e.push(0x61);
                 u.encode(e)
             }
         }

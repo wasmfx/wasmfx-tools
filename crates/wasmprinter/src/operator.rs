@@ -93,8 +93,11 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
     fn resumetable(&mut self, targets: ResumeTable<'_>) -> Result<()> {
         for (_, item) in targets.targets().enumerate() {
             let (tag, label) = item?;
+            self.push_str("(tag ");
             self.tag_index(tag)?;
+            self.push_str(" ");
             self.relative_depth(label)?;
+            self.push_str(")");
         }
         Ok(())
     }
@@ -320,6 +323,24 @@ macro_rules! define_visit {
                 chunk[0],
             )?;
         }
+    );
+    (payload $self:ident ContNew $hty:ident) => (
+        $self.push_str(" ");
+        $self.printer.print_type_ref($self.state, $hty, true, None)?;
+    );
+    (payload $self:ident Resume $table:ident) => (
+        if $table.len() > 0 {
+            $self.push_str(" ");
+        }
+        $self.resumetable($table)?;
+    );
+    (payload $self:ident ResumeThrow $tag:ident $table:ident) => (
+        $self.push_str(" ");
+        $self.tag_index($tag)?;
+        if $table.len() > 0 {
+            $self.push_str(" ");
+        }
+        $self.resumetable($table)?;
     );
     (payload $self:ident $op:ident $($arg:ident)*) => (
         $(
