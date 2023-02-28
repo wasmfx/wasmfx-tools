@@ -33,6 +33,12 @@ pub enum BlockType {
 pub struct MemArg {
     /// Alignment, stored as `n` where the actual alignment is `2^n`
     pub align: u8,
+    /// Maximum alignment, stored as `n` where the actual alignment is `2^n`.
+    ///
+    /// Note that this field is not actually read from the binary format, it
+    /// will be a constant depending on which instruction this `MemArg` is a
+    /// payload for.
+    pub max_align: u8,
     /// A fixed byte-offset that this memory immediate specifies.
     ///
     /// Note that the memory64 proposal can specify a full 64-bit byte offset
@@ -130,13 +136,8 @@ pub struct OperatorsReader<'a> {
 }
 
 impl<'a> OperatorsReader<'a> {
-    pub(crate) fn new<'b>(data: &'a [u8], offset: usize) -> OperatorsReader<'b>
-    where
-        'a: 'b,
-    {
-        OperatorsReader {
-            reader: BinaryReader::new_with_offset(data, offset),
-        }
+    pub(crate) fn new(reader: BinaryReader<'a>) -> OperatorsReader<'a> {
+        OperatorsReader { reader }
     }
 
     /// Determines if the reader is at the end of the operators.
@@ -172,18 +173,12 @@ impl<'a> OperatorsReader<'a> {
     }
 
     /// Reads an operator from the reader.
-    pub fn read<'b>(&mut self) -> Result<Operator<'b>>
-    where
-        'a: 'b,
-    {
+    pub fn read(&mut self) -> Result<Operator<'a>> {
         self.reader.read_operator()
     }
 
     /// Converts to an iterator of operators paired with offsets.
-    pub fn into_iter_with_offsets<'b>(self) -> OperatorsIteratorWithOffsets<'b>
-    where
-        'a: 'b,
-    {
+    pub fn into_iter_with_offsets(self) -> OperatorsIteratorWithOffsets<'a> {
         OperatorsIteratorWithOffsets {
             reader: self,
             err: false,
@@ -191,19 +186,15 @@ impl<'a> OperatorsReader<'a> {
     }
 
     /// Reads an operator with its offset.
-    pub fn read_with_offset<'b>(&mut self) -> Result<(Operator<'b>, usize)>
-    where
-        'a: 'b,
-    {
+    pub fn read_with_offset(&mut self) -> Result<(Operator<'a>, usize)> {
         let pos = self.reader.original_position();
         Ok((self.read()?, pos))
     }
 
-    /// Visits an operator with its offset.
-    pub fn visit_with_offset<T>(
-        &mut self,
-        visitor: &mut T,
-    ) -> Result<<T as VisitOperator<'a>>::Output>
+    /// Visit a single operator with the specified [`VisitOperator`] instance.
+    ///
+    /// See [`BinaryReader::visit_operator`] for more information.
+    pub fn visit_operator<T>(&mut self, visitor: &mut T) -> Result<<T as VisitOperator<'a>>::Output>
     where
         T: VisitOperator<'a>,
     {
@@ -227,9 +218,9 @@ impl<'a> IntoIterator for OperatorsReader<'a> {
     /// use wasmparser::{Operator, CodeSectionReader, Result};
     /// # let data: &[u8] = &[
     /// #     0x01, 0x03, 0x00, 0x01, 0x0b];
-    /// let mut code_reader = CodeSectionReader::new(data, 0).unwrap();
-    /// for _ in 0..code_reader.get_count() {
-    ///     let body = code_reader.read().expect("function body");
+    /// let code_reader = CodeSectionReader::new(data, 0).unwrap();
+    /// for body in code_reader {
+    ///     let body = body.expect("function body");
     ///     let mut op_reader = body.get_operators_reader().expect("op reader");
     ///     let ops = op_reader.into_iter().collect::<Result<Vec<Operator>>>().expect("ops");
     ///     assert!(
@@ -282,9 +273,9 @@ impl<'a> Iterator for OperatorsIteratorWithOffsets<'a> {
     /// use wasmparser::{Operator, CodeSectionReader, Result};
     /// # let data: &[u8] = &[
     /// #     0x01, 0x03, 0x00, /* offset = 23 */ 0x01, 0x0b];
-    /// let mut code_reader = CodeSectionReader::new(data, 20).unwrap();
-    /// for _ in 0..code_reader.get_count() {
-    ///     let body = code_reader.read().expect("function body");
+    /// let code_reader = CodeSectionReader::new(data, 20).unwrap();
+    /// for body in code_reader {
+    ///     let body = body.expect("function body");
     ///     let mut op_reader = body.get_operators_reader().expect("op reader");
     ///     let ops = op_reader.into_iter_with_offsets().collect::<Result<Vec<(Operator, usize)>>>().expect("ops");
     ///     assert!(
@@ -307,7 +298,7 @@ impl<'a> Iterator for OperatorsIteratorWithOffsets<'a> {
 macro_rules! define_visit_operator {
     ($(@$proposal:ident $op:ident $({ $($arg:ident: $argty:ty),* })? => $visit:ident)*) => {
         $(
-            fn $visit(&mut self, offset: usize $($(,$arg: $argty)*)?) -> Self::Output;
+            fn $visit(&mut self $($(,$arg: $argty)*)?) -> Self::Output;
         )*
     }
 }
@@ -326,12 +317,12 @@ pub trait VisitOperator<'a> {
     /// critical use cases. For performance critical implementations users
     /// are recommended to directly use the respective `visit` methods or
     /// implement [`VisitOperator`] on their own.
-    fn visit_operator(&mut self, offset: usize, op: &Operator<'a>) -> Self::Output {
+    fn visit_operator(&mut self, op: &Operator<'a>) -> Self::Output {
         macro_rules! visit_operator {
             ($(@$proposal:ident $op:ident $({ $($arg:ident: $argty:ty),* })? => $visit:ident)*) => {
                 match op {
                     $(
-                        Operator::$op $({ $($arg),* })? => self.$visit(offset, $($($arg.clone()),*)?),
+                        Operator::$op $({ $($arg),* })? => self.$visit($($($arg.clone()),*)?),
                     )*
                 }
             }
@@ -341,4 +332,30 @@ pub trait VisitOperator<'a> {
     }
 
     for_each_operator!(define_visit_operator);
+}
+
+macro_rules! define_visit_operator_delegate {
+    ($(@$proposal:ident $op:ident $({ $($arg:ident: $argty:ty),* })? => $visit:ident)*) => {
+        $(
+            fn $visit(&mut self $($(,$arg: $argty)*)?) -> Self::Output {
+                V::$visit(&mut *self, $($($arg),*)?)
+            }
+        )*
+    }
+}
+
+impl<'a, 'b, V: VisitOperator<'a> + ?Sized> VisitOperator<'a> for &'b mut V {
+    type Output = V::Output;
+    fn visit_operator(&mut self, op: &Operator<'a>) -> Self::Output {
+        V::visit_operator(*self, op)
+    }
+    for_each_operator!(define_visit_operator_delegate);
+}
+
+impl<'a, V: VisitOperator<'a> + ?Sized> VisitOperator<'a> for Box<V> {
+    type Output = V::Output;
+    fn visit_operator(&mut self, op: &Operator<'a>) -> Self::Output {
+        V::visit_operator(&mut *self, op)
+    }
+    for_each_operator!(define_visit_operator_delegate);
 }

@@ -2,28 +2,25 @@ use anyhow::Result;
 use clap::Parser;
 use std::io;
 use std::process::ExitCode;
-use wasm_tools::Verbosity;
 
 macro_rules! subcommands {
-    ($(($name:ident, $string:tt))*) => {
+    ($(
+        $(#[$attr:meta])*
+        ($name:ident, $string:tt)
+    )*) => {
         $(
             #[cfg(feature = $string)]
             mod $name;
         )*
 
         #[derive(Parser)]
-        #[clap(version)]
+        #[clap(version = version())]
         #[allow(non_camel_case_types)]
         enum WasmTools {
             $(
                 #[cfg(feature = $string)]
-                $name {
-                    #[clap(flatten)]
-                    opts: $name::Opts,
-
-                    #[clap(flatten)]
-                    verbosity: Verbosity,
-                },
+                $(#[$attr])*
+                $name($name::Opts),
             )*
         }
 
@@ -32,10 +29,7 @@ macro_rules! subcommands {
                 match self {
                     $(
                         #[cfg(feature = $string)]
-                        Self::$name { opts, verbosity } => {
-                            verbosity.init_logger();
-                            opts.run()
-                        }
+                        Self::$name(opts) => opts.run(),
                     )*
                 }
             }
@@ -54,6 +48,11 @@ subcommands! {
     (objdump, "objdump")
     (strip, "strip")
     (compose, "compose")
+    (demangle, "demangle")
+    #[command(subcommand)]
+    (component, "component")
+    #[command(subcommand)]
+    (metadata, "metadata")
 }
 
 fn main() -> ExitCode {
@@ -73,6 +72,11 @@ fn main() -> ExitCode {
     }
     eprintln!("Error: {:?}", err);
     ExitCode::FAILURE
+}
+
+/// If CARGO_VERSION_INFO is set, use it, otherwise use CARGO_PKG_VERSION.
+fn version() -> &'static str {
+    option_env!("CARGO_VERSION_INFO").unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 
 #[test]

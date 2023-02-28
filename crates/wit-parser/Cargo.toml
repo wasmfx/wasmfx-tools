@@ -1,0 +1,31 @@
+[package]
+name = "wit-parser"
+authors = ["Alex Crichton <alex@alexcrichton.com>"]
+version = "0.6.2"
+edition.workspace = true
+license = "Apache-2.0 WITH LLVM-exception"
+readme = "README.md"
+repository = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wit-parser"
+homepage = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wit-parser"
+documentation = "https://docs.rs/wit-parser"
+description = """
+Tooling for parsing `*.wit` files and working with their contents.
+"""
+
+[dependencies]
+id-arena = "2"
+anyhow = { workspace = true }
+indexmap = { workspace = true }
+pulldown-cmark = { version = "0.8", default-features = false }
+unicode-xid = "0.2.2"
+log = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+rayon = "1"
+env_logger = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[[test]]
+name = "all"
+harness = false

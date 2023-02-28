@@ -103,9 +103,8 @@ impl State {
         let mut config = SwarmConfig::arbitrary(&mut u)?;
         config.allow_start_export = false;
 
-        // Temporarily disable the multi-memory proposal until the updated
-        // encoding of multi-memory has made its way into Wasmtime.
-        config.max_memories = config.max_memories.min(1);
+        // Wasmtime doesn't support this proposal yet.
+        config.tail_call_enabled = false;
 
         let mut wasm = wasm_smith::Module::new(config, &mut u)?;
         wasm.ensure_termination(10_000);
@@ -118,7 +117,7 @@ impl State {
         let module = Module::new(&self.engine, &wasm).expect("failed to compile module");
         let mut store = Store::new(
             &self.engine,
-            StoreLimits {
+            fuzz_stats::limits::StoreLimits {
                 remaining_memory: 1 << 30,
                 oom: false,
             },
@@ -179,36 +178,5 @@ impl State {
         stat("i-oom", &self.instantiate_oom);
         stat("i-trap", &self.instantiate_trap);
         println!();
-    }
-}
-
-struct StoreLimits {
-    remaining_memory: usize,
-    oom: bool,
-}
-
-impl StoreLimits {
-    fn alloc(&mut self, amt: usize) -> bool {
-        match self.remaining_memory.checked_sub(amt) {
-            Some(mem) => {
-                self.remaining_memory = mem;
-                true
-            }
-            None => {
-                self.oom = true;
-                false
-            }
-        }
-    }
-}
-
-impl ResourceLimiter for StoreLimits {
-    fn memory_growing(&mut self, current: usize, desired: usize, _maximum: Option<usize>) -> bool {
-        self.alloc(desired - current)
-    }
-
-    fn table_growing(&mut self, current: u32, desired: u32, _maximum: Option<u32>) -> bool {
-        let delta = (desired - current) as usize * std::mem::size_of::<usize>();
-        self.alloc(delta)
     }
 }

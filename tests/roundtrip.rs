@@ -23,7 +23,9 @@
 
 use anyhow::{bail, Context, Result};
 use rayon::prelude::*;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use wasmparser::*;
@@ -35,6 +37,10 @@ use wast::{parser, QuoteWat, Wast, WastDirective, Wat};
 fn main() {
     let tests = find_tests();
     let filter = std::env::args().nth(1);
+    let bless = std::env::var_os("BLESS").is_some();
+    if bless {
+        std::fs::remove_dir_all("tests/snapshots").expect("clear the snapshots directory");
+    }
 
     let tests = tests
         .par_iter()
@@ -81,7 +87,12 @@ fn main() {
 /// then load up and test in parallel.
 fn find_tests() -> Vec<PathBuf> {
     let mut tests = Vec::new();
-    if !Path::new("tests/testsuite").exists() {
+    let test_suite = Path::new("tests/testsuite");
+    if !test_suite.exists()
+        || std::fs::read_dir(test_suite)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(true)
+    {
         panic!("submodules need to be checked out");
     }
     find_tests("tests/local".as_ref(), &mut tests);
@@ -124,13 +135,6 @@ fn skip_test(test: &Path, contents: &[u8]) -> bool {
         "exception-handling/try_delegate.wast",
         "exception-handling/try_catch.wast",
         "exception-handling/throw.wast",
-        // TODO: Initialization checking
-        "function-references/func.wast",
-        // TODO: Initialization checking
-        "function-references/local_get.wast",
-        // TODO: new syntax for table types has been added with an optional
-        // initializer which needs parsing in the text format.
-        "function-references/table.wast",
         // TODO: This references an instruction which has since been removed
         // from the proposal so the test needs an update.
         "relaxed-simd/relaxed_fma_fms.wast",
@@ -191,6 +195,10 @@ impl TestState {
         // Test that we can print these bytes.
         let string = wasmprinter::print_bytes(contents).context("failed to print wasm")?;
         self.bump_ntests();
+        // Snapshot these bytes.
+        self.snapshot("print", test, &string)
+            .context("failed to validate the `print` snapshot")?;
+        self.bump_ntests();
 
         // If we can, convert the string back to bytes and assert it has the
         // same binary representation.
@@ -202,6 +210,32 @@ impl TestState {
             self.binary_compare(&binary2, contents)
                 .context("failed to compare original `wat` with roundtrip `wat`")
                 .context(format!("as parsed:\n{}", string))?;
+        }
+
+        // Test that the `wasmprinter`-printed bytes have "pretty" whitespace
+        // which means that all whitespace is either categorized as leading
+        // whitespace or a single space. Examples of "bad whitespace" are:
+        //
+        // * trailing whitespace at the end of a line
+        // * two spaces in a row
+        //
+        // Both of these cases indicate possible bugs in `wasmprinter` itself
+        // which while they don't actually affect the meaning they do "affect"
+        // humans reading the output.
+        for token in wast::lexer::Lexer::new(&string).allow_confusing_unicode(true) {
+            let ws = match token? {
+                wast::lexer::Token::Whitespace(ws) => ws,
+                _ => continue,
+            };
+            if ws.starts_with("\n") || ws == " " {
+                continue;
+            }
+            let offset = ws.as_ptr() as usize - string.as_ptr() as usize;
+            let span = wast::token::Span::from_offset(offset);
+            let msg = format!("found non-one-length whitespace in `wasmprinter` output: {ws:?}");
+            let mut err = wast::Error::new(span, msg);
+            err.set_text(&string);
+            return Err(err.into());
         }
 
         Ok(())
@@ -226,9 +260,10 @@ impl TestState {
         let errors = wast
             .directives
             .into_par_iter()
-            .filter_map(|directive| {
+            .enumerate()
+            .filter_map(|(index, directive)| {
                 let span = directive.span();
-                self.test_wast_directive(test, directive)
+                self.test_wast_directive(test, directive, index)
                     .with_context(|| {
                         let (line, col) = span.linecol_in(contents);
                         format!(
@@ -256,21 +291,23 @@ impl TestState {
         bail!("{}", s)
     }
 
-    fn test_wast_directive(&self, test: &Path, directive: WastDirective) -> Result<()> {
+    fn test_wast_directive(&self, test: &Path, directive: WastDirective, idx: usize) -> Result<()> {
         // Only test parsing and encoding of modules which wasmparser doesn't
         // support test (basically just test `wast`, nothing else)
         let skip_verify = test.iter().any(|t| t == "gc")
-            || (test.iter().any(|t| t == "function-references")
-                && test.iter().any(|t| {
-                    // These shouldn't pass (we don't plan to support them as
-                    // they are in spec limbo)
-                    t == "let.wast"
-                        || t == "let-bad.wast"
-                        || t == "func_bind.wast"
-                        // I think this test may be broken or out of sync with the spec
-                        // https://bytecodealliance.zulipchat.com/#narrow/stream/329587-wasmfx/topic/br_table.2Ewast.20.2F.20.28table.20.2E.2E.2E.20.28elem.20.2E.2E.2E.29.29.20issue/near/290806324
-                        || t == "br_table.wast"
-                }));
+            // This specific test contains a module along the lines of:
+            //
+            //  (module
+            //   (type $t (func))
+            //   (func $tf)
+            //   (table $t (ref null $t) (elem $tf))
+            //  )
+            //
+            // which doesn't currently validate since the injected element
+            // segment has a type of `funcref` which isn't compatible with the
+            // table's type. The spec interpreter thinks this should validate,
+            // however, and I'm not entirely sure why.
+            || test.ends_with("function-references/br_table.wast");
 
         match directive {
             WastDirective::Wat(mut module) => {
@@ -290,7 +327,11 @@ impl TestState {
 
                     _ => true,
                 };
-                self.test_wasm(test, &actual, test_roundtrip)
+
+                let mut test_path = test.to_path_buf();
+                test_path.push(idx.to_string());
+
+                self.test_wasm(&test_path, &actual, test_roundtrip)
                     .context("failed testing wasm binary produced by `wast`")?;
             }
 
@@ -363,6 +404,67 @@ impl TestState {
         Ok(())
     }
 
+    /// Compare the test result with a snapshot stored in the repository.
+    ///
+    /// Works great for tools like wasmprinter for which having a nice overview of what effect the
+    /// changes cause.
+    fn snapshot(&self, kind: &str, path: &Path, contents: &str) -> Result<()> {
+        let contents = contents.replace("\r\n", "\n");
+        let bless = std::env::var_os("BLESS").is_some();
+        let snapshot_dir = ["tests", "snapshots"]
+            .into_iter()
+            .collect::<std::path::PathBuf>();
+        let test_name = path
+            .iter()
+            .skip_while(|&c| c != std::ffi::OsStr::new("tests"))
+            .skip(1)
+            .collect::<std::path::PathBuf>();
+        let mut snapshot_name = test_name.into_os_string();
+        snapshot_name.push(".");
+        snapshot_name.push(kind);
+        let snapshot_path = snapshot_dir.join(snapshot_name);
+        if bless {
+            std::fs::create_dir_all(snapshot_path.parent().unwrap()).with_context(|| {
+                format!("could not create the snapshot dir {:?}", snapshot_path)
+            })?;
+            std::fs::write(&snapshot_path, contents).with_context(|| {
+                format!("could not write out the snapshot to {:?}", snapshot_path)
+            })?;
+        } else {
+            let snapshot = std::fs::read(snapshot_path)
+                .context("could not read the snapshot, try `env BLESS=1`")?;
+            let snapshot =
+                std::str::from_utf8(&snapshot).context("can't decode snapshot as utf-8")?;
+            // Handle git possibly doing some newline shenanigans on windows.
+            let snapshot = snapshot.replace("\r\n", "\n");
+            if snapshot != contents {
+                let mut result = String::with_capacity(snapshot.len());
+                for diff in diff::lines(&snapshot, &contents) {
+                    match diff {
+                        diff::Result::Left(s) => {
+                            result.push_str("-");
+                            result.push_str(s);
+                        }
+                        diff::Result::Right(s) => {
+                            result.push_str("+");
+                            result.push_str(s);
+                        }
+                        diff::Result::Both(s, _) => {
+                            result.push_str(" ");
+                            result.push_str(s);
+                        }
+                    }
+                    result.push_str("\n");
+                }
+                anyhow::bail!(
+                    "snapshot does not match the expected result, try `env BLESS=1`\n{}",
+                    result
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Compare the `actual` and `expected`, asserting that they are the same.
     ///
     /// If they are not equal this attempts to produce as nice of an error
@@ -391,8 +493,8 @@ impl TestState {
             msg.push_str(&format!("       | + {:#04x}\n", actual[pos]));
         }
 
-        if let Ok(actual) = wasmparser_dump::dump_wasm(&actual) {
-            if let Ok(expected) = wasmparser_dump::dump_wasm(&expected) {
+        if let Ok(actual) = self.dump(&actual) {
+            if let Ok(expected) = self.dump(&expected) {
                 let mut actual = actual.lines();
                 let mut expected = expected.lines();
                 let mut differences = 0;
@@ -429,6 +531,21 @@ impl TestState {
         bail!("{}", msg);
     }
 
+    fn dump(&self, bytes: &[u8]) -> Result<String> {
+        let mut dump = Command::new(env!("CARGO_BIN_EXE_wasm-tools"))
+            .arg("dump")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        dump.stdin.take().unwrap().write_all(bytes)?;
+        let mut stdout = String::new();
+        dump.stdout.take().unwrap().read_to_string(&mut stdout)?;
+        if dump.wait()?.success() {
+            bail!("dump subcommand failed");
+        }
+        Ok(stdout)
+    }
+
     fn wasmparser_validator_for(&self, test: &Path) -> Validator {
         let mut features = WasmFeatures {
             threads: true,
@@ -439,7 +556,7 @@ impl TestState {
             bulk_memory: true,
             tail_call: true,
             component_model: false,
-            deterministic_only: false,
+            floats: true,
             multi_value: true,
             multi_memory: true,
             memory64: true,
@@ -449,6 +566,7 @@ impl TestState {
             mutable_global: true,
             function_references: true,
             typed_continuations: true,
+            memory_control: true,
         };
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
@@ -464,6 +582,7 @@ impl TestState {
                     features.bulk_memory = false;
                     features.function_references = false;
                 }
+                "floats-disabled.wast" => features.floats = false,
                 "threads" => {
                     features.threads = true;
                     features.bulk_memory = false;
@@ -480,9 +599,6 @@ impl TestState {
                 "multi-memory" => features.multi_memory = true,
                 "extended-const" => features.extended_const = true,
                 "function-references" => features.function_references = true,
-                // function-references has tests for return_call_ref which
-                // depend on tail calls
-                "return_call_ref.wast" => features.tail_call = true,
                 "relaxed-simd" => features.relaxed_simd = true,
                 "reference-types" => features.reference_types = true,
                 _ => {}

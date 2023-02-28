@@ -1,6 +1,6 @@
 use crate::{Error, Result};
 use wasm_encoder::*;
-use wasmparser::{DataKind, ElementItem, ElementKind, FunctionBody, Global, Operator, Type};
+use wasmparser::{DataKind, ElementKind, FunctionBody, Global, Operator, Type};
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone)]
 pub enum Item {
@@ -20,6 +20,7 @@ pub enum ConstExprKind {
     ElementOffset,
     ElementFunction,
     DataOffset,
+    TableInit,
 }
 
 pub trait Translator {
@@ -58,11 +59,11 @@ pub trait Translator {
         ty(self.as_obj(), t)
     }
 
-    fn translate_refty(&mut self, t: &wasmparser::RefType) -> Result<ValType> {
+    fn translate_refty(&mut self, t: &wasmparser::RefType) -> Result<RefType> {
         refty(self.as_obj(), t)
     }
 
-    fn translate_heapty(&mut self, t: &wasmparser::HeapType) -> Result<ValType> {
+    fn translate_heapty(&mut self, t: &wasmparser::HeapType) -> Result<HeapType> {
         heapty(self.as_obj(), t)
     }
 
@@ -180,19 +181,31 @@ pub fn tag_type(t: &mut dyn Translator, ty: &wasmparser::TagType) -> Result<wasm
     })
 }
 
-pub fn ty(_t: &mut dyn Translator, ty: &wasmparser::ValType) -> Result<ValType> {
-    crate::module::map_type(*ty)
-}
-
-pub fn refty(_t: &mut dyn Translator, ty: &wasmparser::RefType) -> Result<ValType> {
-    crate::module::map_ref_type(*ty)
-}
-
-pub fn heapty(_t: &mut dyn Translator, ty: &wasmparser::HeapType) -> Result<ValType> {
+pub fn ty(t: &mut dyn Translator, ty: &wasmparser::ValType) -> Result<ValType> {
     match ty {
-        wasmparser::HeapType::Func => Ok(ValType::FuncRef),
-        wasmparser::HeapType::Extern => Ok(ValType::ExternRef),
-        _ => unimplemented!(),
+        wasmparser::ValType::I32 => Ok(ValType::I32),
+        wasmparser::ValType::I64 => Ok(ValType::I64),
+        wasmparser::ValType::F32 => Ok(ValType::F32),
+        wasmparser::ValType::F64 => Ok(ValType::F64),
+        wasmparser::ValType::V128 => Ok(ValType::V128),
+        wasmparser::ValType::Ref(ty) => Ok(ValType::Ref(t.translate_refty(ty)?)),
+    }
+}
+
+pub fn refty(t: &mut dyn Translator, ty: &wasmparser::RefType) -> Result<RefType> {
+    Ok(RefType {
+        nullable: ty.nullable,
+        heap_type: t.translate_heapty(&ty.heap_type)?,
+    })
+}
+
+pub fn heapty(t: &mut dyn Translator, ty: &wasmparser::HeapType) -> Result<HeapType> {
+    match ty {
+        wasmparser::HeapType::Func => Ok(HeapType::Func),
+        wasmparser::HeapType::Extern => Ok(HeapType::Extern),
+        wasmparser::HeapType::TypedFunc(i) => {
+            Ok(HeapType::TypedFunc(t.remap(Item::Type, (*i).into())?))
+        }
     }
 }
 
@@ -259,31 +272,34 @@ pub fn element(
         ElementKind::Declared => ElementMode::Declared,
     };
     let element_type = t.translate_refty(&element.ty)?;
-    let mut functions = Vec::new();
-    let mut exprs = Vec::new();
-    let mut reader = element.items.get_items_reader()?;
-    for _ in 0..reader.get_count() {
-        match reader.read()? {
-            ElementItem::Func(idx) => {
-                functions.push(t.remap(Item::Function, idx)?);
-            }
-            ElementItem::Expr(expr) => {
-                exprs.push(t.translate_const_expr(
-                    &expr,
-                    &wasmparser::ValType::Ref(element.ty),
-                    ConstExprKind::ElementFunction,
-                )?);
-            }
+    let functions;
+    let exprs;
+    let elements = match element.items {
+        wasmparser::ElementItems::Functions(reader) => {
+            functions = reader
+                .into_iter()
+                .map(|f| t.remap(Item::Function, f?))
+                .collect::<Result<Vec<_>, _>>()?;
+            Elements::Functions(&functions)
         }
-    }
+        wasmparser::ElementItems::Expressions(reader) => {
+            exprs = reader
+                .into_iter()
+                .map(|f| {
+                    t.translate_const_expr(
+                        &f?,
+                        &wasmparser::ValType::Ref(element.ty),
+                        ConstExprKind::ElementFunction,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Elements::Expressions(&exprs)
+        }
+    };
     s.segment(ElementSegment {
         mode,
         element_type,
-        elements: if reader.uses_exprs() {
-            Elements::Expressions(&exprs)
-        } else {
-            Elements::Functions(&functions)
-        },
+        elements,
     });
     Ok(())
 }

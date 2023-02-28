@@ -20,6 +20,7 @@
 //! functions is processed in order to construct an equivalent piece of code.
 //!
 
+pub mod add_custom;
 pub mod add_function;
 pub mod add_type;
 pub mod codemotion;
@@ -91,7 +92,7 @@ pub trait Mutator {
     /// `std::iter::once`, to give the fuzzer a chance to choose a new kind of
     /// mutation.
     fn mutate<'a>(
-        self,
+        &self,
         config: &'a mut WasmMutate,
     ) -> Result<Box<dyn Iterator<Item = Result<Module>> + 'a>>;
 
