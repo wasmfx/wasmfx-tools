@@ -888,7 +888,6 @@ impl Module {
                             }
                             ConstExpr::ref_null(ty.heap_type)
                         }
-                        ValType::Ref(_) => unimplemented!(),
                     }))
                 }));
 

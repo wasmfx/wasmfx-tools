@@ -358,7 +358,12 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         (map $arg:ident value) => ($arg);
         (map $arg:ident lane) => (*$arg);
         (map $arg:ident lanes) => (*$arg);
-        (map $arg:ident resumetable) => (todo!());
+        (map $arg:ident resumetable) => (
+            $arg
+                .targets()
+                .collect::<Result<Vec<_>, wasmparser::BinaryReaderError>>()?
+                .into()
+        );
 
         // This case takes the arguments of a wasmparser instruction and creates
         // a wasm-encoder instruction. There are a few special cases for where
@@ -366,7 +371,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         // wasm-encoder.
         (build $op:ident) => (I::$op);
         (build Resume $arg:ident) => (I::Resume($arg));
-        (build ResumeThrow $($arg:ident)*) => (I::ResumeThrow(todo!(), todo!()));
+        (build ResumeThrow $tag_index:ident $resumetable:ident) => (I::ResumeThrow($tag_index, $resumetable));
         (build BrTable $arg:ident) => (I::BrTable($arg.0, $arg.1));
         (build I32Const $arg:ident) => (I::I32Const(*$arg));
         (build I64Const $arg:ident) => (I::I64Const(*$arg));
