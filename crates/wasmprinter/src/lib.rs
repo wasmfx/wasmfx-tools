@@ -603,9 +603,10 @@ impl Printer {
                 state.core.types.push(Some(ty))
             }
             wasmparser::Type::Cont(type_index) => {
-                self.start_group("cont ");
-                self.print_idx(&state.core.type_names, type_index)?;
-                self.end_group()
+                self.start_group("cont");
+                self.print_cont_type(state, type_index)?;
+                self.end_group();
+                state.core.types.push(None) // TODO(dhil): not too sure what the purpose of state.core.types is...
             }
         };
         self.end_group(); // `type` itself
@@ -682,6 +683,15 @@ impl Printer {
             self.result.push(')');
         }
         Ok(ty.params().len() as u32)
+    }
+
+    fn print_cont_type(
+        &mut self,
+        state: &State,
+        type_index: u32,
+    ) -> Result<()> {
+        self.result.push(' ');
+        self.print_idx(&state.core.type_names, type_index)
     }
 
     fn print_valtype(&mut self, ty: ValType) -> Result<()> {
