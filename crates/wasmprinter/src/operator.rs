@@ -342,6 +342,10 @@ macro_rules! define_visit {
         }
         $self.resumetable($table)?;
     );
+    (payload $self:ident ContBind $hty:ident) => (
+        $self.push_str(" ");
+        $self.printer.print_type_ref($self.state, $hty, true, None)?;
+    );
     (payload $self:ident $op:ident $($arg:ident)*) => (
         $(
             $self.push_str(" ");
