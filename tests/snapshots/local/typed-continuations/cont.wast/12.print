@@ -1,0 +1,48 @@
+(module $state
+  (type $f (;0;) (func (param i32) (result i32)))
+  (type $k (;1;) (cont $f))
+  (type (;2;) (func (result i32)))
+  (type (;3;) (func (param i32 (ref 1)) (result i32)))
+  (type (;4;) (func (result i32 (ref 1))))
+  (func $runner (;0;) (type 3) (param $s i32) (param $k (ref 1)) (result i32)
+    loop $loop ;; label = @1
+      block $on_get (result (ref 1)) ;; label = @2
+        block $on_set (type 4) (result i32 (ref 1)) ;; label = @3
+          local.get $s
+          local.get $k
+          resume (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          return
+        end
+        local.set $k
+        local.set $s
+        br 1 (;@1;)
+      end
+      local.set $k
+      br 0 (;@1;)
+    end
+    unreachable
+  )
+  (func $f (;1;) (type $f) (param i32) (result i32)
+    i32.const 7
+    suspend 1
+    drop
+    suspend 0
+    i32.const 2
+    i32.const 3
+    suspend 1
+    suspend 0
+    i32.add
+    i32.mul
+    i32.add
+  )
+  (func (;2;) (type 2) (result i32)
+    i32.const 0
+    ref.func $f
+    cont.new (type $k)
+    call $runner
+  )
+  (tag (;0;) (type 2) (result i32))
+  (tag (;1;) (type $f) (param i32) (result i32))
+  (export "run" (func 2))
+  (elem (;0;) declare func $f)
+)
