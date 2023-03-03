@@ -823,6 +823,19 @@ impl Module {
         Ok(())
     }
 
+    fn eq_defs(&self, t1: u32, t2: u32, types: &TypeList, offset: usize) -> bool {
+        if let Ok(x) = self.type_at(t1, offset) {
+            if let Ok(y) = self.type_at(t2, offset) {
+                return match (&types[x], &types[y]) {
+                    (Type::Func(f1), Type::Func(f2)) => self.eq_fns(&f1, &f2, types),
+                    (Type::Cont(c1), Type::Cont(c2)) => c1 == c2,
+                    (_, _) => false,
+                }
+            }
+        }
+        return false;
+    }
+
     fn eq_valtypes(&self, ty1: ValType, ty2: ValType, types: &TypeList) -> bool {
         match (ty1, ty2) {
             (ValType::Ref(rt1), ValType::Ref(rt2)) => {
@@ -830,11 +843,7 @@ impl Module {
                     && match (rt1.heap_type, rt2.heap_type) {
                         (HeapType::Func, HeapType::Func) => true,
                         (HeapType::Extern, HeapType::Extern) => true,
-                        (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => {
-                            let n1 = self.func_type_at(n1.into(), types, 0).unwrap();
-                            let n2 = self.func_type_at(n2.into(), types, 0).unwrap();
-                            self.eq_fns(n1, n2, types)
-                        }
+                        (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => self.eq_defs(n1.into(), n2.into(), types, 0),
                         (_, _) => false,
                     }
             }
@@ -863,9 +872,7 @@ impl Module {
             match (ty1, ty2) {
                 (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => {
                     // Check whether the defined types are (structurally) equivalent.
-                    let n1 = self.func_type_at(n1.into(), types, 0).unwrap();
-                    let n2 = self.func_type_at(n2.into(), types, 0).unwrap();
-                    self.eq_fns(n1, n2, types)
+                    self.eq_defs(n1.into(), n2.into(), types, 0)
                 }
                 (HeapType::TypedFunc(_), HeapType::Func) => true,
                 (_, _) => ty1 == ty2,
