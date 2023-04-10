@@ -323,6 +323,14 @@ pub trait Config: 'static + std::fmt::Debug {
         false
     }
 
+    /// Determines whether the tail calls proposal is enabled for generating
+    /// instructions.
+    ///
+    /// Defaults to `false`.
+    fn tail_call_enabled(&self) -> bool {
+        false
+    }
+
     /// Determines whether the SIMD proposal is enabled for
     /// generating instructions.
     ///
@@ -449,6 +457,25 @@ pub trait Config: 'static + std::fmt::Debug {
     fn threads_enabled(&self) -> bool {
         false
     }
+
+    /// Returns whether we should avoid generating code that will possibly trap.
+    ///
+    /// For some trapping instructions, this will emit extra instructions to
+    /// ensure they don't trap, while some instructions will simply be excluded.
+    /// In cases where we would run into a trap, we instead choose some
+    /// arbitrary non-trapping behavior. For example, if we detect that a Load
+    /// instruction would attempt to access out-of-bounds memory, we instead
+    /// pretend the load succeeded and push 0 onto the stack.
+    ///
+    /// One type of trap that we can't currently avoid is StackOverflow. Even
+    /// when `disallow_traps` is set to true, wasm-smith will eventually
+    /// generate a program that infinitely recurses, causing the call stack to
+    /// be exhausted.
+    ///
+    /// Defaults to `false`.
+    fn disallow_traps(&self) -> bool {
+        false
+    }
 }
 
 /// The default configuration.
@@ -476,6 +503,7 @@ pub struct SwarmConfig {
     pub available_imports: Option<Vec<u8>>,
     pub bulk_memory_enabled: bool,
     pub canonicalize_nans: bool,
+    pub disallow_traps: bool,
     pub exceptions_enabled: bool,
     pub export_everything: bool,
     pub max_aliases: usize,
@@ -515,6 +543,7 @@ pub struct SwarmConfig {
     pub min_uleb_size: u8,
     pub multi_value_enabled: bool,
     pub reference_types_enabled: bool,
+    pub tail_call_enabled: bool,
     pub relaxed_simd_enabled: bool,
     pub saturating_float_to_int_enabled: bool,
     pub sign_extension_enabled: bool,
@@ -549,6 +578,7 @@ impl<'a> Arbitrary<'a> for SwarmConfig {
             min_uleb_size: u.int_in_range(0..=5)?,
             bulk_memory_enabled: reference_types_enabled || u.arbitrary()?,
             reference_types_enabled,
+            tail_call_enabled: u.arbitrary()?,
             simd_enabled: u.arbitrary()?,
             multi_value_enabled: u.arbitrary()?,
             max_aliases: u.int_in_range(0..=MAX_MAXIMUM)?,
@@ -597,6 +627,7 @@ impl<'a> Arbitrary<'a> for SwarmConfig {
             available_imports: None,
             threads_enabled: false,
             export_everything: false,
+            disallow_traps: false,
         })
     }
 }
@@ -732,6 +763,10 @@ impl Config for SwarmConfig {
         self.reference_types_enabled
     }
 
+    fn tail_call_enabled(&self) -> bool {
+        self.tail_call_enabled
+    }
+
     fn simd_enabled(&self) -> bool {
         self.simd_enabled
     }
@@ -794,5 +829,9 @@ impl Config for SwarmConfig {
 
     fn table_max_size_required(&self) -> bool {
         self.table_max_size_required
+    }
+
+    fn disallow_traps(&self) -> bool {
+        self.disallow_traps
     }
 }

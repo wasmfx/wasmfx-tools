@@ -236,8 +236,8 @@ impl ShrinkRun {
             function_references: false,
             typed_continuations: false,
 
-            // We'll never enable this here.
-            deterministic_only: false,
+            floats: true,
+            memory_control: true,
         });
 
         validator.validate_all(wasm)?;

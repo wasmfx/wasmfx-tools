@@ -1,4 +1,4 @@
-use crate::{encode_section, Encode, Section, SectionId, ValType};
+use crate::{encode_section, Encode, HeapType, Section, SectionId, ValType};
 use std::borrow::Cow;
 
 /// An encoder for the code section.
@@ -87,8 +87,8 @@ impl CodeSection {
     /// let code_section = [10, 6,    1,         4, 0, 65, 0, 11];
     ///
     /// // Parse the code section.
-    /// let mut reader = wasmparser::CodeSectionReader::new(&code_section, 0).unwrap();
-    /// let body = reader.read().unwrap();
+    /// let reader = wasmparser::CodeSectionReader::new(&code_section, 0).unwrap();
+    /// let body = reader.into_iter().next().unwrap().unwrap();
     /// let body_range = body.range();
     ///
     /// // Add the body to a new code section encoder by copying bytes rather
@@ -322,9 +322,9 @@ pub enum Instruction<'a> {
     BrOnNonNull(u32),
     Return,
     Call(u32),
-    CallRef(ValType),
+    CallRef(HeapType),
     CallIndirect { ty: u32, table: u32 },
-    ReturnCallRef(ValType),
+    ReturnCallRef(HeapType),
     ReturnCall(u32),
     ReturnCallIndirect { ty: u32, table: u32 },
     Throw(u32),
@@ -371,6 +371,7 @@ pub enum Instruction<'a> {
     DataDrop(u32),
     MemoryCopy { src_mem: u32, dst_mem: u32 },
     MemoryFill(u32),
+    MemoryDiscard(u32),
 
     // Numeric instructions.
     I32Const(i32),
@@ -516,7 +517,7 @@ pub enum Instruction<'a> {
 
     // Reference types instructions.
     TypedSelect(ValType),
-    RefNull(ValType),
+    RefNull(HeapType),
     RefIsNull,
     RefFunc(u32),
     RefAsNonNull,
@@ -652,7 +653,7 @@ pub enum Instruction<'a> {
     I8x16MinU,
     I8x16MaxS,
     I8x16MaxU,
-    I8x16RoundingAverageU,
+    I8x16AvgrU,
     I16x8ExtAddPairwiseI8x16S,
     I16x8ExtAddPairwiseI8x16U,
     I16x8Abs,
@@ -680,7 +681,7 @@ pub enum Instruction<'a> {
     I16x8MinU,
     I16x8MaxS,
     I16x8MaxU,
-    I16x8RoundingAverageU,
+    I16x8AvgrU,
     I16x8ExtMulLowI8x16S,
     I16x8ExtMulHighI8x16S,
     I16x8ExtMulLowI8x16U,
@@ -768,15 +769,17 @@ pub enum Instruction<'a> {
     F64x2ConvertLowI32x4U,
     F32x4DemoteF64x2Zero,
     F64x2PromoteLowF32x4,
+
+    // Relaxed simd proposal
     I8x16RelaxedSwizzle,
-    I32x4RelaxedTruncSatF32x4S,
-    I32x4RelaxedTruncSatF32x4U,
-    I32x4RelaxedTruncSatF64x2SZero,
-    I32x4RelaxedTruncSatF64x2UZero,
-    F32x4RelaxedFma,
-    F32x4RelaxedFnma,
-    F64x2RelaxedFma,
-    F64x2RelaxedFnma,
+    I32x4RelaxedTruncF32x4S,
+    I32x4RelaxedTruncF32x4U,
+    I32x4RelaxedTruncF64x2SZero,
+    I32x4RelaxedTruncF64x2UZero,
+    F32x4RelaxedMadd,
+    F32x4RelaxedNmadd,
+    F64x2RelaxedMadd,
+    F64x2RelaxedNmadd,
     I8x16RelaxedLaneselect,
     I16x8RelaxedLaneselect,
     I32x4RelaxedLaneselect,
@@ -786,9 +789,8 @@ pub enum Instruction<'a> {
     F64x2RelaxedMin,
     F64x2RelaxedMax,
     I16x8RelaxedQ15mulrS,
-    I16x8DotI8x16I7x16S,
-    I32x4DotI8x16I7x16AddS,
-    F32x4RelaxedDotBf16x8AddF32x4,
+    I16x8RelaxedDotI8x16I7x16S,
+    I32x4RelaxedDotI8x16I7x16AddS,
 
     // Atomic instructions (the threads proposal)
     MemoryAtomicNotify(MemArg),
@@ -864,7 +866,7 @@ pub enum Instruction<'a> {
     ContBind(u32),
     Suspend(u32),
     Resume(Cow<'a, [(u32, u32)]>),
-    ResumeThrow(Cow<'a, [(u32, u32)]>, u32),
+    ResumeThrow(u32, Cow<'a, [(u32, u32)]>),
     Barrier(BlockType),
 }
 
@@ -1120,6 +1122,11 @@ impl Encode for Instruction<'_> {
             Instruction::MemoryFill(mem) => {
                 sink.push(0xfc);
                 sink.push(0x0b);
+                mem.encode(sink);
+            }
+            Instruction::MemoryDiscard(mem) => {
+                sink.push(0xfc);
+                sink.push(0x12);
                 mem.encode(sink);
             }
 
@@ -1814,7 +1821,7 @@ impl Encode for Instruction<'_> {
                 sink.push(0xFD);
                 0x79u32.encode(sink);
             }
-            Instruction::I8x16RoundingAverageU => {
+            Instruction::I8x16AvgrU => {
                 sink.push(0xFD);
                 0x7Bu32.encode(sink);
             }
@@ -1934,7 +1941,7 @@ impl Encode for Instruction<'_> {
                 sink.push(0xFD);
                 0x99u32.encode(sink);
             }
-            Instruction::I16x8RoundingAverageU => {
+            Instruction::I16x8AvgrU => {
                 sink.push(0xFD);
                 0x9Bu32.encode(sink);
             }
@@ -2362,7 +2369,7 @@ impl Encode for Instruction<'_> {
             }
             Instruction::I64x2LeS => {
                 sink.push(0xFD);
-                0xDDu32.encode(sink);
+                0xDAu32.encode(sink);
             }
             Instruction::I64x2GeS => {
                 sink.push(0xFD);
@@ -2372,35 +2379,35 @@ impl Encode for Instruction<'_> {
                 sink.push(0xFD);
                 0x100u32.encode(sink);
             }
-            Instruction::I32x4RelaxedTruncSatF32x4S => {
+            Instruction::I32x4RelaxedTruncF32x4S => {
                 sink.push(0xFD);
                 0x101u32.encode(sink);
             }
-            Instruction::I32x4RelaxedTruncSatF32x4U => {
+            Instruction::I32x4RelaxedTruncF32x4U => {
                 sink.push(0xFD);
                 0x102u32.encode(sink);
             }
-            Instruction::I32x4RelaxedTruncSatF64x2SZero => {
+            Instruction::I32x4RelaxedTruncF64x2SZero => {
                 sink.push(0xFD);
                 0x103u32.encode(sink);
             }
-            Instruction::I32x4RelaxedTruncSatF64x2UZero => {
+            Instruction::I32x4RelaxedTruncF64x2UZero => {
                 sink.push(0xFD);
                 0x104u32.encode(sink);
             }
-            Instruction::F32x4RelaxedFma => {
+            Instruction::F32x4RelaxedMadd => {
                 sink.push(0xFD);
                 0x105u32.encode(sink);
             }
-            Instruction::F32x4RelaxedFnma => {
+            Instruction::F32x4RelaxedNmadd => {
                 sink.push(0xFD);
                 0x106u32.encode(sink);
             }
-            Instruction::F64x2RelaxedFma => {
+            Instruction::F64x2RelaxedMadd => {
                 sink.push(0xFD);
                 0x107u32.encode(sink);
             }
-            Instruction::F64x2RelaxedFnma => {
+            Instruction::F64x2RelaxedNmadd => {
                 sink.push(0xFD);
                 0x108u32.encode(sink);
             }
@@ -2440,17 +2447,13 @@ impl Encode for Instruction<'_> {
                 sink.push(0xFD);
                 0x111u32.encode(sink);
             }
-            Instruction::I16x8DotI8x16I7x16S => {
+            Instruction::I16x8RelaxedDotI8x16I7x16S => {
                 sink.push(0xFD);
                 0x112u32.encode(sink);
             }
-            Instruction::I32x4DotI8x16I7x16AddS => {
+            Instruction::I32x4RelaxedDotI8x16I7x16AddS => {
                 sink.push(0xFD);
                 0x113u32.encode(sink);
-            }
-            Instruction::F32x4RelaxedDotBf16x8AddF32x4 => {
-                sink.push(0xFD);
-                0x114u32.encode(sink);
             }
 
             // Atmoic instructions from the thread proposal
@@ -2801,7 +2804,7 @@ impl Encode for Instruction<'_> {
             Instruction::Resume(ref _resumetable) => {
                 todo!()
             }
-            Instruction::ResumeThrow(ref _resumetable, _tag_index) => {
+            Instruction::ResumeThrow(_tag_index, ref _resumetable) => {
                 todo!()
             }
             Instruction::Barrier(_blockty) => {
@@ -2844,7 +2847,7 @@ impl ConstExpr {
     }
 
     /// Create a constant expression containing a single `ref.null` instruction.
-    pub fn ref_null(ty: ValType) -> Self {
+    pub fn ref_null(ty: HeapType) -> Self {
         Self::new_insn(Instruction::RefNull(ty))
     }
 

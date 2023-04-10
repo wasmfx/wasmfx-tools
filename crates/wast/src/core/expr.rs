@@ -569,6 +569,7 @@ instructions! {
         MemoryInit(MemoryInit<'a>) : [0xfc, 0x08] : "memory.init",
         MemoryCopy(MemoryCopy<'a>) : [0xfc, 0x0a] : "memory.copy",
         MemoryFill(MemoryArg<'a>) : [0xfc, 0x0b] : "memory.fill",
+        MemoryDiscard(MemoryArg<'a>) : [0xfc, 0x12] : "memory.discard",
         DataDrop(Index<'a>) : [0xfc, 0x09] : "data.drop",
         ElemDrop(Index<'a>) : [0xfc, 0x0d] : "elem.drop",
         TableInit(TableInit<'a>) : [0xfc, 0x0c] : "table.init",
@@ -607,8 +608,8 @@ instructions! {
         ArrayGetS(Index<'a>) : [0xfb, 0x14] : "array.get_s",
         ArrayGetU(Index<'a>) : [0xfb, 0x15] : "array.get_u",
         ArraySet(Index<'a>) : [0xfb, 0x16] : "array.set",
-        ArrayLen(Index<'a>) : [0xfb, 0x17] : "array.len",
         ArrayCopy(ArrayCopy<'a>) : [0xfb, 0x18] : "array.copy",
+        ArrayLen : [0xfb, 0x19] : "array.len",
 
         // gc proposal, i31
         I31New : [0xfb, 0x20] : "i31.new",
@@ -641,6 +642,10 @@ instructions! {
         BrOnNonData(Index<'a>) : [0xfb, 0x64] : "br_on_non_data",
         BrOnNonI31(Index<'a>) : [0xfb, 0x65] : "br_on_non_i31",
         BrOnNonArray(Index<'a>) : [0xfb, 0x67] : "br_on_non_array",
+
+        // gc proposal extern/any coercion operations
+        ExternInternalize : [0xfb, 0x70] : "extern.internalize",
+        ExternExternalize : [0xfb, 0x71] : "extern.externalize",
 
         I32Const(i32) : [0x41] : "i32.const",
         I64Const(i64) : [0x42] : "i64.const",
@@ -1145,10 +1150,10 @@ instructions! {
         I32x4RelaxedTruncF32x4U : [0xfd, 0x102]: "i32x4.relaxed_trunc_f32x4_u",
         I32x4RelaxedTruncF64x2SZero : [0xfd, 0x103]: "i32x4.relaxed_trunc_f64x2_s_zero",
         I32x4RelaxedTruncF64x2UZero : [0xfd, 0x104]: "i32x4.relaxed_trunc_f64x2_u_zero",
-        F32x4RelaxedFma : [0xfd, 0x105]: "f32x4.relaxed_fma",
-        F32x4RelaxedFnma : [0xfd, 0x106]: "f32x4.relaxed_fnma",
-        F64x2RelaxedFma : [0xfd, 0x107]: "f64x2.relaxed_fma",
-        F64x2RelaxedFnma : [0xfd, 0x108]: "f64x2.relaxed_fnma",
+        F32x4RelaxedMadd : [0xfd, 0x105]: "f32x4.relaxed_madd",
+        F32x4RelaxedNmadd : [0xfd, 0x106]: "f32x4.relaxed_nmadd",
+        F64x2RelaxedMadd : [0xfd, 0x107]: "f64x2.relaxed_madd",
+        F64x2RelaxedNmadd : [0xfd, 0x108]: "f64x2.relaxed_nmadd",
         I8x16RelaxedLaneselect : [0xfd, 0x109]: "i8x16.relaxed_laneselect",
         I16x8RelaxedLaneselect : [0xfd, 0x10A]: "i16x8.relaxed_laneselect",
         I32x4RelaxedLaneselect : [0xfd, 0x10B]: "i32x4.relaxed_laneselect",
@@ -1158,9 +1163,8 @@ instructions! {
         F64x2RelaxedMin : [0xfd, 0x10F]: "f64x2.relaxed_min",
         F64x2RelaxedMax : [0xfd, 0x110]: "f64x2.relaxed_max",
         I16x8RelaxedQ15mulrS: [0xfd, 0x111]: "i16x8.relaxed_q15mulr_s",
-        I16x8DotI8x16I7x16S: [0xfd, 0x112]: "i16x8.dot_i8x16_i7x16_s",
-        I32x4DotI8x16I7x16AddS: [0xfd, 0x113]: "i32x4.dot_i8x16_i7x16_add_s",
-        F32x4RelaxedDotBf16x8AddF32x4: [0xfd, 0x114]: "f32x4.relaxed_dot_bf16x8_add_f32x4",
+        I16x8RelaxedDotI8x16I7x16S: [0xfd, 0x112]: "i16x8.relaxed_dot_i8x16_i7x16_s",
+        I32x4RelaxedDotI8x16I7x16AddS: [0xfd, 0x113]: "i32x4.relaxed_dot_i8x16_i7x16_add_s",
 
         // Typed continuations proposal
         ContNew(TypeUse<'a, FunctionType<'a>>) : [0xe0] : "cont.new",
@@ -1941,9 +1945,10 @@ pub struct SelectTypes<'a> {
 
 impl<'a> Parse<'a> for SelectTypes<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
-        let mut tys = None;
+        let mut found = false;
+        let mut list = Vec::new();
         while parser.peek2::<kw::result>() {
-            let mut list = Vec::new();
+            found = true;
             parser.parens(|p| {
                 p.parse::<kw::result>()?;
                 while !p.is_empty() {
@@ -1951,8 +1956,9 @@ impl<'a> Parse<'a> for SelectTypes<'a> {
                 }
                 Ok(())
             })?;
-            tys = Some(list);
         }
-        Ok(SelectTypes { tys })
+        Ok(SelectTypes {
+            tys: if found { Some(list) } else { None },
+        })
     }
 }

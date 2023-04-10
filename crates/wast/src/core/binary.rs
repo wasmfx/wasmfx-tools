@@ -198,7 +198,7 @@ impl Encode for Type<'_> {
                 array.encode(e)
             }
             TypeDef::Cont(u) => {
-                e.push(0x5f);
+                e.push(0x61);
                 u.encode(e)
             }
         }
@@ -248,11 +248,14 @@ impl<'a> Encode for HeapType<'a> {
             HeapType::Extern => e.push(0x6f),
             HeapType::Any => e.push(0x6e),
             HeapType::Eq => e.push(0x6d),
-            HeapType::Data => e.push(0x67),
+            HeapType::Struct => e.push(0x67),
             HeapType::Array => e.push(0x66),
             HeapType::I31 => e.push(0x6a),
-            HeapType::Index(index) => {
-                index.encode(e);
+            // Note that this is encoded as a signed leb128 so be sure to cast
+            // to an i64 first
+            HeapType::Index(Index::Num(n, _)) => i64::from(*n).encode(e),
+            HeapType::Index(Index::Id(n)) => {
+                panic!("unresolved index in emission: {:?}", n)
             }
         }
     }
@@ -276,10 +279,10 @@ impl<'a> Encode for RefType<'a> {
                 nullable: true,
                 heap: HeapType::Eq,
             } => e.push(0x6d),
-            // The 'dataref' binary abbreviation
+            // The 'structref' binary abbreviation
             RefType {
                 nullable: true,
-                heap: HeapType::Data,
+                heap: HeapType::Struct,
             } => e.push(0x67),
             // The 'i31ref' binary abbreviation
             RefType {
@@ -437,7 +440,19 @@ impl Encode for Table<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         assert!(self.exports.names.is_empty());
         match &self.kind {
-            TableKind::Normal(t) => t.encode(e),
+            TableKind::Normal {
+                ty,
+                init_expr: None,
+            } => ty.encode(e),
+            TableKind::Normal {
+                ty,
+                init_expr: Some(init_expr),
+            } => {
+                e.push(0x40);
+                e.push(0x00);
+                ty.encode(e);
+                init_expr.encode(e);
+            }
             _ => panic!("TableKind should be normal during encoding"),
         }
     }

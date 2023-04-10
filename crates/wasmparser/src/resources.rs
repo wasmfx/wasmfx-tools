@@ -14,7 +14,8 @@
  */
 
 use crate::{
-    BinaryReaderError, FuncType, GlobalType, MemoryType, RefType, TableType, ValType, WasmFeatures,
+    BinaryReaderError, FuncType, GlobalType, HeapType, MemoryType, RefType, TableType, ValType,
+    WasmFeatures,
 };
 use std::ops::Range;
 
@@ -209,7 +210,7 @@ pub trait WasmModuleResources {
     /// Returns the global variable at given index.
     fn global_at(&self, at: u32) -> Option<GlobalType>;
     /// Returns the `FuncType` associated with the given type index.
-    fn func_type_at(&self, at: u32) -> Option<&Self::FuncType>;
+    fn func_type_at(&self, type_idx: u32) -> Option<&Self::FuncType>;
     /// Returns the type index associated with the given function
     /// index. type_of_function = func_type_at(type_index_of_function)
     fn type_index_of_function(&self, func_idx: u32) -> Option<u32>;
@@ -229,6 +230,27 @@ pub trait WasmModuleResources {
         features: &WasmFeatures,
         offset: usize,
     ) -> Result<(), BinaryReaderError>;
+
+    /// Checks that a `HeapType` is valid, notably its function index if one is
+    /// used.
+    fn check_heap_type(
+        &self,
+        heap_type: HeapType,
+        features: &WasmFeatures,
+        offset: usize,
+    ) -> Result<(), BinaryReaderError> {
+        // Delegate to the generic value type validation which will have the
+        // same validity checks.
+        self.check_value_type(
+            RefType {
+                nullable: true,
+                heap_type,
+            }
+            .into(),
+            features,
+            offset,
+        )
+    }
 
     /// Returns the number of elements.
     fn element_count(&self) -> u32;

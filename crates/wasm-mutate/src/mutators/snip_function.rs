@@ -3,9 +3,8 @@
 use super::Mutator;
 use crate::module::{PrimitiveTypeInfo, TypeInfo};
 use crate::{Result, WasmMutate};
-
 use rand::Rng;
-use wasm_encoder::{CodeSection, Function, Instruction, Module, ValType};
+use wasm_encoder::{CodeSection, Function, HeapType, Instruction, Module};
 use wasmparser::CodeSectionReader;
 
 /// Mutator that replaces the body of a function with an empty body
@@ -14,24 +13,24 @@ pub struct SnipMutator;
 
 impl Mutator for SnipMutator {
     fn mutate<'a>(
-        self,
+        &self,
         config: &'a mut WasmMutate,
     ) -> Result<Box<dyn Iterator<Item = Result<Module>> + 'a>> {
         let mut codes = CodeSection::new();
         let code_section = config.info().get_code_section();
-        let mut reader = CodeSectionReader::new(code_section.data, 0)?;
-        let count = reader.get_count();
+        let reader = CodeSectionReader::new(code_section.data, 0)?;
+        let count = reader.count();
         let function_to_mutate = config.rng().gen_range(0..count);
         let ftype = config
             .info()
             .get_functype_idx(function_to_mutate + config.info().num_imported_functions())
             .clone();
 
-        for i in 0..count {
+        for (i, func) in reader.into_iter().enumerate() {
             config.consume_fuel(1)?;
-            let f = reader.read().unwrap();
+            let f = func?;
 
-            if i != function_to_mutate {
+            if i as u32 != function_to_mutate {
                 codes.raw(&code_section.data[f.range().start..f.range().end]);
                 continue;
             }
@@ -61,10 +60,10 @@ impl Mutator for SnipMutator {
                                 f.instruction(&Instruction::V128Const(0));
                             }
                             PrimitiveTypeInfo::FuncRef => {
-                                f.instruction(&Instruction::RefNull(ValType::FuncRef));
+                                f.instruction(&Instruction::RefNull(HeapType::Func));
                             }
                             PrimitiveTypeInfo::ExternRef => {
-                                f.instruction(&Instruction::RefNull(ValType::ExternRef));
+                                f.instruction(&Instruction::RefNull(HeapType::Extern));
                             }
                             PrimitiveTypeInfo::Empty => {
                                 unreachable!()

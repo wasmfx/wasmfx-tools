@@ -19,19 +19,19 @@ fn is_empty_section(section: &wasm_encoder::RawSection) -> bool {
     crate::module::match_section_id! {
         match section.id;
         Custom => Ok(section.data.is_empty()),
-        Type => TypeSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Import => ImportSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Function => FunctionSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Table => FunctionSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Memory => MemorySectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Global => GlobalSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Export => ExportSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
+        Type => TypeSectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Import => ImportSectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Function => FunctionSectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Table => FunctionSectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Memory => MemorySectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Global => GlobalSectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Export => ExportSectionReader::new(section.data, 0).map(|r| r.count() == 0),
         Start => Ok(section.data.is_empty()),
-        Element => ElementSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Code => CodeSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
-        Data => DataSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
+        Element => ElementSectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Code => CodeSectionReader::new(section.data, 0).map(|r| r.count() == 0),
+        Data => DataSectionReader::new(section.data, 0).map(|r| r.count() == 0),
         DataCount => Ok(section.data.is_empty()),
-        Tag => TagSectionReader::new(section.data, 0).map(|r| r.get_count() == 0),
+        Tag => TagSectionReader::new(section.data, 0).map(|r| r.count() == 0),
         _ => Ok(section.data.is_empty()),
     }
     .unwrap_or(false)
@@ -50,12 +50,9 @@ impl Mutator for RemoveSection {
     }
 
     fn mutate<'a>(
-        self,
+        &self,
         config: &'a mut WasmMutate,
-    ) -> Result<Box<dyn Iterator<Item = Result<Module>> + 'a>>
-    where
-        Self: Copy,
-    {
+    ) -> Result<Box<dyn Iterator<Item = Result<Module>> + 'a>> {
         let removal_candidates = config
             .info()
             .raw_sections

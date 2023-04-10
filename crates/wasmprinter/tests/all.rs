@@ -169,3 +169,98 @@ fn dont_reserve_the_world() {
         err
     );
 }
+
+#[test]
+fn label_shadowing_block() {
+    const MODULE: &str = r#"
+      (module
+        (type (;0;) (func))
+        (func (;0;) (type 0)
+          block $a ;; label = @1
+            br 0 (;@1;)
+          end
+          block $a ;; label = @1
+            br 0 (;@1;)
+          end
+        )
+      )
+    "#;
+    let bytes = wat::parse_str(MODULE).unwrap();
+    let result = wasmprinter::print_bytes(&bytes).unwrap();
+    assert_eq!(
+        result.replace(" ", "").trim(),
+        MODULE.replace(" ", "").trim()
+    );
+}
+
+#[test]
+fn label_shadowing_block_confusion() {
+    // Make sure we don’t refer to a shadowed label via a name.
+    const MODULE: &str = r#"
+      (module
+        (type (;0;) (func))
+        (func (;0;) (type 0)
+          block $a ;; label = @1
+            block $a ;; label = @2
+              br 1 (;@1;)
+            end
+          end
+        )
+      )
+    "#;
+    let bytes = wat::parse_str(MODULE).unwrap();
+    let result = wasmprinter::print_bytes(&bytes).unwrap();
+    assert_eq!(
+        result.replace(" ", "").trim(),
+        MODULE.replace(" ", "").trim()
+    );
+}
+
+#[test]
+fn label_shadowing_locals() {
+    const MODULE: &str = r#"
+      (module
+        (type (;0;) (func (param i32) (result i32)))
+        (func (;0;) (type 0) (param $l i32) (result i32)
+          (local $#local1<l> (@name "l") i32) (local $#local2<l> (@name "l") i32)
+          local.get $l
+        )
+      )
+    "#;
+    let bytes = wat::parse_str(MODULE).unwrap();
+    let result = wasmprinter::print_bytes(&bytes).unwrap();
+    assert_eq!(
+        result.replace(" ", "").trim(),
+        MODULE.replace(" ", "").trim()
+    );
+}
+
+#[test]
+fn offsets_and_lines_smoke_test() {
+    const MODULE: &str = r#"
+        (;@0     ;) (module
+        (;@b     ;)   (type (;0;) (func (param i32) (result i32)))
+        (;@1f    ;)   (func (;0;) (type 0) (param i32) (result i32)
+        (;@20    ;)     local.get 0
+                      )
+        (;@17    ;)   (export "f" (func 0))
+                    )
+    "#;
+    let bytes = wat::parse_str(MODULE).unwrap();
+
+    let mut printer = wasmprinter::Printer::new();
+    let actual: Vec<_> = printer.offsets_and_lines(&bytes).unwrap().collect();
+
+    #[rustfmt::skip]
+    let expected = vec![
+        (Some(0),    "(module\n"),
+        (Some(0xb),  "  (type (;0;) (func (param i32) (result i32)))\n"),
+        (Some(0x1f), "  (func (;0;) (type 0) (param i32) (result i32)\n"),
+        (Some(0x20), "    local.get 0\n"),
+        (None,       "  )\n"),
+        (Some(0x17), "  (export \"f\" (func 0))\n"),
+        (None,       ")"),
+    ];
+
+    assert_eq!(actual, expected);
+}

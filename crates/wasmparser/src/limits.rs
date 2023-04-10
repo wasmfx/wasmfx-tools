@@ -38,20 +38,20 @@ pub const MAX_WASM_RESUME_TABLE_SIZE: usize = MAX_WASM_FUNCTION_SIZE;
 
 // Component-related limits
 pub const MAX_WASM_MODULE_SIZE: usize = 1024 * 1024 * 1024; //= 1 GiB
-pub const MAX_WASM_MODULE_TYPE_DECLS: usize = 1000;
-pub const MAX_WASM_COMPONENT_TYPE_DECLS: usize = 1000;
-pub const MAX_WASM_INSTANCE_TYPE_DECLS: usize = 1000;
+pub const MAX_WASM_MODULE_TYPE_DECLS: usize = 100_000;
+pub const MAX_WASM_COMPONENT_TYPE_DECLS: usize = 100_000;
+pub const MAX_WASM_INSTANCE_TYPE_DECLS: usize = 100_000;
 pub const MAX_WASM_RECORD_FIELDS: usize = 1000;
 pub const MAX_WASM_VARIANT_CASES: usize = 1000;
 pub const MAX_WASM_TUPLE_TYPES: usize = 1000;
 pub const MAX_WASM_FLAG_NAMES: usize = 1000;
 pub const MAX_WASM_ENUM_CASES: usize = 1000;
 pub const MAX_WASM_UNION_TYPES: usize = 1000;
-pub const MAX_WASM_INSTANTIATION_EXPORTS: usize = 1000;
+pub const MAX_WASM_INSTANTIATION_EXPORTS: usize = 100_000;
 pub const MAX_WASM_CANONICAL_OPTIONS: usize = 10;
-pub const MAX_WASM_INSTANTIATION_ARGS: usize = 1000;
+pub const MAX_WASM_INSTANTIATION_ARGS: usize = 100_000;
 pub const MAX_WASM_START_ARGS: usize = 1000;
-pub const MAX_WASM_TYPE_SIZE: usize = 100_000;
+pub const MAX_WASM_TYPE_SIZE: u32 = 1_000_000;
 pub const MAX_WASM_MODULES: usize = 1_000;
 pub const MAX_WASM_COMPONENTS: usize = 1_000;
 pub const MAX_WASM_INSTANCES: usize = 1_000;

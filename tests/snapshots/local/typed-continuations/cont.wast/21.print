@@ -1,0 +1,98 @@
+(module $scheduler
+  (type $proc (;0;) (func))
+  (type $cont (;1;) (cont $proc))
+  (type (;2;) (func (param (ref 1))))
+  (type (;3;) (func (result i32)))
+  (type (;4;) (func (result (ref null 1))))
+  (type (;5;) (func (result (ref 1) (ref 1))))
+  (func $queue-empty (;0;) (type 3) (result i32)
+    global.get $qfront
+    global.get $qback
+    i32.eq
+  )
+  (func $dequeue (;1;) (type 4) (result (ref null 1))
+    (local $i i32)
+    call $queue-empty
+    if ;; label = @1
+      ref.null 1
+      return
+    end
+    global.get $qfront
+    local.set $i
+    local.get $i
+    i32.const 1
+    i32.add
+    global.set $qfront
+    local.get $i
+    table.get $queue
+  )
+  (func $enqueue (;2;) (type 2) (param $k (ref 1))
+    global.get $qback
+    table.size $queue
+    i32.eq
+    if ;; label = @1
+      global.get $qfront
+      global.get $qdelta
+      i32.lt_u
+      if ;; label = @2
+        ref.null 1
+        global.get $qdelta
+        table.grow $queue
+        drop
+      else
+        global.get $qback
+        global.get $qfront
+        i32.sub
+        global.set $qback
+        i32.const 0
+        global.get $qfront
+        global.get $qback
+        table.copy
+        global.get $qback
+        ref.null 1
+        global.get $qfront
+        table.fill $queue
+        i32.const 0
+        global.set $qfront
+      end
+    end
+    global.get $qback
+    local.get $k
+    table.set $queue
+    global.get $qback
+    i32.const 1
+    i32.add
+    global.set $qback
+  )
+  (func $scheduler (;3;) (type 2) (param $main (ref 1))
+    local.get $main
+    call $enqueue
+    loop $l ;; label = @1
+      call $queue-empty
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_spawn (type 5) (result (ref 1) (ref 1)) ;; label = @3
+          call $dequeue
+          resume (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          br 2 (;@1;)
+        end
+        call $enqueue
+        call $enqueue
+        br 1 (;@1;)
+      end
+      call $enqueue
+      br 0 (;@1;)
+    end
+  )
+  (table $queue (;0;) 0 (ref null 1))
+  (tag (;0;) (type $proc))
+  (tag (;1;) (type 2) (param (ref 1)))
+  (global $qdelta (;0;) i32 i32.const 10)
+  (global $qback (;1;) (mut i32) i32.const 0)
+  (global $qfront (;2;) (mut i32) i32.const 0)
+  (export "yield" (tag 0))
+  (export "spawn" (tag 1))
+  (export "scheduler" (func $scheduler))
+)
