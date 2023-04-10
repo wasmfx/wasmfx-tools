@@ -361,7 +361,7 @@ impl<'a> FromReader<'a> for Type {
     fn from_reader(reader: &mut BinaryReader<'a>) -> Result<Self> {
         Ok(match reader.read_u8()? {
             0x60 => Type::Func(reader.read()?),
-            0x61 => Type::Cont(reader.read()?),
+            0x5d => Type::Cont(reader.read()?),
             x => return reader.invalid_leading_byte(x, "type"),
         })
     }
