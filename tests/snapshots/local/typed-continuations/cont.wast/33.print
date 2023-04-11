@@ -16,25 +16,25 @@
     (local $k6 (ref null 7)) (local $k4 (ref null 6)) (local $k2 (ref null 5))
     block $l (result (ref 7)) ;; label = @1
       ref.func $f
-      cont.new (type $k0)
-      resume (tag 0 0 (;@1;))
+      cont.new $k0
+      resume $k0 (tag 0 0 (;@1;))
       unreachable
     end
     local.set $k6
     i32.const 1
     i32.const 2
     local.get $k6
-    cont.bind (type $k4)
+    cont.bind $k6 $k4
     local.set $k4
     i32.const 3
     i32.const 4
     local.get $k4
-    cont.bind (type $k2)
+    cont.bind $k4 $k2
     local.set $k2
     i32.const 5
     i32.const 6
     local.get $k2
-    resume
+    resume $k2
   )
   (tag (;0;) (type 8) (result i32 i32 i32 i32 i32 i32))
   (export "run" (func 1))

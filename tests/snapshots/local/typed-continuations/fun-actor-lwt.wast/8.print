@@ -1,0 +1,36 @@
+(module $scheduler
+  (type $func (;0;) (func))
+  (type $cont (;1;) (cont $func))
+  (type (;2;) (func (param (ref 1))))
+  (type (;3;) (func (result i32)))
+  (type (;4;) (func (result (ref null 1))))
+  (type (;5;) (func (result (ref 1) (ref 1))))
+  (import "lwt" "yield" (tag (;0;) (type $func)))
+  (import "lwt" "fork" (tag (;1;) (type 2) (param (ref 1))))
+  (import "queue" "queue-empty" (func $queue-empty (;0;) (type 3)))
+  (import "queue" "dequeue" (func $dequeue (;1;) (type 4)))
+  (import "queue" "enqueue" (func $enqueue (;2;) (type 2)))
+  (func $run (;3;) (type 2) (param $main (ref 1))
+    local.get $main
+    call $enqueue
+    loop $l ;; label = @1
+      call $queue-empty
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_fork (type 5) (result (ref 1) (ref 1)) ;; label = @3
+          call $dequeue
+          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          br 2 (;@1;)
+        end
+        call $enqueue
+        call $enqueue
+        br 1 (;@1;)
+      end
+      call $enqueue
+      br 0 (;@1;)
+    end
+  )
+  (export "run" (func $run))
+)

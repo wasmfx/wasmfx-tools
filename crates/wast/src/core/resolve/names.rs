@@ -620,17 +620,23 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
 
             RefNull(ty) | CallRef(ty) | ReturnCallRef(ty) => self.resolver.resolve_heaptype(ty)?,
 
-            ContNew(ty) | ContBind(ty) => {
-                self.resolver.resolve_type_use(ty)?;
+            ContNew(ty) => {
+                self.resolver.resolve(ty, Ns::Type)?;
             }
-            Resume(table) => {
-                for (tag, label) in &mut table.targets {
+            ContBind(cb) => {
+                self.resolver.resolve(&mut cb.src_index, Ns::Type)?;
+                self.resolver.resolve(&mut cb.dst_index, Ns::Type)?;
+            }
+            Resume(r) => {
+                self.resolver.resolve(&mut r.index, Ns::Type)?;
+                for (tag, label) in &mut r.table.targets {
                     self.resolver.resolve(tag, Ns::Tag)?;
                     self.resolve_label(label)?;
                 }
             }
             ResumeThrow(rt) => {
-                self.resolver.resolve(&mut rt.index, Ns::Tag)?;
+                self.resolver.resolve(&mut rt.type_index, Ns::Type)?;
+                self.resolver.resolve(&mut rt.tag_index, Ns::Tag)?;
                 for (tag, label) in &mut rt.table.targets {
                     self.resolver.resolve(tag, Ns::Tag)?;
                     self.resolve_label(label)?;

@@ -33,7 +33,7 @@
   )
   (func $main (;5;) (type $pproc) (param $i i64) (param $j i64)
     ref.func $bg-thread
-    cont.new (type $cont)
+    cont.new $cont
     suspend 1
     ref.func $syield
     global.set $ghook
@@ -50,8 +50,8 @@
     local.get $i
     local.get $j
     ref.func $main
-    cont.new (type $pcont)
-    cont.bind (type $cont)
+    cont.new $pcont
+    cont.bind $pcont $cont
     call $scheduler
     i64.const -2
     call $log

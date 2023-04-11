@@ -1023,7 +1023,10 @@ macro_rules! define_visit {
     (mark_live $self:ident $arg:ident targets) => {};
     (mark_live $self:ident $arg:ident data_index) => {};
     (mark_live $self:ident $arg:ident elem_index) => {};
-    (mark_live $self:ident $arg:ident resumetable) => {}; // TODO(dhil): I don't understand what's going on here. I'll revisit later.
+    // TODO(dhil): I don't understand what's going on here. I'll revisit later.
+    (mark_live $self:ident $type_index:ident resumetable) => {};
+    (mark_live $self:ident $type_index:ident $tag_index:ident resumetable) => {};
+    (mark_live $self:ident $src_index:ident $dst_index:ident) => {};
 }
 
 impl<'a> VisitOperator<'a> for Module<'a> {
@@ -1165,8 +1168,14 @@ macro_rules! define_encode {
     (mk F32Const $v:ident) => (F32Const(f32::from_bits($v.bits())));
     (mk F64Const $v:ident) => (F64Const(f64::from_bits($v.bits())));
     (mk V128Const $v:ident) => (V128Const($v.i128()));
-    (mk ResumeThrow $tag_index:ident $resumetable:ident) => ({
-        ResumeThrow($tag_index, $resumetable)
+    (mk ContBind $src_index:ident $dst_index:ident) => ({
+        ContBind { src_index: $src_index, dst_index: $dst_index }
+    });
+    (mk Resume $type_index:ident  $resumetable:ident) => ({
+        Resume { type_index: $type_index, resumetable: $resumetable }
+    });
+    (mk ResumeThrow $type_index:ident $tag_index:ident $resumetable:ident) => ({
+        ResumeThrow { type_index: $type_index, tag_index: $tag_index, resumetable: $resumetable }
     });
 
     // Catch-all for the translation of one payload argument which is typically
@@ -1207,9 +1216,14 @@ macro_rules! define_encode {
         $arg.targets().map(|i| i.unwrap()).collect::<Vec<_>>().into(),
         $arg.default(),
     ));
-    (map $self:ident $arg:ident resumetable) => (
+    // ContBind source payload
+    (map $self:ident $arg:ident src_index) => {$arg};
+    // ContBind target payload
+    (map $self:ident $arg:ident dst_index) => {$arg};
+    // Resume and ResumeThrow resumetable payload
+    (map $self:ident $arg:ident resumetable) => ((
         $arg.targets().map(|r| r.unwrap()).collect::<Vec<_>>().into()
-    );
+    ));
 }
 
 impl<'a> VisitOperator<'a> for Encoder {

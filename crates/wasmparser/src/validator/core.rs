@@ -827,8 +827,8 @@ impl Module {
         if let Ok(x) = self.type_at(t1, offset) {
             if let Ok(y) = self.type_at(t2, offset) {
                 return match (&types[x], &types[y]) {
-                    (Type::Func(f1), Type::Func(f2)) => self.eq_fns(&f1, &f2, types),
-                    (Type::Cont(c1), Type::Cont(c2)) => c1 == c2,
+                    (Type::Func(f1), Type::Func(f2)) => self.eq_functypes(&f1, &f2, types),
+                    (Type::Cont(c1), Type::Cont(c2)) => c1 == c2 || self.eq_defs(*c1, *c2, types, offset),
                     (_, _) => false,
                 }
             }
@@ -843,14 +843,14 @@ impl Module {
                     && match (rt1.heap_type, rt2.heap_type) {
                         (HeapType::Func, HeapType::Func) => true,
                         (HeapType::Extern, HeapType::Extern) => true,
-                        (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => self.eq_defs(n1.into(), n2.into(), types, 0),
+                        (HeapType::TypedFunc(n1), HeapType::TypedFunc(n2)) => n1 == n2 || self.eq_defs(n1.into(), n2.into(), types, 0),
                         (_, _) => false,
                     }
             }
             _ => ty1 == ty2,
         }
     }
-    fn eq_fns(&self, f1: &impl WasmFuncType, f2: &impl WasmFuncType, types: &TypeList) -> bool {
+    fn eq_functypes(&self, f1: &impl WasmFuncType, f2: &impl WasmFuncType, types: &TypeList) -> bool {
         f1.len_inputs() == f2.len_inputs()
             && f2.len_outputs() == f2.len_outputs()
             && f1
@@ -861,6 +861,10 @@ impl Module {
                 .outputs()
                 .zip(f2.outputs())
                 .all(|(t1, t2)| self.eq_valtypes(t1, t2, types))
+    }
+
+    pub(crate) fn match_functypes(&self, ty1: &impl WasmFuncType, ty2: &impl WasmFuncType, types: &TypeList) -> bool {
+        self.eq_functypes(ty1, ty2, types)
     }
 
     pub(crate) fn matches(&self, ty1: ValType, ty2: ValType, types: &TypeList) -> bool {
@@ -1116,6 +1120,10 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.module.element_types.get(at as usize).cloned()
     }
 
+    fn match_functypes(&self, t1: &impl WasmFuncType, t2: &impl WasmFuncType) -> bool {
+        self.module.match_functypes(t1, t2, self.types)
+    }
+
     fn matches(&self, t1: ValType, t2: ValType) -> bool {
         self.module.matches(t1, t2, self.types)
     }
@@ -1191,6 +1199,10 @@ impl WasmModuleResources for ValidatorResources {
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
         self.0.element_types.get(at as usize).cloned()
+    }
+
+    fn match_functypes(&self, t1: &impl WasmFuncType, t2: &impl WasmFuncType) -> bool {
+        self.0.match_functypes(t1, t2, self.0.snapshot.as_ref().unwrap())
     }
 
     fn matches(&self, t1: ValType, t2: ValType) -> bool {

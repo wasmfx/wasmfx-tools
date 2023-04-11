@@ -1,0 +1,103 @@
+(module $scheduler
+  (type $func (;0;) (func))
+  (type $cont (;1;) (cont $func))
+  (type $i-func (;2;) (func (param i32)))
+  (type $i-cont (;3;) (cont $i-func))
+  (type (;4;) (func (param i32 i32)))
+  (type (;5;) (func (param (ref 3)) (result i32)))
+  (type (;6;) (func (param i32) (result i32)))
+  (type (;7;) (func (result i32)))
+  (type (;8;) (func (result (ref null 1))))
+  (type (;9;) (func (param (ref null 1))))
+  (type (;10;) (func (param i32 (ref 3))))
+  (type (;11;) (func (param i32 i32) (result (ref null 1))))
+  (type (;12;) (func (result i32 i32 (ref 1))))
+  (type (;13;) (func (result (ref 3) (ref 3))))
+  (type (;14;) (func (result i32 (ref 3))))
+  (import "async-await" "yield" (tag (;0;) (type $func)))
+  (import "async-await" "fulfill" (tag (;1;) (type 4) (param i32 i32)))
+  (import "async-await" "async" (tag (;2;) (type 5) (param (ref 3)) (result i32)))
+  (import "async-await" "await" (tag (;3;) (type 6) (param i32) (result i32)))
+  (import "queue" "queue-empty" (func $queue-empty (;0;) (type 7)))
+  (import "queue" "dequeue" (func $dequeue (;1;) (type 8)))
+  (import "queue" "enqueue" (func $enqueue (;2;) (type 9)))
+  (import "promise" "new" (func $new-promise (;3;) (type 7)))
+  (import "promise" "fulfilled" (func $promise-fulfilled (;4;) (type 6)))
+  (import "promise" "read" (func $promise-value (;5;) (type 6)))
+  (import "promise" "await" (func $await-promise (;6;) (type 10)))
+  (import "promise" "fulfill" (func $fulfill-promise (;7;) (type 11)))
+  (func $run (;8;) (type 9) (param $nextk (ref null 1))
+    (local $p i32) (local $v i32) (local $ik (ref 3)) (local $ak (ref 3)) (local $k (ref null 1))
+    loop $l ;; label = @1
+      local.get $nextk
+      ref.is_null
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_fulfill (type 12) (result i32 i32 (ref 1)) ;; label = @3
+          block $on_async (type 13) (result (ref 3) (ref 3)) ;; label = @4
+            block $on_await (type 14) (result i32 (ref 3)) ;; label = @5
+              local.get $nextk
+              resume $cont (tag 0 3 (;@2;))(tag 1 2 (;@3;))(tag 2 1 (;@4;))(tag 3 0 (;@5;))
+              call $dequeue
+              local.set $nextk
+              br 4 (;@1;)
+            end
+            local.set $ik
+            local.set $p
+            local.get $p
+            call $promise-fulfilled
+            if ;; label = @5
+              local.get $p
+              call $promise-value
+              local.get $ik
+              cont.bind $i-cont $cont
+              local.set $nextk
+            else
+              local.get $p
+              local.get $ik
+              call $await-promise
+              call $dequeue
+              local.set $nextk
+            end
+            br 3 (;@1;)
+          end
+          local.set $ik
+          local.set $ak
+          call $new-promise
+          local.set $p
+          local.get $p
+          local.get $ik
+          cont.bind $i-cont $cont
+          call $enqueue
+          local.get $p
+          local.get $ak
+          cont.bind $i-cont $cont
+          local.set $nextk
+          br 2 (;@1;)
+        end
+        local.set $nextk
+        local.set $v
+        local.set $p
+        local.get $p
+        local.get $v
+        call $fulfill-promise
+        local.set $k
+        local.get $k
+        ref.is_null
+        if ;; label = @3
+        else
+          local.get $k
+          call $enqueue
+        end
+        br 1 (;@1;)
+      end
+      call $enqueue
+      call $dequeue
+      local.set $nextk
+      br 0 (;@1;)
+    end
+  )
+  (export "run" (func $run))
+)

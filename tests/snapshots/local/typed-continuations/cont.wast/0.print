@@ -7,14 +7,14 @@
   )
   (func (;1;) (type $f1)
     ref.func $f1
-    cont.new (type $k1)
-    resume
+    cont.new $k1
+    resume $k1
   )
   (func (;2;) (type $f1)
     block $h (result (ref 1)) ;; label = @1
       ref.func $f1
-      cont.new (type $k1)
-      resume (tag 2 0 (;@1;))
+      cont.new $k1
+      resume $k1 (tag 2 0 (;@1;))
       unreachable
     end
     drop
@@ -22,8 +22,8 @@
   (func (;3;) (type $f1)
     block $h (result (ref 1)) ;; label = @1
       ref.func $f1
-      cont.new (type $k1)
-      resume (tag 1 0 (;@1;))
+      cont.new $k1
+      resume $k1 (tag 1 0 (;@1;))
       unreachable
     end
     drop
@@ -34,8 +34,8 @@
   (func (;5;) (type $f1)
     block $h (result (ref 1)) ;; label = @1
       ref.func $f2
-      cont.new (type $k1)
-      resume (tag 1 0 (;@1;))
+      cont.new $k1
+      resume $k1 (tag 1 0 (;@1;))
       unreachable
     end
     drop
@@ -43,11 +43,11 @@
   (func (;6;) (type $f1)
     block $h (result (ref 1)) ;; label = @1
       ref.func $f1
-      cont.new (type $k1)
-      resume (tag 1 0 (;@1;))
+      cont.new $k1
+      resume $k1 (tag 1 0 (;@1;))
       unreachable
     end
-    resume_throw 0
+    resume_throw $k1 0
   )
   (func $f3 (;7;) (type $f1)
     barrier ;; label = @1
@@ -60,11 +60,11 @@
   (func (;9;) (type $f1)
     block $h (result (ref 1)) ;; label = @1
       ref.func $f3
-      cont.new (type $k1)
-      resume (tag 1 0 (;@1;))
+      cont.new $k1
+      resume $k1 (tag 1 0 (;@1;))
       unreachable
     end
-    resume_throw 0
+    resume_throw $k1 0
   )
   (func $r0 (;10;) (type $f1))
   (func $r1 (;11;) (type $f1)
@@ -73,62 +73,62 @@
   )
   (func $nl1 (;12;) (type 2) (param $k (ref 1))
     local.get $k
-    resume
+    resume $k1
     local.get $k
-    resume
+    resume $k1
   )
   (func $nl2 (;13;) (type 2) (param $k (ref 1))
     block $h (result (ref 1)) ;; label = @1
       local.get $k
-      resume (tag 1 0 (;@1;))
+      resume $k1 (tag 1 0 (;@1;))
       unreachable
     end
     local.get $k
-    resume
+    resume $k1
     unreachable
   )
   (func $nl3 (;14;) (type 2) (param $k (ref 1))
     (local $k' (ref null 1))
     block $h1 (result (ref 1)) ;; label = @1
       local.get $k
-      resume (tag 1 0 (;@1;))
+      resume $k1 (tag 1 0 (;@1;))
       unreachable
     end
     local.set $k'
     block $h2 (result (ref 1)) ;; label = @1
       local.get $k'
-      resume (tag 1 0 (;@1;))
+      resume $k1 (tag 1 0 (;@1;))
       unreachable
     end
     local.get $k'
-    resume
+    resume $k1
     unreachable
   )
   (func $nl4 (;15;) (type 2) (param $k (ref 1))
     local.get $k
-    cont.bind (type $k1)
+    cont.bind $k1 $k1
     drop
     local.get $k
-    resume
+    resume $k1
   )
   (func (;16;) (type $f1)
     ref.func $r0
-    cont.new (type $k1)
+    cont.new $k1
     call $nl1
   )
   (func (;17;) (type $f1)
     ref.func $r1
-    cont.new (type $k1)
+    cont.new $k1
     call $nl2
   )
   (func (;18;) (type $f1)
     ref.func $r1
-    cont.new (type $k1)
+    cont.new $k1
     call $nl3
   )
   (func (;19;) (type $f1)
     ref.func $r1
-    cont.new (type $k1)
+    cont.new $k1
     call $nl4
   )
   (tag (;0;) (type $f1))

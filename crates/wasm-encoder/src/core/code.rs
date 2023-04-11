@@ -863,10 +863,10 @@ pub enum Instruction<'a> {
 
     // Typed continuations proposal
     ContNew(u32),
-    ContBind(u32),
+    ContBind { src_index: u32, dst_index: u32 },
     Suspend(u32),
-    Resume(Cow<'a, [(u32, u32)]>),
-    ResumeThrow(u32, Cow<'a, [(u32, u32)]>),
+    Resume { type_index: u32, resumetable: Cow<'a, [(u32, u32)]> },
+    ResumeThrow { type_index: u32, tag_index: u32, resumetable: Cow<'a, [(u32, u32)]> },
     Barrier(BlockType),
 }
 
@@ -2795,16 +2795,16 @@ impl Encode for Instruction<'_> {
             Instruction::ContNew(_type_index) => {
                 todo!()
             }
-            Instruction::ContBind(_type_index) => {
+            Instruction::ContBind { src_index: _, dst_index: _ } => {
                 todo!()
             }
             Instruction::Suspend(_tag_index) => {
                 todo!()
             }
-            Instruction::Resume(ref _resumetable) => {
+            Instruction::Resume { type_index: _, resumetable: _ } => {
                 todo!()
             }
-            Instruction::ResumeThrow(_tag_index, ref _resumetable) => {
+            Instruction::ResumeThrow { type_index: _, tag_index: _, resumetable: _ } => {
                 todo!()
             }
             Instruction::Barrier(_blockty) => {

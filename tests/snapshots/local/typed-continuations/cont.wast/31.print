@@ -17,22 +17,22 @@
   (func (;1;) (type 6) (result i32 i32 i32 i32 i32 i32)
     (local $k6 (ref null 5)) (local $k4 (ref null 4)) (local $k2 (ref null 3))
     ref.func $f
-    cont.new (type $k6)
+    cont.new $k6
     local.set $k6
     i32.const 1
     i32.const 2
     local.get $k6
-    cont.bind (type $k4)
+    cont.bind $k6 $k4
     local.set $k4
     i32.const 3
     i32.const 4
     local.get $k4
-    cont.bind (type $k2)
+    cont.bind $k4 $k2
     local.set $k2
     i32.const 5
     i32.const 6
     local.get $k2
-    resume
+    resume $k2
   )
   (export "run" (func 1))
   (elem (;0;) declare func $f)

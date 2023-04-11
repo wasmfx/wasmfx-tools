@@ -1,0 +1,96 @@
+(module $actor-as-lwt
+  (type $func (;0;) (func))
+  (type $cont (;1;) (cont $func))
+  (type $i-func (;2;) (func (param i32)))
+  (type $i-cont (;3;) (cont $i-func))
+  (type $ic-func (;4;) (func (param i32 (ref 1))))
+  (type $ic-cont (;5;) (cont $ic-func))
+  (type (;6;) (func (param (ref 1))))
+  (type (;7;) (func (param i32) (result i32)))
+  (type (;8;) (func (result i32)))
+  (type (;9;) (func (param i32 i32)))
+  (type (;10;) (func (result (ref null 1))))
+  (type (;11;) (func (param (ref 1)) (result i32)))
+  (type (;12;) (func (result (ref 1) (ref 3))))
+  (type (;13;) (func (result i32 i32 (ref 1))))
+  (import "spectest" "print_i32" (func $log (;0;) (type $i-func)))
+  (import "lwt" "yield" (tag (;0;) (type $func)))
+  (import "lwt" "fork" (tag (;1;) (type 6) (param (ref 1))))
+  (import "mailboxes" "init" (func $init (;1;) (type $func)))
+  (import "mailboxes" "empty-mb" (func $empty-mb (;2;) (type 7)))
+  (import "mailboxes" "new-mb" (func $new-mb (;3;) (type 8)))
+  (import "mailboxes" "send-to-mb" (func $send-to-mb (;4;) (type 9)))
+  (import "mailboxes" "recv-from-mb" (func $recv-from-mb (;5;) (type 7)))
+  (import "queue" "queue-empty" (func $queue-empty (;6;) (type 8)))
+  (import "queue" "dequeue" (func $dequeue (;7;) (type 10)))
+  (import "queue" "enqueue" (func $enqueue (;8;) (type 6)))
+  (import "actor" "self" (tag (;2;) (type 8) (result i32)))
+  (import "actor" "spawn" (tag (;3;) (type 11) (param (ref 1)) (result i32)))
+  (import "actor" "send" (tag (;4;) (type 9) (param i32 i32)))
+  (import "actor" "recv" (tag (;5;) (type 8) (result i32)))
+  (func $actk (;9;) (type $ic-func) (param $mine i32) (param $nextk (ref 1))
+    (local $ik (ref 3)) (local $k (ref 1)) (local $you (ref 1)) (local $yours i32)
+    loop $l ;; label = @1
+      block $on_self (result (ref 3)) ;; label = @2
+        block $on_spawn (type 12) (result (ref 1) (ref 3)) ;; label = @3
+          block $on_send (type 13) (result i32 i32 (ref 1)) ;; label = @4
+            block $on_recv (result (ref 3)) ;; label = @5
+              local.get $nextk
+              resume $cont (tag 2 3 (;@2;))(tag 3 2 (;@3;))(tag 4 1 (;@4;))(tag 5 0 (;@5;))
+              return
+            end
+            local.set $ik
+            loop $blocked ;; label = @5
+              local.get $mine
+              call $empty-mb
+              if ;; label = @6
+                suspend 0
+                br 1 (;@5;)
+              end
+            end
+            local.get $mine
+            call $recv-from-mb
+            local.get $ik
+            cont.bind $i-cont $cont
+            local.set $nextk
+            br 3 (;@1;)
+          end
+          local.set $k
+          call $send-to-mb
+          local.get $k
+          local.set $nextk
+          br 2 (;@1;)
+        end
+        local.set $ik
+        local.set $you
+        call $new-mb
+        local.set $yours
+        local.get $yours
+        local.get $you
+        ref.func $actk
+        cont.new $ic-cont
+        cont.bind $ic-cont $cont
+        suspend 1
+        local.get $yours
+        local.get $ik
+        cont.bind $i-cont $cont
+        local.set $nextk
+        br 1 (;@1;)
+      end
+      local.set $ik
+      local.get $mine
+      local.get $ik
+      cont.bind $i-cont $cont
+      local.set $nextk
+      br 0 (;@1;)
+    end
+  )
+  (func $act (;10;) (type 6) (param $k (ref 1))
+    call $init
+    call $new-mb
+    local.get $k
+    call $actk
+  )
+  (export "act" (func $act))
+  (elem (;0;) declare func $actk)
+)

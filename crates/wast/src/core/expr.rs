@@ -1167,12 +1167,12 @@ instructions! {
         I32x4RelaxedDotI8x16I7x16AddS: [0xfd, 0x113]: "i32x4.relaxed_dot_i8x16_i7x16_add_s",
 
         // Typed continuations proposal
-        ContNew(TypeUse<'a, FunctionType<'a>>) : [0xe0] : "cont.new",
-        ContBind(TypeUse<'a, FunctionType<'a>>) : [0xe1] : "cont.bind",
-        Suspend(Index<'a>)              : [0xe2] : "suspend",
-        Resume(ResumeTableIndices<'a>)  : [0xe3] : "resume",
-        ResumeThrow(ResumeThrow<'a>)    : [0xe4] : "resume_throw",
-        Barrier(BlockType<'a>)          : [0xe5] : "barrier",
+        ContNew(Index<'a>)             : [0xe0] : "cont.new",
+        ContBind(ContBind<'a>)         : [0xe1] : "cont.bind",
+        Suspend(Index<'a>)             : [0xe2] : "suspend",
+        Resume(Resume<'a>)             : [0xe3] : "resume",
+        ResumeThrow(ResumeThrow<'a>)   : [0xe4] : "resume_throw",
+        Barrier(BlockType<'a>)         : [0xe5] : "barrier",
     }
 }
 
@@ -1211,18 +1211,54 @@ impl<'a> Parse<'a> for BlockType<'a> {
     }
 }
 
+/// Extra information associated with the cont.bind instruction
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub struct ContBind<'a> {
+    pub src_index: Index<'a>,
+    pub dst_index: Index<'a>,
+}
+
+impl<'a> Parse<'a> for ContBind<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        Ok(ContBind {
+            src_index: parser.parse()?,
+            dst_index: parser.parse()?,
+        })
+    }
+}
+
+/// Extra information associated with the resume instruction
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub struct Resume<'a> {
+    pub index: Index<'a>,
+    pub table: ResumeTableIndices<'a>,
+}
+
+impl<'a> Parse<'a> for Resume<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        Ok(Resume {
+            index: parser.parse()?,
+            table: parser.parse()?,
+        })
+    }
+}
+
 /// Extra information associated with the resume_throw instruction
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub struct ResumeThrow<'a> {
-    pub index: Index<'a>,
+    pub type_index: Index<'a>,
+    pub tag_index: Index<'a>,
     pub table: ResumeTableIndices<'a>,
 }
 
 impl<'a> Parse<'a> for ResumeThrow<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         Ok(ResumeThrow {
-            index: parser.parse()?,
+            type_index: parser.parse()?,
+            tag_index: parser.parse()?,
             table: parser.parse()?,
         })
     }

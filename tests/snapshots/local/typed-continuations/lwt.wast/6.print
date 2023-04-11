@@ -1,0 +1,148 @@
+(module $scheduler
+  (type $func (;0;) (func))
+  (type $cont (;1;) (cont $func))
+  (type (;2;) (func (param (ref 1))))
+  (type (;3;) (func (result i32)))
+  (type (;4;) (func (result (ref null 1))))
+  (type (;5;) (func (param (ref null 1))))
+  (type (;6;) (func (result (ref 1) (ref 1))))
+  (import "lwt" "yield" (tag (;0;) (type $func)))
+  (import "lwt" "fork" (tag (;1;) (type 2) (param (ref 1))))
+  (import "queue" "queue-empty" (func $queue-empty (;0;) (type 3)))
+  (import "queue" "dequeue" (func $dequeue (;1;) (type 4)))
+  (import "queue" "enqueue" (func $enqueue (;2;) (type 5)))
+  (func $sync (;3;) (type 5) (param $nextk (ref null 1))
+    loop $l ;; label = @1
+      local.get $nextk
+      ref.is_null
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+          local.get $nextk
+          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          call $dequeue
+          local.set $nextk
+          br 2 (;@1;)
+        end
+        local.set $nextk
+        call $enqueue
+        br 1 (;@1;)
+      end
+      local.set $nextk
+      br 0 (;@1;)
+    end
+  )
+  (func $kt (;4;) (type 5) (param $nextk (ref null 1))
+    loop $l ;; label = @1
+      local.get $nextk
+      ref.is_null
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+          local.get $nextk
+          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          call $dequeue
+          local.set $nextk
+          br 2 (;@1;)
+        end
+        local.set $nextk
+        call $enqueue
+        br 1 (;@1;)
+      end
+      call $enqueue
+      call $dequeue
+      local.set $nextk
+      br 0 (;@1;)
+    end
+  )
+  (func $tk (;5;) (type 5) (param $nextk (ref null 1))
+    loop $l ;; label = @1
+      local.get $nextk
+      ref.is_null
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+          local.get $nextk
+          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          call $dequeue
+          local.set $nextk
+          br 2 (;@1;)
+        end
+        call $enqueue
+        local.set $nextk
+        br 1 (;@1;)
+      end
+      call $enqueue
+      call $dequeue
+      local.set $nextk
+      br 0 (;@1;)
+    end
+  )
+  (func $ykt (;6;) (type 5) (param $nextk (ref null 1))
+    loop $l ;; label = @1
+      local.get $nextk
+      ref.is_null
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+          local.get $nextk
+          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          call $dequeue
+          local.set $nextk
+          br 2 (;@1;)
+        end
+        call $enqueue
+        call $enqueue
+        call $dequeue
+        local.set $nextk
+        br 1 (;@1;)
+      end
+      call $enqueue
+      call $dequeue
+      local.set $nextk
+      br 0 (;@1;)
+    end
+  )
+  (func $ytk (;7;) (type 5) (param $nextk (ref null 1))
+    loop $l ;; label = @1
+      local.get $nextk
+      ref.is_null
+      if ;; label = @2
+        return
+      end
+      block $on_yield (result (ref 1)) ;; label = @2
+        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+          local.get $nextk
+          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          call $dequeue
+          local.set $nextk
+          br 2 (;@1;)
+        end
+        local.set $nextk
+        call $enqueue
+        local.get $nextk
+        call $enqueue
+        call $dequeue
+        local.set $nextk
+        br 1 (;@1;)
+      end
+      call $enqueue
+      call $dequeue
+      local.set $nextk
+      br 0 (;@1;)
+    end
+  )
+  (export "sync" (func $sync))
+  (export "kt" (func $kt))
+  (export "tk" (func $tk))
+  (export "ykt" (func $ykt))
+  (export "ytk" (func $ytk))
+)

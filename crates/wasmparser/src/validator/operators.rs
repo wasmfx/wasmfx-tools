@@ -1072,31 +1072,31 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
     }
 }
 
-pub fn ty_to_str(ty: ValType) -> &'static str {
+pub fn ty_to_str(ty: ValType) -> String {
     match ty {
-        ValType::I32 => "i32",
-        ValType::I64 => "i64",
-        ValType::F32 => "f32",
-        ValType::F64 => "f64",
-        ValType::V128 => "v128",
-        ValType::FUNCREF => "funcref",
-        ValType::EXTERNREF => "externref",
+        ValType::I32 => "i32".to_string(),
+        ValType::I64 => "i64".to_string(),
+        ValType::F32 => "f32".to_string(),
+        ValType::F64 => "f64".to_string(),
+        ValType::V128 => "v128".to_string(),
+        ValType::FUNCREF => "funcref".to_string(),
+        ValType::EXTERNREF => "externref".to_string(),
         ValType::Ref(RefType {
             nullable: false,
             heap_type: HeapType::Func,
-        }) => "(ref func)",
+        }) => "(ref func)".to_string(),
         ValType::Ref(RefType {
             nullable: false,
             heap_type: HeapType::Extern,
-        }) => "(ref extern)",
+        }) => "(ref extern)".to_string(),
         ValType::Ref(RefType {
             nullable: false,
-            heap_type: HeapType::TypedFunc(_),
-        }) => "(ref $type)",
+            heap_type: HeapType::TypedFunc(i),
+        }) => format!("(ref {})", u32::from(i)),
         ValType::Ref(RefType {
             nullable: true,
-            heap_type: HeapType::TypedFunc(_),
-        }) => "(ref null $type)",
+            heap_type: HeapType::TypedFunc(i),
+        }) => format!("(ref null {})", u32::from(i)),
     }
 }
 
@@ -3486,70 +3486,54 @@ where
         self.push_operand(ValType::Ref(result))?;
         Ok(())
     }
-    fn visit_cont_bind(&mut self, type_index: u32) -> Self::Output {
+    fn visit_cont_bind(&mut self, src_index: u32, dst_index: u32) -> Self::Output {
+        let src_cont = self.func_type_at(self.cont_type_at(src_index.into())?)?;
+        let dst_cont = self.func_type_at(self.cont_type_at(dst_index.into())?)?;
+
+        // Verify that the source domain is at least as large as the
+        // target domain.
+        if src_cont.len_inputs() < dst_cont.len_inputs() {
+            bail!(self.offset, "type mismatch in continuation arguments");
+        }
+
+        // Next check that the source and target agrees modulo the
+        // prefix.
+        let src_prefix = src_cont.inputs().take(src_cont.len_inputs() - dst_cont.len_inputs());
+        let src_suffix = src_cont.inputs().skip(src_cont.len_inputs() - dst_cont.len_inputs());
+        if !self.resources.match_functypes(&crate::FuncType::new(src_suffix, src_cont.outputs()), dst_cont) {
+            bail!(self.offset, "type mismatch in continuation types");
+        }
+
+        // Check that the continuation is available on the stack.
         match self.pop_ref()? {
-            None => self.push_operand(ValType::Ref(RefType {
-                nullable: false,
-                heap_type: HeapType::TypedFunc(type_index
-                                               .try_into()
-                                               .expect("function reference index larger than 2^16")),
-            }))?,
+            None => {}, // bot case
             Some(rt) => {
-                match rt.heap_type {
-                    HeapType::TypedFunc(y) => {
-                        let ft1 = self.func_type_at(self.cont_type_at(y.into())?)?;
-                        let ft2 =
-                            self.func_type_at(self.cont_type_at(type_index.into())?)?;
+                let expected = ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::TypedFunc(src_index.try_into().expect("function reference index larger than 2^16"))
+                });
+                if !self.resources.matches(expected, ValType::Ref(rt)) {
+                    bail!(self.offset, "type mismatch: instruction requires {} but stack has {}", ty_to_str(expected), ty_to_str(ValType::Ref(rt)));
+                }
 
-                        // Verify that ft1's domain is at least as
-                        // large as ft2's domain.
-                        if ft1.inputs().len() < ft2.inputs().len() {
-                            panic!("|ft1.inputs()| must be greater or equal to |ft2.inputs()|")
-                            // TODO(dhil): Tidy up
-                        }
-                        // Next check that prefix of ft1's domain agrees with the domain of ft2.
-                        let ft1ins1 = ft1.inputs().take(ft1.inputs().len() - ft2.inputs().len());
-                        let ft1ins2 = ft1.inputs().skip(ft1.inputs().len() - ft2.inputs().len());
-
-                        for (ty1, ty2) in ft1ins2.zip(ft2.inputs()) {
-                            if !self.resources.matches(ty1, ty2) {
-                                panic!("mismatch error") // TODO(dhil): tidy up
-                            }
-                        }
-
-                        // Next check their codomains agree.
-                        if ft1.outputs().len() != ft2.outputs().len() {
-                            panic!("The codomains of ft1 and ft2 must have the same size")
-                            // TODO(dhil): Tidy up
-                        }
-
-                        for (ty1, ty2) in ft1.outputs().zip(ft2.outputs()) {
-                            if !self.resources.matches(ty1, ty2) {
-                                panic!("mismatch error") // TODO(dhil): tidy up
-                            }
-                        }
-
-                        // Check that the bound ft1 inputs are available on the stack.
-                        for ty in ft1ins1.rev() {
-                            self.pop_operand(Some(ty))?;
-                        }
-
-                        // Push the continuation reference.
-                        self.push_operand(ValType::Ref(RefType {
-                            nullable: false,
-                            heap_type: HeapType::TypedFunc(type_index
-                                                           .try_into()
-                                                           .expect("function reference index larger than 2^16")),
-                        }))?;
-                    }
-                    _ => {
-                        bail!(self.offset,
-                              "type mismatch: instruction requires continuation reference type but stack has {}",
-                              ty_to_str(ValType::Ref(rt)))
-                    }
+                // Check that the prefix is available on the stack.
+                for ty in src_prefix.rev() {
+                    self.pop_operand(Some(ty))?;
                 }
             }
         }
+
+        // Construct the result type.
+        let result_type = ValType::Ref(RefType {
+            nullable: false,
+            heap_type: HeapType::TypedFunc(dst_index
+                                           .try_into()
+                                           .expect("function reference index larger than 2^16")),
+        });
+
+        // Push the continuation reference.
+        self.push_operand(result_type)?;
+
         Ok(())
     }
     fn visit_suspend(&mut self, tag_index: u32) -> Self::Output {
@@ -3562,68 +3546,73 @@ where
         }
         Ok(())
     }
-    fn visit_resume(&mut self, resumetable: ResumeTable) -> Self::Output {
+    fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
+        let ctft = self.func_type_at(self.cont_type_at(type_index)?)?;
+        let expected = ValType::Ref(RefType {
+            nullable: true,
+            heap_type: HeapType::TypedFunc(type_index.try_into().expect("function reference index larger than 2^16"))
+        });
         match self.pop_ref()? {
             None => {},
-            Some(rt) =>
-                match rt.heap_type {
-                    HeapType::TypedFunc(y) => {
-                        // ft := ts1 -> ts2
-                        let ctft = self.func_type_at(self.cont_type_at(y.into())?)?;
-                        self.check_resume_table(resumetable, ctft)?;
+            Some(rt) if self.resources.matches(ValType::Ref(rt), expected) => {
+                // ft := ts1 -> ts2
+                self.check_resume_table(resumetable, ctft)?;
 
-                        // Check that ts1 are available on the stack.
-                        for ty in ctft.inputs().rev() {
-                            self.pop_operand(Some(ty))?;
-                        }
-
-                        // Make ts2 available on the stack.
-                        for ty in ctft.outputs() {
-                            self.push_operand(ty)?;
-                        }
-                    }
-                    _ => {
-                        bail!(self.offset,
-                              "type mismatch: instruction requires continuation reference type but stack has {}",
-                              ty_to_str(ValType::Ref(rt)))
-                    }
+                // Check that ts1 are available on the stack.
+                for ty in ctft.inputs().rev() {
+                    self.pop_operand(Some(ty))?;
                 }
+
+                // Make ts2 available on the stack.
+                for ty in ctft.outputs() {
+                    self.push_operand(ty)?;
+                }
+            }
+            Some(rt) => {
+                bail!(self.offset,
+                      "type mismatch: instruction requires {} but stack has {}",
+                      ty_to_str(expected), ty_to_str(ValType::Ref(rt)))
+            }
         }
         Ok(())
     }
     fn visit_resume_throw(
         &mut self,
+        type_index: u32,
         tag_index: u32,
         resumetable: ResumeTable,
     ) -> Self::Output {
+        let ctft = self.func_type_at(self.cont_type_at(type_index)?)?;
+        let expected = ValType::Ref(RefType {
+            nullable: true,
+            heap_type: HeapType::TypedFunc(type_index.try_into().expect("function reference index larger than 2^16"))
+        });
         match self.pop_ref()? {
             None => {},
-            Some(rt) => match rt.heap_type {
-                HeapType::TypedFunc(y) => {
-                    // ct := ts1 -> ts2
-                    let ct = self.func_type_at(self.cont_type_at(y.into())?)?;
-                    self.check_resume_table(resumetable, ct)?;
+            Some(rt) if self.resources.matches(ValType::Ref(rt), expected) => {
+                // ft := ts1 -> ts2
+                self.check_resume_table(resumetable, ctft)?;
 
-                    // tagtype := ts1' -> []
-                    let tagtype = self.tag_at(tag_index)?;
+                // tagtype := ts1' -> []
+                let tagtype = self.tag_at(tag_index)?;
 
-                    // Check that ts1' are available on the stack.
-                    for tagty in tagtype.inputs().rev() {
-                        self.pop_operand(Some(tagty))?;
-                    }
-
-                    // Make ts2 available on the stack
-                    for ty in ct.outputs() {
-                        self.push_operand(ty)?;
-                    }
+                // Check that ts1' are available on the stack.
+                for tagty in tagtype.inputs().rev() {
+                    self.pop_operand(Some(tagty))?;
                 }
-                _ => {
-                    bail!(self.offset,
-                          "type mismatch: instruction requires continuation reference type but stack has {}",
-                          ty_to_str(ValType::Ref(rt)))
+
+                // Make ts2 available on the stack.
+                for ty in ctft.outputs() {
+                    self.push_operand(ty)?;
                 }
             }
+            Some(rt) => {
+                bail!(self.offset,
+                      "type mismatch: instruction requires {} but stack has {}",
+                      ty_to_str(expected), ty_to_str(ValType::Ref(rt)))
+            }
         }
+
         Ok(())
     }
     fn visit_barrier(&mut self, blockty: BlockType) -> Self::Output {

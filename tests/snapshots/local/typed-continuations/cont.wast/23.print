@@ -13,19 +13,19 @@
     i32.const 0
     call $log
     ref.func $thread1
-    cont.new (type $cont)
+    cont.new $cont
     suspend 1
     i32.const 1
     call $log
     global.get $depth
     ref.func $thread2
-    cont.new (type $pcont)
-    cont.bind (type $cont)
+    cont.new $pcont
+    cont.bind $pcont $cont
     suspend 1
     i32.const 2
     call $log
     ref.func $thread3
-    cont.new (type $cont)
+    cont.new $cont
     suspend 1
     i32.const 3
     call $log
@@ -66,8 +66,8 @@
         i32.const 1
         i32.sub
         ref.func $thread2
-        cont.new (type $pcont)
-        cont.bind (type $cont)
+        cont.new $pcont
+        cont.bind $pcont $cont
         suspend 1
         i32.const 24
         call $log
@@ -99,7 +99,7 @@
     i32.const -1
     call $log
     ref.func $main
-    cont.new (type $cont)
+    cont.new $cont
     call $scheduler
     i32.const -2
     call $log

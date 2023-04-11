@@ -687,10 +687,10 @@ macro_rules! for_each_operator {
 
             // Typed continuations
             @typed_continuations ContNew { type_index: u32 } => visit_cont_new
-            @typed_continuations ContBind { type_index: u32 } => visit_cont_bind
+            @typed_continuations ContBind { src_index: u32, dst_index: u32 } => visit_cont_bind
             @typed_continuations Suspend { tag_index: u32 } => visit_suspend
-            @typed_continuations Resume { resumetable: $crate::ResumeTable<'a> } => visit_resume
-            @typed_continuations ResumeThrow { tag_index: u32, resumetable: $crate::ResumeTable<'a> } => visit_resume_throw
+            @typed_continuations Resume { type_index: u32, resumetable: $crate::ResumeTable<'a> } => visit_resume
+            @typed_continuations ResumeThrow { type_index: u32, tag_index: u32, resumetable: $crate::ResumeTable<'a> } => visit_resume_throw
             @typed_continuations Barrier { blockty: $crate::BlockType } => visit_barrier
         }
     };

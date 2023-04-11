@@ -180,9 +180,6 @@ impl<'a> Expander<'a> {
             Instruction::CallIndirect(c) | Instruction::ReturnCallIndirect(c) => {
                 self.expand_type_use(&mut c.ty);
             }
-            Instruction::ContNew(c) | Instruction::ContBind(c) => {
-                self.expand_type_use(c);
-            }
             _ => {}
         }
     }

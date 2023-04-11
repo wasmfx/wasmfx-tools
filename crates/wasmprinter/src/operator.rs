@@ -132,6 +132,10 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
         self.printer.print_type_ref(self.state, idx, true, None)
     }
 
+    fn cont_index(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.type_names, idx)
+    }
+
     fn data_index(&mut self, idx: u32) -> Result<()> {
         self.printer.print_idx(&self.state.core.data_names, idx)
     }
@@ -326,25 +330,31 @@ macro_rules! define_visit {
     );
     (payload $self:ident ContNew $hty:ident) => (
         $self.push_str(" ");
-        $self.printer.print_type_ref($self.state, $hty, true, None)?;
+        $self.cont_index($hty)?;
     );
-    (payload $self:ident Resume $table:ident) => (
+    (payload $self:ident Resume $type_index:ident $table:ident) => (
+        $self.push_str(" ");
+        $self.cont_index($type_index)?;
         if $table.len() > 0 {
             $self.push_str(" ");
         }
         $self.resumetable($table)?;
     );
-    (payload $self:ident ResumeThrow $tag:ident $table:ident) => (
+    (payload $self:ident ResumeThrow $type_index:ident $tag_index:ident $table:ident) => (
         $self.push_str(" ");
-        $self.tag_index($tag)?;
+        $self.cont_index($type_index)?;
+        $self.push_str(" ");
+        $self.tag_index($tag_index)?;
         if $table.len() > 0 {
             $self.push_str(" ");
         }
         $self.resumetable($table)?;
     );
-    (payload $self:ident ContBind $hty:ident) => (
+    (payload $self:ident ContBind $src_index:ident $dst_index:ident) => (
         $self.push_str(" ");
-        $self.printer.print_type_ref($self.state, $hty, true, None)?;
+        $self.cont_index($src_index)?;
+        $self.push_str(" ");
+        $self.cont_index($dst_index)?;
     );
     (payload $self:ident $op:ident $($arg:ident)*) => (
         $(

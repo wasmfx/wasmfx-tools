@@ -760,15 +760,30 @@ impl Encode for BrTableIndices<'_> {
     }
 }
 
+impl Encode for ContBind<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.src_index.encode(e);
+        self.dst_index.encode(e);
+    }
+}
+
 impl Encode for ResumeTableIndices<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         self.targets.encode(e);
     }
 }
 
-impl Encode for ResumeThrow<'_> {
+impl Encode for Resume<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         self.index.encode(e);
+        self.table.encode(e);
+    }
+}
+
+impl Encode for ResumeThrow<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.type_index.encode(e);
+        self.tag_index.encode(e);
         self.table.encode(e);
     }
 }

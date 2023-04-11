@@ -10,7 +10,7 @@
         block $on_set (type 4) (result i32 (ref 1)) ;; label = @3
           local.get $s
           local.get $k
-          resume (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          resume $k (tag 0 1 (;@2;))(tag 1 0 (;@3;))
           return
         end
         local.set $k
@@ -38,7 +38,7 @@
   (func (;2;) (type 2) (result i32)
     i32.const 0
     ref.func $f
-    cont.new (type $k)
+    cont.new $k
     call $runner
   )
   (tag (;0;) (type 2) (result i32))

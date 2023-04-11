@@ -997,10 +997,10 @@ impl<'a> BinaryReader<'a> {
             // Typed continuations operators.
             // TODO(dhil) fixme: merge into the above list.
             0xe0 => visitor.visit_cont_new(self.read_var_u32()?),
-            0xe1 => visitor.visit_cont_bind(self.read_var_u32()?),
+            0xe1 => visitor.visit_cont_bind(self.read_var_u32()?, self.read_var_u32()?),
             0xe2 => visitor.visit_suspend(self.read_var_u32()?),
-            0xe3 => visitor.visit_resume(self.read_resume_table()?),
-            0xe4 => visitor.visit_resume_throw(self.read_var_u32()?, self.read_resume_table()?),
+            0xe3 => visitor.visit_resume(self.read_var_u32()?, self.read_resume_table()?),
+            0xe4 => visitor.visit_resume_throw(self.read_var_u32()?, self.read_var_u32()?, self.read_resume_table()?),
             0xe5 => visitor.visit_barrier(self.read_block_type()?),
 
             _ => bail!(pos, "illegal opcode: 0x{code:x}"),

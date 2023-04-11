@@ -325,6 +325,8 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         // This case is used to map, based on the name of the field, from the
         // wasmparser payload type to the wasm-encoder payload type through
         // `Translator` as applicable.
+        (map $arg:ident src_index) => (t.remap(Item::Type, *$arg)?);
+        (map $arg:ident dst_index) => (t.remap(Item::Type, *$arg)?);
         (map $arg:ident tag_index) => (t.remap(Item::Tag, *$arg)?);
         (map $arg:ident function_index) => (t.remap(Item::Function, *$arg)?);
         (map $arg:ident table) => (t.remap(Item::Table, *$arg)?);
@@ -370,8 +372,9 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         // the structure of a wasmparser instruction differs from that of
         // wasm-encoder.
         (build $op:ident) => (I::$op);
-        (build Resume $arg:ident) => (I::Resume($arg));
-        (build ResumeThrow $tag_index:ident $resumetable:ident) => (I::ResumeThrow($tag_index, $resumetable));
+        (build Resume $type_index:ident $resumetable:ident) => (I::Resume { type_index: $type_index, resumetable: $resumetable });
+        (build ResumeThrow $type_index:ident $tag_index:ident $resumetable:ident) => (I::ResumeThrow { type_index: $type_index, tag_index: $tag_index, resumetable: $resumetable });
+        (build ContBind $src_index:ident $dst_index:ident) => (I::ContBind { src_index: $src_index, dst_index: $dst_index });
         (build BrTable $arg:ident) => (I::BrTable($arg.0, $arg.1));
         (build I32Const $arg:ident) => (I::I32Const(*$arg));
         (build I64Const $arg:ident) => (I::I64Const(*$arg));
