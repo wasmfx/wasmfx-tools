@@ -1,0 +1,13 @@
+package foo:foo
+
+interface foo {
+  record foo {}
+}
+
+world module {
+  export bar: interface {
+    use foo.{foo as bar}
+
+    foo: func() -> bar
+  }
+}

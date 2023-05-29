@@ -1,7 +1,7 @@
 use super::{Printer, State};
 use anyhow::{bail, Result};
 use std::fmt::Write;
-use wasmparser::{BlockType, BrTable, HeapType, MemArg, ResumeTable, VisitOperator};
+use wasmparser::{BlockType, BrTable, MemArg, ResumeTable, VisitOperator};
 
 pub struct PrintOperator<'a, 'b> {
     pub(super) printer: &'a mut Printer,
@@ -129,7 +129,7 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
 
     fn type_index(&mut self, idx: u32) -> Result<()> {
         self.push_str(" ");
-        self.printer.print_type_ref(self.state, idx, true, None)
+        self.printer.print_core_type_ref(self.state, idx)
     }
 
     fn cont_index(&mut self, idx: u32) -> Result<()> {
@@ -182,10 +182,6 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
         }
         Ok(())
     }
-
-    fn hty(&mut self, hty: HeapType) -> Result<()> {
-        self.printer.print_heaptype(hty)
-    }
 }
 
 pub enum OpKind {
@@ -237,7 +233,7 @@ macro_rules! define_visit {
             $self.table_index($table)?;
         }
         $self.type_index($ty)?;
-        drop($byte);
+        let _ = $byte;
     );
     (payload $self:ident ReturnCallIndirect $ty:ident $table:ident) => (
         if $table != 0 {
@@ -245,6 +241,14 @@ macro_rules! define_visit {
             $self.table_index($table)?;
         }
         $self.type_index($ty)?;
+    );
+    (payload $self:ident CallRef $ty:ident) => (
+        $self.push_str(" ");
+        $self.printer.print_idx(&$self.state.core.type_names, $ty)?;
+    );
+    (payload $self:ident ReturnCallRef $ty:ident) => (
+        $self.push_str(" ");
+        $self.printer.print_idx(&$self.state.core.type_names, $ty)?;
     );
     (payload $self:ident TypedSelect $ty:ident) => (
         $self.push_str(" (result ");
@@ -909,6 +913,10 @@ macro_rules! define_visit {
     (name ResumeThrow) => ("resume_throw");
     (name Suspend) => ("suspend");
     (name Barrier) => ("barrier");
+
+    (name I31New) => ("i31.new");
+    (name I31GetS) => ("i31.get_s");
+    (name I31GetU) => ("i31.get_u");
 }
 
 impl<'a> VisitOperator<'a> for PrintOperator<'_, '_> {

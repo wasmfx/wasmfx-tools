@@ -322,11 +322,17 @@ pub enum Instruction<'a> {
     BrOnNonNull(u32),
     Return,
     Call(u32),
-    CallRef(HeapType),
-    CallIndirect { ty: u32, table: u32 },
-    ReturnCallRef(HeapType),
+    CallRef(u32),
+    CallIndirect {
+        ty: u32,
+        table: u32,
+    },
+    ReturnCallRef(u32),
     ReturnCall(u32),
-    ReturnCallIndirect { ty: u32, table: u32 },
+    ReturnCallIndirect {
+        ty: u32,
+        table: u32,
+    },
     Throw(u32),
     Rethrow(u32),
 
@@ -367,9 +373,15 @@ pub enum Instruction<'a> {
     I64Store32(MemArg),
     MemorySize(u32),
     MemoryGrow(u32),
-    MemoryInit { mem: u32, data_index: u32 },
+    MemoryInit {
+        mem: u32,
+        data_index: u32,
+    },
     DataDrop(u32),
-    MemoryCopy { src_mem: u32, dst_mem: u32 },
+    MemoryCopy {
+        src_mem: u32,
+        dst_mem: u32,
+    },
     MemoryFill(u32),
     MemoryDiscard(u32),
 
@@ -522,15 +534,26 @@ pub enum Instruction<'a> {
     RefFunc(u32),
     RefAsNonNull,
 
+    // GC types instructions.
+    I31New,
+    I31GetS,
+    I31GetU,
+
     // Bulk memory instructions.
-    TableInit { elem_index: u32, table: u32 },
+    TableInit {
+        elem_index: u32,
+        table: u32,
+    },
     ElemDrop(u32),
     TableFill(u32),
     TableSet(u32),
     TableGet(u32),
     TableGrow(u32),
     TableSize(u32),
-    TableCopy { src_table: u32, dst_table: u32 },
+    TableCopy {
+        src_table: u32,
+        dst_table: u32,
+    },
 
     // SIMD instructions.
     V128Load(MemArg),
@@ -547,14 +570,38 @@ pub enum Instruction<'a> {
     V128Load32Zero(MemArg),
     V128Load64Zero(MemArg),
     V128Store(MemArg),
-    V128Load8Lane { memarg: MemArg, lane: Lane },
-    V128Load16Lane { memarg: MemArg, lane: Lane },
-    V128Load32Lane { memarg: MemArg, lane: Lane },
-    V128Load64Lane { memarg: MemArg, lane: Lane },
-    V128Store8Lane { memarg: MemArg, lane: Lane },
-    V128Store16Lane { memarg: MemArg, lane: Lane },
-    V128Store32Lane { memarg: MemArg, lane: Lane },
-    V128Store64Lane { memarg: MemArg, lane: Lane },
+    V128Load8Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Load16Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Load32Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Load64Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store8Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store16Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store32Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
+    V128Store64Lane {
+        memarg: MemArg,
+        lane: Lane,
+    },
     V128Const(i128),
     I8x16Shuffle([Lane; 16]),
     I8x16ExtractLaneS(Lane),
@@ -863,10 +910,20 @@ pub enum Instruction<'a> {
 
     // Typed continuations proposal
     ContNew(u32),
-    ContBind { src_index: u32, dst_index: u32 },
+    ContBind {
+        src_index: u32,
+        dst_index: u32,
+    },
     Suspend(u32),
-    Resume { type_index: u32, resumetable: Cow<'a, [(u32, u32)]> },
-    ResumeThrow { type_index: u32, tag_index: u32, resumetable: Cow<'a, [(u32, u32)]> },
+    Resume {
+        type_index: u32,
+        resumetable: Cow<'a, [(u32, u32)]>,
+    },
+    ResumeThrow {
+        type_index: u32,
+        tag_index: u32,
+        resumetable: Cow<'a, [(u32, u32)]>,
+    },
     Barrier(BlockType),
 }
 
@@ -1322,6 +1379,20 @@ impl Encode for Instruction<'_> {
                 f.encode(sink);
             }
             Instruction::RefAsNonNull => sink.push(0xD3),
+
+            // GC instructions.
+            Instruction::I31New => {
+                sink.push(0xfb);
+                sink.push(0x20)
+            }
+            Instruction::I31GetS => {
+                sink.push(0xfb);
+                sink.push(0x21)
+            }
+            Instruction::I31GetU => {
+                sink.push(0xfb);
+                sink.push(0x22)
+            }
 
             // Bulk memory instructions.
             Instruction::TableInit { elem_index, table } => {
@@ -2795,16 +2866,26 @@ impl Encode for Instruction<'_> {
             Instruction::ContNew(_type_index) => {
                 todo!()
             }
-            Instruction::ContBind { src_index: _, dst_index: _ } => {
+            Instruction::ContBind {
+                src_index: _,
+                dst_index: _,
+            } => {
                 todo!()
             }
             Instruction::Suspend(_tag_index) => {
                 todo!()
             }
-            Instruction::Resume { type_index: _, resumetable: _ } => {
+            Instruction::Resume {
+                type_index: _,
+                resumetable: _,
+            } => {
                 todo!()
             }
-            Instruction::ResumeThrow { type_index: _, tag_index: _, resumetable: _ } => {
+            Instruction::ResumeThrow {
+                type_index: _,
+                tag_index: _,
+                resumetable: _,
+            } => {
                 todo!()
             }
             Instruction::Barrier(_blockty) => {

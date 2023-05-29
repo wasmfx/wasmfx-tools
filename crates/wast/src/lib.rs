@@ -392,6 +392,7 @@ pub mod kw {
     custom_keyword!(before);
     custom_keyword!(binary);
     custom_keyword!(block);
+    custom_keyword!(borrow);
     custom_keyword!(catch);
     custom_keyword!(catch_all);
     custom_keyword!(code);
@@ -401,6 +402,7 @@ pub mod kw {
     custom_keyword!(declare);
     custom_keyword!(delegate);
     custom_keyword!(r#do = "do");
+    custom_keyword!(dtor);
     custom_keyword!(elem);
     custom_keyword!(end);
     custom_keyword!(tag);
@@ -432,6 +434,7 @@ pub mod kw {
     custom_keyword!(import);
     custom_keyword!(instance);
     custom_keyword!(instantiate);
+    custom_keyword!(interface);
     custom_keyword!(invoke);
     custom_keyword!(item);
     custom_keyword!(last);
@@ -441,10 +444,16 @@ pub mod kw {
     custom_keyword!(modulecode);
     custom_keyword!(nan_arithmetic = "nan:arithmetic");
     custom_keyword!(nan_canonical = "nan:canonical");
+    custom_keyword!(nofunc);
+    custom_keyword!(noextern);
+    custom_keyword!(none);
     custom_keyword!(null);
+    custom_keyword!(nullfuncref);
+    custom_keyword!(nullexternref);
     custom_keyword!(nullref);
     custom_keyword!(offset);
     custom_keyword!(outer);
+    custom_keyword!(own);
     custom_keyword!(param);
     custom_keyword!(parent);
     custom_keyword!(passive);
@@ -459,10 +468,16 @@ pub mod kw {
     custom_keyword!(ref_null = "ref.null");
     custom_keyword!(register);
     custom_keyword!(rec);
+    custom_keyword!(rep);
+    custom_keyword!(resource);
+    custom_keyword!(resource_new = "resource.new");
+    custom_keyword!(resource_drop = "resource.drop");
+    custom_keyword!(resource_rep = "resource.rep");
     custom_keyword!(result);
     custom_keyword!(shared);
     custom_keyword!(start);
     custom_keyword!(sub);
+    custom_keyword!(r#final = "final");
     custom_keyword!(table);
     custom_keyword!(then);
     custom_keyword!(r#try = "try");
@@ -513,10 +528,15 @@ pub mod kw {
     // custom_keyword!(resume);
     // custom_keyword!(resume_throw);
     // custom_keyword!(barrier);
+
+    custom_keyword!(language);
+    custom_keyword!(sdk);
+    custom_keyword!(processed_by = "processed-by");
 }
 
 /// Common annotations used to parse WebAssembly text files.
 pub mod annotation {
     annotation!(custom);
     annotation!(name);
+    annotation!(producers);
 }

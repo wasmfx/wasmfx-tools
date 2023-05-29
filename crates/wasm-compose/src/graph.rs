@@ -10,7 +10,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 use wasmparser::{
-    types::{ComponentEntityType, ComponentInstanceType, Types, TypesRef},
+    types::{ComponentEntityType, TypeId, Types, TypesRef},
     Chunk, ComponentExternalKind, ComponentTypeRef, Encoding, Parser, Payload, ValidPayload,
     Validator, WasmFeatures,
 };
@@ -37,9 +37,9 @@ pub struct Component<'a> {
     /// The type information of the component.
     pub(crate) types: Types,
     /// The import map of the component.
-    pub(crate) imports: IndexMap<String, (String, ComponentTypeRef)>,
+    pub(crate) imports: IndexMap<String, ComponentTypeRef>,
     /// The export map of the component.
-    pub(crate) exports: IndexMap<String, (String, ComponentExternalKind, u32)>,
+    pub(crate) exports: IndexMap<String, (ComponentExternalKind, u32)>,
 }
 
 impl<'a> Component<'a> {
@@ -122,19 +122,25 @@ impl<'a> Component<'a> {
                                 Payload::ComponentImportSection(s) => {
                                     for import in s {
                                         let import = import?;
-                                        imports.insert(
-                                            import.name.to_string(),
-                                            (import.url.to_string(), import.ty),
-                                        );
+                                        let name = match import.name {
+                                            wasmparser::ComponentExternName::Kebab(s)
+                                            | wasmparser::ComponentExternName::Interface(s) => {
+                                                s.to_string()
+                                            }
+                                        };
+                                        imports.insert(name, import.ty);
                                     }
                                 }
                                 Payload::ComponentExportSection(s) => {
                                     for export in s {
                                         let export = export?;
-                                        exports.insert(
-                                            export.name.to_string(),
-                                            (export.url.to_string(), export.kind, export.index),
-                                        );
+                                        let name = match export.name {
+                                            wasmparser::ComponentExternName::Kebab(s)
+                                            | wasmparser::ComponentExternName::Interface(s) => {
+                                                s.to_string()
+                                            }
+                                        };
+                                        exports.insert(name, (export.kind, export.index));
                                     }
                                 }
                                 _ => {}
@@ -193,58 +199,51 @@ impl<'a> Component<'a> {
     pub fn export(
         &self,
         index: impl Into<ExportIndex>,
-    ) -> Option<(&str, &str, ComponentExternalKind, u32)> {
+    ) -> Option<(&str, ComponentExternalKind, u32)> {
         let index = index.into();
         self.exports
             .get_index(index.0)
-            .map(|(name, (url, kind, index))| (name.as_str(), url.as_str(), *kind, *index))
+            .map(|(name, (kind, index))| (name.as_str(), *kind, *index))
     }
 
     /// Gets an export from the component for the given export name.
-    pub fn export_by_name(
-        &self,
-        name: &str,
-    ) -> Option<(ExportIndex, &str, ComponentExternalKind, u32)> {
+    pub fn export_by_name(&self, name: &str) -> Option<(ExportIndex, ComponentExternalKind, u32)> {
         self.exports
             .get_full(name)
-            .map(|(i, _, (url, kind, index))| (ExportIndex(i), url.as_str(), *kind, *index))
+            .map(|(i, _, (kind, index))| (ExportIndex(i), *kind, *index))
     }
 
     /// Gets an iterator over the component's exports.
     pub fn exports(
         &self,
-    ) -> impl ExactSizeIterator<Item = (ExportIndex, &str, &str, ComponentExternalKind, u32)> {
+    ) -> impl ExactSizeIterator<Item = (ExportIndex, &str, ComponentExternalKind, u32)> {
         self.exports
             .iter()
             .enumerate()
-            .map(|(i, (name, (url, kind, index)))| {
-                (ExportIndex(i), name.as_str(), url.as_str(), *kind, *index)
-            })
+            .map(|(i, (name, (kind, index)))| (ExportIndex(i), name.as_str(), *kind, *index))
     }
 
     /// Gets an import from the component for the given import index.
-    pub fn import(&self, index: impl Into<ImportIndex>) -> Option<(&str, &str, ComponentTypeRef)> {
+    pub fn import(&self, index: impl Into<ImportIndex>) -> Option<(&str, ComponentTypeRef)> {
         let index = index.into();
         self.imports
             .get_index(index.0)
-            .map(|(name, (url, ty))| (name.as_str(), url.as_str(), *ty))
+            .map(|(name, ty)| (name.as_str(), *ty))
     }
 
     /// Gets an import from the component for the given import name.
-    pub fn import_by_name(&self, name: &str) -> Option<(ImportIndex, &str, ComponentTypeRef)> {
+    pub fn import_by_name(&self, name: &str) -> Option<(ImportIndex, ComponentTypeRef)> {
         self.imports
             .get_full(name)
-            .map(|(i, _, (url, ty))| (ImportIndex(i), url.as_str(), *ty))
+            .map(|(i, _, ty)| (ImportIndex(i), *ty))
     }
 
     /// Gets an iterator over the component's imports.
-    pub fn imports(
-        &self,
-    ) -> impl ExactSizeIterator<Item = (ImportIndex, &str, &str, ComponentTypeRef)> {
+    pub fn imports(&self) -> impl ExactSizeIterator<Item = (ImportIndex, &str, ComponentTypeRef)> {
         self.imports
             .iter()
             .enumerate()
-            .map(|(i, (name, (url, ty)))| (ImportIndex(i), name.as_str(), url.as_str(), *ty))
+            .map(|(i, (name, ty))| (ImportIndex(i), name.as_str(), *ty))
     }
 
     pub(crate) fn ty(&self) -> wasm_encoder::ComponentType {
@@ -261,35 +260,37 @@ impl<'a> Component<'a> {
     pub(crate) fn export_entity_type(
         &self,
         index: ExportIndex,
-    ) -> Option<(&str, &str, ComponentEntityType)> {
-        let (name, url, _kind, _index) = self.export(index)?;
-        Some((name, url, self.types.component_entity_type_of_extern(name)?))
+    ) -> Option<(&str, ComponentEntityType)> {
+        let (name, _kind, _index) = self.export(index)?;
+        Some((name, self.types.component_entity_type_of_export(name)?))
     }
 
     pub(crate) fn import_entity_type(
         &self,
         index: ImportIndex,
-    ) -> Option<(&str, &str, ComponentEntityType)> {
-        let (name, url, _ty) = self.import(index)?;
-        Some((name, url, self.types.component_entity_type_of_extern(name)?))
+    ) -> Option<(&str, ComponentEntityType)> {
+        let (name, _ty) = self.import(index)?;
+        Some((name, self.types.component_entity_type_of_import(name)?))
     }
 
     /// Finds a compatible instance export on the component for the given instance type.
     pub(crate) fn find_compatible_export(
         &self,
-        ty: &ComponentInstanceType,
+        ty: TypeId,
         types: TypesRef,
     ) -> Option<ExportIndex> {
         self.exports
             .iter()
-            .position(|(_, (_, kind, index))| {
+            .position(|(_, (kind, index))| {
                 if *kind != ComponentExternalKind::Instance {
                     return false;
                 }
-                ComponentInstanceType::is_subtype_of(
-                    self.types.component_instance_at(*index).unwrap(),
+                ComponentEntityType::is_subtype_of(
+                    &ComponentEntityType::Instance(
+                        self.types.component_instance_at(*index).unwrap(),
+                    ),
                     self.types.as_ref(),
-                    ty,
+                    &ComponentEntityType::Instance(ty),
                     types,
                 )
             })
@@ -298,18 +299,20 @@ impl<'a> Component<'a> {
 
     /// Checks to see if an instance of this component would be a
     /// subtype of the given instance type.
-    pub(crate) fn is_instance_subtype_of(
-        &self,
-        ty: &ComponentInstanceType,
-        types: TypesRef,
-    ) -> bool {
-        let exports = ty.exports(types);
+    pub(crate) fn is_instance_subtype_of(&self, ty: TypeId, types: TypesRef) -> bool {
+        let exports = types
+            .type_from_id(ty)
+            .unwrap()
+            .as_component_instance_type()
+            .unwrap()
+            .exports
+            .iter();
 
-        for (k, _, b) in exports {
+        for (k, b) in exports {
             match self.exports.get_full(k.as_str()) {
                 Some((ai, _, _)) => {
-                    let (_, _, a) = self.export_entity_type(ExportIndex(ai)).unwrap();
-                    if !ComponentEntityType::is_subtype_of(&a, self.types.as_ref(), &b, types) {
+                    let (_, a) = self.export_entity_type(ExportIndex(ai)).unwrap();
+                    if !ComponentEntityType::is_subtype_of(&a, self.types.as_ref(), b, types) {
                         return false;
                     }
                 }
@@ -731,7 +734,7 @@ impl<'a> CompositionGraph<'a> {
             .ok_or_else(|| anyhow!("the target instance does not exist in the graph"))?;
 
         let target_component = &self.components[&target_instance.component].component;
-        let (import_name, _, import_ty) = target_component
+        let (import_name, import_ty) = target_component
             .import_entity_type(target_import)
             .ok_or_else(|| anyhow!("the target import index is invalid"))?;
 
@@ -743,7 +746,7 @@ impl<'a> CompositionGraph<'a> {
         }
 
         if let Some(export_index) = source_export {
-            let (export_name, _, export_ty) = source_component
+            let (export_name, export_ty) = source_component
                 .export_entity_type(export_index)
                 .ok_or_else(|| anyhow!("the source export index is invalid"))?;
 
@@ -761,12 +764,7 @@ impl<'a> CompositionGraph<'a> {
             }
         } else {
             let ty = match import_ty {
-                ComponentEntityType::Instance(id) => target_component
-                    .types
-                    .type_from_id(id)
-                    .unwrap()
-                    .as_component_instance_type()
-                    .unwrap(),
+                ComponentEntityType::Instance(id) => id,
                 _ => bail!(
                     "source instance is not compatible with target {import_ty} import `{import_name}`",
                     import_ty = type_desc(import_ty)
@@ -1262,7 +1260,7 @@ mod test {
   )
   (import "i4" (core module (;0;) (type 0)))
   (type (;3;) (tuple u32 u32))
-  (import "i5" (type (eq 3)))
+  (import "i5" (type (;4;) (eq 3)))
   (component (;1;)
     (type (;0;) (tuple u32 u32))
     (type (;1;)
@@ -1284,7 +1282,7 @@ mod test {
       (module)
     )
     (import "i4" (core module (;0;) (type 0)))
-    (import "i5" (type (eq 0)))
+    (import "i5" (type (;4;) (eq 0)))
     (export (;1;) "e1" (instance 0))
     (export (;1;) "e2" (func 0))
     (export (;1;) "e3" (component 0))
@@ -1312,7 +1310,7 @@ mod test {
       (module)
     )
     (import "i4" (core module (;0;) (type 0)))
-    (import "i5" (type (eq 0)))
+    (import "i5" (type (;4;) (eq 0)))
   )
   (instance (;1;) (instantiate 1
       (with "i1" (instance 0))

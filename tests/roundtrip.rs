@@ -39,7 +39,7 @@ fn main() {
     let filter = std::env::args().nth(1);
     let bless = std::env::var_os("BLESS").is_some();
     if bless {
-        std::fs::remove_dir_all("tests/snapshots").expect("clear the snapshots directory");
+        drop(std::fs::remove_dir_all("tests/snapshots"));
     }
 
     let tests = tests
@@ -66,7 +66,14 @@ fn main() {
     let state = TestState::default();
     let errors = tests
         .par_iter()
-        .filter_map(|(test, contents)| state.run_test(test, contents).err())
+        .filter_map(|(test, contents)| {
+            let start = std::time::Instant::now();
+            let result = state.run_test(test, contents).err();
+            if start.elapsed().as_secs() > 2 {
+                println!("{test:?} SLOW");
+            }
+            result
+        })
         .collect::<Vec<_>>();
 
     if !errors.is_empty() {
@@ -137,13 +144,17 @@ fn skip_test(test: &Path, contents: &[u8]) -> bool {
         "exception-handling/throw.wast",
         // This is an empty file which currently doesn't parse
         "multi-memory/memory_copy1.wast",
+        // the GC proposal isn't implemented yet
+        "gc/gc-array.wat",
+        "gc/gc-rec-sub.wat",
+        "gc/gc-ref.wat",
+        "gc/gc-ref-global-import.wat",
+        "gc/gc-struct.wat",
+        "gc/let.wat",
+        "/proposals/gc/",
     ];
-    if broken.iter().any(|x| test.ends_with(x)) {
-        return true;
-    }
-
-    // TODO: the gc proposal isn't implemented yet
-    if test.iter().any(|p| p == "gc") {
+    let test_path = test.to_str().unwrap().replace("\\", "/"); // for windows paths
+    if broken.iter().any(|x| test_path.contains(x)) {
         return true;
     }
 
@@ -293,7 +304,7 @@ impl TestState {
     fn test_wast_directive(&self, test: &Path, directive: WastDirective, idx: usize) -> Result<()> {
         // Only test parsing and encoding of modules which wasmparser doesn't
         // support test (basically just test `wast`, nothing else)
-        let skip_verify = test.iter().any(|t| t == "gc")
+        let skip_verify =
             // This specific test contains a module along the lines of:
             //
             //  (module
@@ -306,7 +317,7 @@ impl TestState {
             // segment has a type of `funcref` which isn't compatible with the
             // table's type. The spec interpreter thinks this should validate,
             // however, and I'm not entirely sure why.
-            || test.ends_with("function-references/br_table.wast");
+            test.ends_with("function-references/br_table.wast");
 
         match directive {
             WastDirective::Wat(mut module) => {
@@ -566,6 +577,7 @@ impl TestState {
             function_references: true,
             typed_continuations: true,
             memory_control: true,
+            gc: true,
         };
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
@@ -580,6 +592,7 @@ impl TestState {
                     features.mutable_global = false;
                     features.bulk_memory = false;
                     features.function_references = false;
+                    features.gc = false;
                 }
                 "floats-disabled.wast" => features.floats = false,
                 "threads" => {
@@ -600,6 +613,7 @@ impl TestState {
                 "function-references" => features.function_references = true,
                 "relaxed-simd" => features.relaxed_simd = true,
                 "reference-types" => features.reference_types = true,
+                "gc" => features.gc = true,
                 _ => {}
             }
         }

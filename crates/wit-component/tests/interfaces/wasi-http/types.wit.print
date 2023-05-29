@@ -1,9 +1,0 @@
-interface types {
-  record response {
-  }
-
-  record request {
-  }
-
-}
-

@@ -5,7 +5,7 @@
       (export (;0;) "a" (func (type 0)))
     )
   )
-  (import "bar" (instance (;0;) (type 0)))
+  (import (interface "foo:foo/bar") (instance (;0;) (type 0)))
   (type (;1;)
     (instance
       (type (;0;) (list u8))
@@ -13,40 +13,44 @@
       (export (;0;) "baz" (func (type 1)))
     )
   )
-  (import "baz" (instance (;1;) (type 1)))
+  (import (interface "foo:foo/baz") (instance (;1;) (type 1)))
   (type (;2;)
     (instance
       (type (;0;) (func))
       (export (;0;) "a" (func (type 0)))
     )
   )
-  (import "foo" (instance (;2;) (type 2)))
+  (import (interface "foo:foo/foo") (instance (;2;) (type 2)))
   (core module (;0;)
     (type (;0;) (func))
     (type (;1;) (func (param i64 i32 i32)))
     (type (;2;) (func (param i32 i32 i32)))
     (type (;3;) (func (param i32 i32 i32 i32) (result i32)))
-    (import "foo" "a" (func (;0;) (type 0)))
-    (import "bar" "a" (func (;1;) (type 1)))
-    (import "baz" "baz" (func (;2;) (type 2)))
+    (import "foo:foo/foo" "a" (func (;0;) (type 0)))
+    (import "foo:foo/bar" "a" (func (;1;) (type 1)))
+    (import "foo:foo/baz" "baz" (func (;2;) (type 2)))
     (func (;3;) (type 3) (param i32 i32 i32 i32) (result i32)
       unreachable
     )
     (memory (;0;) 1)
     (export "memory" (memory 0))
     (export "cabi_realloc" (func 3))
+    (@producers
+      (processed-by "wit-component" "$CARGO_PKG_VERSION")
+      (processed-by "my-fake-bindgen" "123.45")
+    )
   )
   (core module (;1;)
     (type (;0;) (func (param i64 i32 i32)))
     (type (;1;) (func (param i32 i32 i32)))
-    (func $indirect-bar-a (;0;) (type 0) (param i64 i32 i32)
+    (func $indirect-foo:foo/bar-a (;0;) (type 0) (param i64 i32 i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 0
       call_indirect (type 0)
     )
-    (func $indirect-baz-baz (;1;) (type 1) (param i32 i32 i32)
+    (func $indirect-foo:foo/baz-baz (;1;) (type 1) (param i32 i32 i32)
       local.get 0
       local.get 1
       local.get 2
@@ -54,9 +58,12 @@
       call_indirect (type 1)
     )
     (table (;0;) 2 2 funcref)
-    (export "0" (func $indirect-bar-a))
-    (export "1" (func $indirect-baz-baz))
+    (export "0" (func $indirect-foo:foo/bar-a))
+    (export "1" (func $indirect-foo:foo/baz-baz))
     (export "$imports" (table 0))
+    (@producers
+      (processed-by "wit-component" "$CARGO_PKG_VERSION")
+    )
   )
   (core module (;2;)
     (type (;0;) (func (param i64 i32 i32)))
@@ -65,6 +72,9 @@
     (import "" "1" (func (;1;) (type 1)))
     (import "" "$imports" (table (;0;) 2 2 funcref))
     (elem (;0;) (i32.const 0) func 0 1)
+    (@producers
+      (processed-by "wit-component" "$CARGO_PKG_VERSION")
+    )
   )
   (core instance (;0;) (instantiate 1))
   (alias export 2 "a" (func (;0;)))
@@ -81,9 +91,9 @@
     (export "baz" (func 2))
   )
   (core instance (;4;) (instantiate 0
-      (with "foo" (instance 1))
-      (with "bar" (instance 2))
-      (with "baz" (instance 3))
+      (with "foo:foo/foo" (instance 1))
+      (with "foo:foo/bar" (instance 2))
+      (with "foo:foo/baz" (instance 3))
     )
   )
   (alias core export 4 "memory" (core memory (;0;)))
@@ -93,6 +103,9 @@
   (core func (;4;) (canon lower (func 1) (memory 0) string-encoding=utf8))
   (alias export 1 "baz" (func (;2;)))
   (core func (;5;) (canon lower (func 2) (memory 0) (realloc 3)))
+  (@producers
+    (processed-by "wit-component" "$CARGO_PKG_VERSION")
+  )
   (core instance (;5;)
     (export "$imports" (table 0))
     (export "0" (func 4))

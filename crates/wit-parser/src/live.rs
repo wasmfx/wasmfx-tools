@@ -1,6 +1,4 @@
-use crate::{
-    DocumentId, Function, InterfaceId, Resolve, Type, TypeDefKind, TypeId, WorldId, WorldItem,
-};
+use crate::{Function, InterfaceId, Resolve, Type, TypeDefKind, TypeId, WorldId, WorldItem};
 use indexmap::IndexSet;
 
 #[derive(Default)]
@@ -10,23 +8,11 @@ pub struct LiveTypes {
 
 impl LiveTypes {
     pub fn iter(&self) -> impl Iterator<Item = TypeId> + '_ {
-        // Note the reverse iteration order to ensure that everything is visited
-        // in a topological order.
-        self.set.iter().rev().copied()
+        self.set.iter().copied()
     }
 
     pub fn len(&self) -> usize {
         self.set.len()
-    }
-
-    pub fn add_document(&mut self, resolve: &Resolve, doc: DocumentId) {
-        let doc = &resolve.documents[doc];
-        for (_, id) in doc.interfaces.iter() {
-            self.add_interface(resolve, *id);
-        }
-        for (_, id) in doc.worlds.iter() {
-            self.add_world(resolve, *id);
-        }
     }
 
     pub fn add_interface(&mut self, resolve: &Resolve, iface: InterfaceId) {
@@ -64,7 +50,7 @@ impl LiveTypes {
     }
 
     pub fn add_type_id(&mut self, resolve: &Resolve, ty: TypeId) {
-        if !self.set.insert(ty) {
+        if self.set.contains(&ty) {
             return;
         }
         match &resolve.types[ty].kind {
@@ -113,6 +99,7 @@ impl LiveTypes {
             TypeDefKind::Flags(_) | TypeDefKind::Enum(_) | TypeDefKind::Future(None) => {}
             TypeDefKind::Unknown => unreachable!(),
         }
+        assert!(self.set.insert(ty));
     }
 
     pub fn add_type(&mut self, resolve: &Resolve, ty: &Type) {
