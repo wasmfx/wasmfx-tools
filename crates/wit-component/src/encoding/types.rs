@@ -127,6 +127,7 @@ pub trait ValtypeEncoder<'a> {
                 // If this type is imported from another interface then return
                 // it as it was bound here with an alias.
                 let ty = &resolve.types[id];
+                log::trace!("encode type name={:?}", ty.name);
                 if let Some(index) = self.maybe_import_type(resolve, id) {
                     self.type_map().insert(id, index);
                     return Ok(ComponentValType::Type(index));
@@ -326,11 +327,11 @@ impl<'a> ValtypeEncoder<'a> for RootTypeEncoder<'_, 'a> {
             Some(if self.import_types {
                 self.state
                     .component
-                    .import(name, "", ComponentTypeRef::Type(TypeBounds::Eq, idx))
+                    .import(name, ComponentTypeRef::Type(TypeBounds::Eq(idx)))
             } else {
                 self.state
                     .component
-                    .export(name, "", ComponentExportKind::Type, idx, None)
+                    .export(name, ComponentExportKind::Type, idx, None)
             })
         } else {
             assert!(!self.import_types);
@@ -374,7 +375,7 @@ impl<'a> ValtypeEncoder<'a> for InstanceTypeEncoder<'_, 'a> {
     fn export_type(&mut self, idx: u32, name: &str) -> Option<u32> {
         let ret = self.ty.type_count();
         self.ty
-            .export(name, "", ComponentTypeRef::Type(TypeBounds::Eq, idx));
+            .export(name, ComponentTypeRef::Type(TypeBounds::Eq(idx)));
         Some(ret)
     }
     fn type_map(&mut self) -> &mut HashMap<TypeId, u32> {

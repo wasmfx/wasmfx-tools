@@ -2,7 +2,7 @@
 
 use super::Mutator;
 use crate::module::map_type;
-use crate::Result;
+use crate::{Error, Result};
 use rand::Rng;
 use std::iter;
 
@@ -73,6 +73,9 @@ impl Mutator for AddTypeMutator {
                         types.function(params, results);
                     }
                     wasmparser::Type::Cont(_) => unimplemented!(),
+                    wasmparser::Type::Array(_) => {
+                        return Err(Error::unsupported("Array types are not supported yet."));
+                    }
                 }
             }
             // And then add our new type.

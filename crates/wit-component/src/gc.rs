@@ -2,6 +2,7 @@ use self::bitvec::BitVec;
 use anyhow::{bail, Result};
 use indexmap::{IndexMap, IndexSet};
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     mem,
     ops::Deref,
@@ -474,15 +475,31 @@ impl<'a> Module<'a> {
 
     fn valty(&mut self, ty: ValType) {
         match ty {
-            ValType::Ref(r) => self.heapty(r.heap_type),
+            ValType::Ref(r) => self.heapty(r.heap_type()),
             ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => {}
+        }
+    }
+
+    fn storagety(&mut self, ty: StorageType) {
+        match ty {
+            StorageType::I8 | StorageType::I16 => {}
+            StorageType::Val(ty) => self.valty(ty),
         }
     }
 
     fn heapty(&mut self, ty: HeapType) {
         match ty {
-            HeapType::Func | HeapType::Extern => {}
-            HeapType::TypedFunc(i) => self.ty(i.into()),
+            HeapType::Func
+            | HeapType::Extern
+            | HeapType::Any
+            | HeapType::None
+            | HeapType::NoExtern
+            | HeapType::NoFunc
+            | HeapType::Eq
+            | HeapType::Struct
+            | HeapType::Array
+            | HeapType::I31 => {}
+            HeapType::Indexed(i) => self.ty(i.into()),
         }
     }
 
@@ -491,13 +508,17 @@ impl<'a> Module<'a> {
             return;
         }
         self.worklist.push((ty, |me, ty| {
-            let ty = match me.types[ty as usize].clone() {
-                wasmparser::Type::Func(f) => f,
-                wasmparser::Type::Cont(_) => unimplemented!(), // TODO(dhil): revisit later
+            match me.types[ty as usize].clone() {
+                Type::Func(ty) => {
+                    for param in ty.params().iter().chain(ty.results()) {
+                        me.valty(*param);
+                    }
+                }
+                Type::Array(ty) => {
+                    me.storagety(ty.element_type);
+                }
+                Type::Cont(_) => unimplemented!(), // TODO(dhil): revisit later
             };
-            for param in ty.params().iter().chain(ty.results()) {
-                me.valty(*param);
-            }
             Ok(())
         }));
     }
@@ -564,6 +585,9 @@ impl<'a> Module<'a> {
                     }
                 }
                 Type::Cont(_) => unimplemented!(), // TODO(dhil): revisit later.
+                Type::Array(ty) => {
+                    types.array(map.storagety(ty.element_type), ty.mutable);
+                }
             }
         }
 
@@ -939,8 +963,8 @@ impl<'a> Module<'a> {
         encode_subsection(0x07, &global_names);
         if !section.is_empty() {
             ret.section(&wasm_encoder::CustomSection {
-                name: "name",
-                data: &section,
+                name: "name".into(),
+                data: Cow::Borrowed(&section),
             });
         }
         if let Some(producers) = &self.producers {
@@ -1096,19 +1120,35 @@ impl Encoder {
         }
     }
 
+    fn storagety(&self, ty: StorageType) -> wasm_encoder::StorageType {
+        match ty {
+            StorageType::I8 => wasm_encoder::StorageType::I8,
+            StorageType::I16 => wasm_encoder::StorageType::I16,
+            StorageType::Val(ty) => wasm_encoder::StorageType::Val(self.valty(ty)),
+        }
+    }
+
     fn refty(&self, rt: wasmparser::RefType) -> wasm_encoder::RefType {
         wasm_encoder::RefType {
-            nullable: rt.nullable,
-            heap_type: self.heapty(rt.heap_type),
+            nullable: rt.is_nullable(),
+            heap_type: self.heapty(rt.heap_type()),
         }
     }
 
     fn heapty(&self, ht: wasmparser::HeapType) -> wasm_encoder::HeapType {
         match ht {
-            wasmparser::HeapType::Func => wasm_encoder::HeapType::Func,
-            wasmparser::HeapType::Extern => wasm_encoder::HeapType::Extern,
-            wasmparser::HeapType::TypedFunc(idx) => {
-                wasm_encoder::HeapType::TypedFunc(self.types.remap(idx.into()).try_into().unwrap())
+            HeapType::Func => wasm_encoder::HeapType::Func,
+            HeapType::Extern => wasm_encoder::HeapType::Extern,
+            HeapType::Any => wasm_encoder::HeapType::Any,
+            HeapType::None => wasm_encoder::HeapType::None,
+            HeapType::NoExtern => wasm_encoder::HeapType::NoExtern,
+            HeapType::NoFunc => wasm_encoder::HeapType::NoFunc,
+            HeapType::Eq => wasm_encoder::HeapType::Eq,
+            HeapType::Struct => wasm_encoder::HeapType::Struct,
+            HeapType::Array => wasm_encoder::HeapType::Array,
+            HeapType::I31 => wasm_encoder::HeapType::I31,
+            HeapType::Indexed(idx) => {
+                wasm_encoder::HeapType::Indexed(self.types.remap(idx.into()).try_into().unwrap())
             }
         }
     }
@@ -1149,18 +1189,18 @@ macro_rules! define_encode {
         BrTable($arg.0, $arg.1)
     });
     (mk CallIndirect $ty:ident $table:ident $table_byte:ident) => ({
-        drop($table_byte);
+        let _ = $table_byte;
         CallIndirect { ty: $ty, table: $table }
     });
     (mk ReturnCallIndirect $ty:ident $table:ident) => (
         ReturnCallIndirect { ty: $ty, table: $table }
     );
     (mk MemorySize $mem:ident $mem_byte:ident) => ({
-        drop($mem_byte);
+        let _ = $mem_byte;
         MemorySize($mem)
     });
     (mk MemoryGrow $mem:ident $mem_byte:ident) => ({
-        drop($mem_byte);
+        let _ = $mem_byte;
         MemoryGrow($mem)
     });
     (mk I32Const $v:ident) => (I32Const($v));

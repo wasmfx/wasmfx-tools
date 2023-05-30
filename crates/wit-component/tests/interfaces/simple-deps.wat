@@ -7,7 +7,7 @@
           (export (;1;) "some-type" (type (eq 0)))
         )
       )
-      (import "types" "path:/some-dep/types/types" (instance (type 0)))
+      (import (interface "foo:some-dep/types") (instance (;0;) (type 0)))
       (alias export 0 "some-type" (type (;1;)))
       (type (;2;)
         (instance
@@ -15,8 +15,11 @@
           (export (;1;) "some-type" (type (eq 0)))
         )
       )
-      (export (;0;) "foo" "pkg:/foo/foo" (instance (type 2)))
+      (export (;1;) (interface "foo:foo/foo") (instance (type 2)))
     )
   )
-  (export (;1;) "foo" "pkg:/foo" (type 0))
+  (@producers
+    (processed-by "wit-component" "$CARGO_PKG_VERSION")
+  )
+  (export (;1;) (interface "foo:foo/wit") (type 0))
 )

@@ -1,5 +1,10 @@
-default world foo {
-  type t = u32
+package foo:foo
 
-  export a: func() -> t
+world module {
+  type t = u32
+  record r {
+    x: t
+  }
+
+  export a: func(r: r) -> t
 }

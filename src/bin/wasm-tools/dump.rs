@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::fmt::Write as _;
 use std::io::Write;
+use termcolor::{Color, ColorSpec, WriteColor};
 use wasmparser::*;
 
 /// Debugging utility to dump information about a wasm binary.
@@ -14,6 +15,10 @@ pub struct Opts {
 }
 
 impl Opts {
+    pub fn general_opts(&self) -> &wasm_tools::GeneralOpts {
+        self.io.general_opts()
+    }
+
     pub fn run(&self) -> Result<()> {
         let input = self.io.parse_input_wasm()?;
         let output = self.io.output_writer()?;
@@ -27,7 +32,7 @@ struct Dump<'a> {
     bytes: &'a [u8],
     cur: usize,
     state: String,
-    dst: Box<dyn Write + 'a>,
+    dst: Box<dyn WriteColor + 'a>,
     nesting: u32,
     offset_width: usize,
 }
@@ -57,12 +62,13 @@ enum ComponentTypeKind {
     Component,
     Instance,
     DefinedType,
+    Resource,
 }
 
 const NBYTES: usize = 4;
 
 impl<'a> Dump<'a> {
-    fn new(bytes: &'a [u8], dst: impl Write + 'a) -> Dump<'a> {
+    fn new(bytes: &'a [u8], dst: impl WriteColor + 'a) -> Dump<'a> {
         Dump {
             bytes,
             cur: 0,
@@ -93,7 +99,7 @@ impl<'a> Dump<'a> {
                     range,
                 } => {
                     write!(self.state, "version {} ({:?})", num, encoding)?;
-                    self.print(range.end)?;
+                    self.color_print(range.end)?;
                 }
                 Payload::TypeSection(s) => self.section(s, "type", |me, end, t| {
                     write!(me.state, "[type {}] {:?}", inc(&mut i.core_types), t)?;
@@ -171,7 +177,7 @@ impl<'a> Dump<'a> {
                             table_index,
                             offset_expr,
                         } => {
-                            write!(me.state, " table[{}]", table_index)?;
+                            write!(me.state, " table[{:?}]", table_index)?;
                             me.print(offset_expr.get_binary_reader().original_position())?;
                             me.print_ops(offset_expr.get_operators_reader())?;
                             write!(me.state, "{} items", item_count)?;
@@ -227,7 +233,7 @@ impl<'a> Dump<'a> {
 
                 Payload::CodeSectionStart { count, range, size } => {
                     write!(self.state, "code section")?;
-                    self.print(range.start)?;
+                    self.color_print(range.start)?;
                     write!(self.state, "{} count", count)?;
                     self.print(range.end - size as usize)?;
                 }
@@ -363,6 +369,7 @@ impl<'a> Dump<'a> {
                             ComponentType::Func(_) => ComponentTypeKind::Func,
                             ComponentType::Component(_) => ComponentTypeKind::Component,
                             ComponentType::Instance(_) => ComponentTypeKind::Instance,
+                            ComponentType::Resource { .. } => ComponentTypeKind::Resource,
                         });
                         me.print(end)
                     })?
@@ -389,7 +396,12 @@ impl<'a> Dump<'a> {
                     self.section(s, "canonical function", |me, end, f| {
                         let (name, col) = match &f {
                             CanonicalFunction::Lift { .. } => ("func", &mut i.funcs),
-                            CanonicalFunction::Lower { .. } => ("core func", &mut i.core_funcs),
+                            CanonicalFunction::Lower { .. }
+                            | CanonicalFunction::ResourceNew { .. }
+                            | CanonicalFunction::ResourceDrop { .. }
+                            | CanonicalFunction::ResourceRep { .. } => {
+                                ("core func", &mut i.core_funcs)
+                            }
                         };
 
                         write!(me.state, "[{} {}] {:?}", name, inc(col), f)?;
@@ -413,22 +425,19 @@ impl<'a> Dump<'a> {
 
                 Payload::CustomSection(c) => {
                     write!(self.state, "custom section")?;
-                    self.print(c.range().start)?;
+                    self.color_print(c.range().start)?;
                     write!(self.state, "name: {:?}", c.name())?;
                     self.print(c.data_offset())?;
                     if c.name() == "name" {
-                        let mut iter = NameSectionReader::new(c.data(), c.data_offset());
-                        while let Some(section) = iter.next() {
-                            self.print_custom_name_section(section?, iter.original_position())?;
-                        }
+                        let iter = NameSectionReader::new(c.data(), c.data_offset());
+                        self.print_custom_name_section(iter, |me, item, pos| {
+                            me.print_core_name(item, pos)
+                        })?;
                     } else if c.name() == "component-name" {
-                        let mut iter = ComponentNameSectionReader::new(c.data(), c.data_offset());
-                        while let Some(section) = iter.next() {
-                            self.print_custom_component_name_section(
-                                section?,
-                                iter.original_position(),
-                            )?;
-                        }
+                        let iter = ComponentNameSectionReader::new(c.data(), c.data_offset());
+                        self.print_custom_name_section(iter, |me, item, pos| {
+                            me.print_component_name(item, pos)
+                        })?;
                     } else {
                         self.print_byte_header()?;
                         for _ in 0..NBYTES {
@@ -444,7 +453,7 @@ impl<'a> Dump<'a> {
                     contents,
                 } => {
                     write!(self.state, "unknown section: {}", id)?;
-                    self.print(range.start)?;
+                    self.color_print(range.start)?;
                     self.print_byte_header()?;
                     for _ in 0..NBYTES {
                         write!(self.dst, "---")?;
@@ -483,7 +492,46 @@ impl<'a> Dump<'a> {
         })
     }
 
-    fn print_custom_name_section(&mut self, name: Name<'_>, end: usize) -> Result<()> {
+    fn print_custom_name_section<'b, T>(
+        &mut self,
+        mut section: Subsections<'b, T>,
+        print_item: impl Fn(&mut Self, T, usize) -> Result<()>,
+    ) -> Result<()>
+    where
+        T: wasmparser::Subsection<'b>,
+    {
+        while let Some(item) = section.next() {
+            let pos = section.original_position();
+
+            let err = match item {
+                Ok(item) => match print_item(self, item, pos) {
+                    Ok(()) => continue,
+                    Err(e) => e.downcast()?,
+                },
+                Err(e) => e,
+            };
+            if self.cur != pos {
+                if self.state.is_empty() {
+                    write!(self.state, "???")?;
+                }
+                self.print(pos)?;
+            }
+            self.print_byte_header()?;
+            for _ in 0..NBYTES {
+                write!(self.dst, "---")?;
+            }
+            let remaining = section.range().end - pos;
+            writeln!(
+                self.dst,
+                "-| ... failed to decode {remaining} more bytes: {err}"
+            )?;
+            self.cur += remaining;
+            break;
+        }
+        Ok(())
+    }
+
+    fn print_core_name(&mut self, name: Name<'_>, end: usize) -> Result<()> {
         match name {
             Name::Module { name, name_range } => {
                 write!(self.state, "module name")?;
@@ -509,11 +557,7 @@ impl<'a> Dump<'a> {
         Ok(())
     }
 
-    fn print_custom_component_name_section(
-        &mut self,
-        name: ComponentName<'_>,
-        end: usize,
-    ) -> Result<()> {
+    fn print_component_name(&mut self, name: ComponentName<'_>, end: usize) -> Result<()> {
         match name {
             ComponentName::Component { name, name_range } => {
                 write!(self.state, "component name")?;
@@ -552,7 +596,7 @@ impl<'a> Dump<'a> {
         T: FromReader<'b>,
     {
         write!(self.state, "{} section", name)?;
-        self.print(iter.range().start)?;
+        self.color_print(iter.range().start)?;
         self.print_iter(iter, print)
     }
 
@@ -584,7 +628,15 @@ impl<'a> Dump<'a> {
         Ok(())
     }
 
+    fn color_print(&mut self, end: usize) -> Result<()> {
+        self.print_(end, true)
+    }
+
     fn print(&mut self, end: usize) -> Result<()> {
+        self.print_(end, false)
+    }
+
+    fn print_(&mut self, end: usize, color: bool) -> Result<()> {
         assert!(
             self.cur < end,
             "{:#x} >= {:#x}\ntrying to print: {}",
@@ -612,7 +664,12 @@ impl<'a> Dump<'a> {
             }
             if i == 0 {
                 write!(self.dst, " | ")?;
+                if color {
+                    self.dst
+                        .set_color(ColorSpec::new().set_fg(Some(Color::Green)))?;
+                }
                 write!(self.dst, "{}", &self.state)?;
+                self.dst.set_color(ColorSpec::new().set_fg(None))?;
                 self.state.truncate(0);
             }
             writeln!(self.dst)?;

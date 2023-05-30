@@ -1,0 +1,15 @@
+package foo:foo
+
+interface foo {
+  record f {}
+
+  record r {
+    f: f,
+  }
+}
+
+world module {
+  export x: interface {
+    use foo.{r}
+  }
+}

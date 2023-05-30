@@ -179,20 +179,23 @@ mod eval {
             &mut mutated_store,
             mutated_instance,
         );
-        assert_same_calls(
+        let should_have_same_state = assert_same_calls(
             &orig_module,
             &mut orig_store,
             orig_instance,
             &mut mutated_store,
             mutated_instance,
         );
-        assert_same_state(
-            &orig_module,
-            &mut orig_store,
-            orig_instance,
-            &mut mutated_store,
-            mutated_instance,
-        );
+
+        if should_have_same_state {
+            assert_same_state(
+                &orig_module,
+                &mut orig_store,
+                orig_instance,
+                &mut mutated_store,
+                mutated_instance,
+            );
+        }
     }
 
     fn assert_same_state(
@@ -249,7 +252,7 @@ mod eval {
         orig_instance: wasmtime::Instance,
         mutated_store: &mut wasmtime::Store<StoreLimits>,
         mutated_instance: wasmtime::Instance,
-    ) {
+    ) -> bool {
         for export in orig_module.exports() {
             let func_ty = match export.ty() {
                 wasmtime::ExternType::Func(func_ty) => func_ty,
@@ -265,16 +268,13 @@ mod eval {
             let mut orig_results = vec![Val::I32(0); func_ty.results().len()];
             let mut mutated_results = orig_results.clone();
             log::debug!("invoking `{}`", export.name());
-            let prev_consumed = orig_store.fuel_consumed().unwrap();
             match (
                 {
                     orig_store.add_fuel(1_000).unwrap();
                     orig_func.call(&mut *orig_store, &args, &mut orig_results)
                 },
                 {
-                    let consumed = orig_store.fuel_consumed().unwrap() - prev_consumed;
-                    log::debug!("consumed {consumed} fuel");
-                    mutated_store.add_fuel(consumed).unwrap();
+                    mutated_store.add_fuel(1000).unwrap();
                     mutated_func.call(&mut *mutated_store, &args, &mut mutated_results)
                 },
             ) {
@@ -283,13 +283,28 @@ mod eval {
                         assert_val_eq(orig_val, mutated_val);
                     }
                 }
-                (Err(_), Err(_)) => continue,
+                // If either test case ran out of fuel then that's ok since
+                // mutation may add code or delete code which causes one side to
+                // take more or less fuel than the other. In this situation,
+                // however, execution has diverged so throw out the test case.
+                (Err(e), _) | (_, Err(e))
+                    if e.downcast_ref() == Some(&wasmtime::Trap::OutOfFuel) =>
+                {
+                    return false
+                }
+                (Err(orig), Err(mutated)) => {
+                    log::debug!("original error {orig:?}");
+                    log::debug!("mutated error {mutated:?}");
+                    continue;
+                }
                 (orig, mutated) => panic!(
                     "mutated and original Wasm diverged: orig = {:?}; mutated = {:?}",
                     orig, mutated,
                 ),
             }
         }
+
+        true
     }
 
     fn assert_val_eq(orig_val: &wasmtime::Val, mutated_val: &wasmtime::Val) {

@@ -284,6 +284,10 @@ impl<'a> Resolver<'a> {
         Ok(())
     }
 
+    fn resolve_reftype(&self, ty: &mut RefType<'a>) -> Result<(), Error> {
+        self.resolve_heaptype(&mut ty.heap)
+    }
+
     fn resolve_heaptype(&self, ty: &mut HeapType<'a>) -> Result<(), Error> {
         match ty {
             HeapType::Index(i) => {
@@ -484,6 +488,10 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolver.resolve_type_use(&mut c.ty)?;
             }
 
+            CallRef(i) | ReturnCallRef(i) => {
+                self.resolver.resolve(i, Ns::Type)?;
+            }
+
             FuncBind(b) => {
                 self.resolver.resolve_type_use(&mut b.ty)?;
             }
@@ -574,16 +582,6 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_label(i)?;
             }
 
-            BrOnCast(i) | BrOnCastFail(i) => {
-                self.resolve_label(&mut i.label)?;
-                self.resolver.resolve(&mut i.r#type, Ns::Type)?;
-            }
-
-            BrOnFunc(l) | BrOnData(l) | BrOnI31(l) | BrOnArray(l) | BrOnNonFunc(l)
-            | BrOnNonData(l) | BrOnNonI31(l) | BrOnNonArray(l) => {
-                self.resolve_label(l)?;
-            }
-
             Select(s) => {
                 if let Some(list) = &mut s.tys {
                     for ty in list {
@@ -592,7 +590,24 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 }
             }
 
-            RefTest(i) | RefCast(i) | StructNew(i) | StructNewDefault(i) | ArrayNew(i)
+            RefTest(i) => {
+                self.resolver.resolve_reftype(&mut i.r#type)?;
+            }
+            RefCast(i) => {
+                self.resolver.resolve_reftype(&mut i.r#type)?;
+            }
+            BrOnCast(i) => {
+                self.resolve_label(&mut i.label)?;
+                self.resolver.resolve_reftype(&mut i.to_type)?;
+                self.resolver.resolve_reftype(&mut i.from_type)?;
+            }
+            BrOnCastFail(i) => {
+                self.resolve_label(&mut i.label)?;
+                self.resolver.resolve_reftype(&mut i.to_type)?;
+                self.resolver.resolve_reftype(&mut i.from_type)?;
+            }
+
+            StructNew(i) | StructNewDefault(i) | ArrayNew(i)
             | ArrayNewDefault(i) | ArrayGet(i) | ArrayGetS(i) | ArrayGetU(i) | ArraySet(i) => {
                 self.resolver.resolve(i, Ns::Type)?;
             }
@@ -613,12 +628,23 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolver.resolve(&mut a.array, Ns::Type)?;
                 self.resolver.elems.resolve(&mut a.elem_idx, "elem")?;
             }
+            ArrayFill(a) => {
+                self.resolver.resolve(&mut a.array, Ns::Type)?;
+            }
             ArrayCopy(a) => {
                 self.resolver.resolve(&mut a.dest_array, Ns::Type)?;
                 self.resolver.resolve(&mut a.src_array, Ns::Type)?;
             }
+            ArrayInitData(a) => {
+                self.resolver.resolve(&mut a.array, Ns::Type)?;
+                self.resolver.datas.resolve(&mut a.segment, "data")?;
+            }
+            ArrayInitElem(a) => {
+                self.resolver.resolve(&mut a.array, Ns::Type)?;
+                self.resolver.elems.resolve(&mut a.segment, "elem")?;
+            }
 
-            RefNull(ty) | CallRef(ty) | ReturnCallRef(ty) => self.resolver.resolve_heaptype(ty)?,
+            RefNull(ty) => self.resolver.resolve_heaptype(ty)?,
 
             ContNew(ty) => {
                 self.resolver.resolve(ty, Ns::Type)?;
