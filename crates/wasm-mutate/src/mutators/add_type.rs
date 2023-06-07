@@ -76,6 +76,9 @@ impl Mutator for AddTypeMutator {
                     wasmparser::Type::Array(_) => {
                         return Err(Error::unsupported("Array types are not supported yet."));
                     }
+                    wasmparser::Type::Struct(_) => {
+                        return Err(Error::unsupported("Struct types are not supported yet."));
+                    }
                 }
             }
             // And then add our new type.

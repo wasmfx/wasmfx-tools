@@ -514,10 +514,15 @@ impl<'a> Module<'a> {
                         me.valty(*param);
                     }
                 }
-                Type::Array(ty) => {
+                Type::Array(ArrayType(ty)) => {
                     me.storagety(ty.element_type);
                 }
                 Type::Cont(_) => unimplemented!(), // TODO(dhil): revisit later
+                Type::Struct(ty) => {
+                    for field in ty.fields.iter() {
+                        me.storagety(field.element_type);
+                    }
+                }
             };
             Ok(())
         }));
@@ -585,8 +590,19 @@ impl<'a> Module<'a> {
                     }
                 }
                 Type::Cont(_) => unimplemented!(), // TODO(dhil): revisit later.
-                Type::Array(ty) => {
+                Type::Array(ArrayType(ty)) => {
                     types.array(map.storagety(ty.element_type), ty.mutable);
+                }
+                Type::Struct(ty) => {
+                    let fs = ty
+                        .fields
+                        .iter()
+                        .map(|f| wasm_encoder::FieldType {
+                            ty: map.storagety(f.element_type),
+                            mutable: f.mutable,
+                        })
+                        .collect();
+                    types.struct_(fs);
                 }
             }
         }
