@@ -77,7 +77,11 @@ pub struct Resolver<'a> {
     /// introduced to print an error message if necessary.
     foreign_dep_spans: Vec<Span>,
 
-    foreign_world_spans: Vec<Span>,
+    include_world_spans: Vec<Span>,
+
+    /// A list of `TypeDefKind::Unknown` types which are required to be
+    /// resources when this package is resolved against its dependencies.
+    required_resource_types: Vec<(TypeId, Span)>,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -208,7 +212,8 @@ impl<'a> Resolver<'a> {
             world_spans: mem::take(&mut self.world_spans),
             foreign_dep_spans: mem::take(&mut self.foreign_dep_spans),
             source_map: SourceMap::default(),
-            foreign_world_spans: mem::take(&mut self.foreign_world_spans),
+            include_world_spans: mem::take(&mut self.include_world_spans),
+            required_resource_types: mem::take(&mut self.required_resource_types),
         })
     }
 
@@ -881,7 +886,7 @@ impl<'a> Resolver<'a> {
     fn resolve_include(&mut self, owner: TypeOwner, i: &ast::Include<'a>) -> Result<()> {
         let (item, name, span) = self.resolve_ast_item_path(&i.from)?;
         let include_from = self.extract_world_from_item(&item, &name, span)?;
-        self.foreign_world_spans.push(span);
+        self.include_world_spans.push(span);
         let world_id = match owner {
             TypeOwner::World(id) => id,
             _ => unreachable!(),
@@ -1029,15 +1034,22 @@ impl<'a> Resolver<'a> {
             ast::Type::String => TypeDefKind::Type(Type::String),
             ast::Type::Name(name) => {
                 let id = self.resolve_type_name(name)?;
-                TypeDefKind::Type(Type::Id(id))
+
+                // Default to own handle if a resource is used without explicitly stating the handle type.
+                if let TypeDefKind::Resource = &self.types[id].kind {
+                    TypeDefKind::Handle(Handle::Own(id))
+                } else {
+                    TypeDefKind::Type(Type::Id(id))
+                }
             }
             ast::Type::List(list) => {
                 let ty = self.resolve_type(list)?;
                 TypeDefKind::List(ty)
             }
             ast::Type::Handle(handle) => TypeDefKind::Handle(match handle {
-                ast::Handle::Shared { resource } => {
-                    Handle::Shared(self.validate_resource(resource)?)
+                ast::Handle::Own { resource } => Handle::Own(self.validate_resource(resource)?),
+                ast::Handle::Borrow { resource } => {
+                    Handle::Borrow(self.validate_resource(resource)?)
                 }
             }),
             ast::Type::Resource(resource) => {
@@ -1196,9 +1208,13 @@ impl<'a> Resolver<'a> {
             match self.types[cur].kind {
                 TypeDefKind::Resource => break Ok(id),
                 TypeDefKind::Type(Type::Id(ty)) => cur = ty,
+                TypeDefKind::Unknown => {
+                    self.required_resource_types.push((cur, name.span));
+                    break Ok(id);
+                }
                 _ => bail!(Error {
                     span: name.span,
-                    msg: format!("type `{}` is not a resource", name.name),
+                    msg: format!("type `{}` used in a handle must be a resource", name.name),
                 }),
             }
         }
@@ -1306,7 +1322,7 @@ impl<'a> Resolver<'a> {
             FunctionKind::Method(id) => {
                 let shared = self.anon_type_def(TypeDef {
                     docs: Docs::default(),
-                    kind: TypeDefKind::Handle(Handle::Shared(id)),
+                    kind: TypeDefKind::Handle(Handle::Own(id)),
                     name: None,
                     owner: TypeOwner::None,
                 });
@@ -1346,7 +1362,7 @@ impl<'a> Resolver<'a> {
                 }
                 let shared = self.anon_type_def(TypeDef {
                     docs: Docs::default(),
-                    kind: TypeDefKind::Handle(Handle::Shared(id)),
+                    kind: TypeDefKind::Handle(Handle::Own(id)),
                     name: None,
                     owner: TypeOwner::None,
                 });
@@ -1376,7 +1392,8 @@ fn collect_deps<'a>(ty: &ast::Type<'a>, deps: &mut Vec<ast::Id<'a>>) {
         ast::Type::Name(name) => deps.push(name.clone()),
         ast::Type::List(list) => collect_deps(list, deps),
         ast::Type::Handle(handle) => match handle {
-            ast::Handle::Shared { resource } => deps.push(resource.clone()),
+            ast::Handle::Own { resource } => deps.push(resource.clone()),
+            ast::Handle::Borrow { resource } => deps.push(resource.clone()),
         },
         ast::Type::Resource(_) => {}
         ast::Type::Record(record) => {
