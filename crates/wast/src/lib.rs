@@ -522,13 +522,6 @@ pub mod kw {
     custom_keyword!(true_ = "true");
     custom_keyword!(false_ = "false");
 
-    // custom_keyword!(cont_new = "cont.new");
-    // custom_keyword!(cont_bind = "cont.bind");
-    // custom_keyword!(suspend);
-    // custom_keyword!(resume);
-    // custom_keyword!(resume_throw);
-    // custom_keyword!(barrier);
-
     custom_keyword!(language);
     custom_keyword!(sdk);
     custom_keyword!(processed_by = "processed-by");
