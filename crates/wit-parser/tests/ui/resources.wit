@@ -17,7 +17,7 @@ interface foo {
 
     a: func()
 
-    static b: func()
+    b: static func()
   }
 
   resource e {
@@ -36,4 +36,12 @@ world w {
   resource c {
     constructor()
   }
+}
+
+interface i {
+  resource a
+
+  type t1 = a
+  type t2 = borrow<a>
+  type t3 = borrow<t1>
 }

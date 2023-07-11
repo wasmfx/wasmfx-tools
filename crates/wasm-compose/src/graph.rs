@@ -286,10 +286,8 @@ impl<'a> Component<'a> {
                     return false;
                 }
                 ComponentEntityType::is_subtype_of(
-                    &ComponentEntityType::Instance(
-                        self.types.component_instance_at(*index).unwrap(),
-                    ),
-                    self.types.as_ref(),
+                    &ComponentEntityType::Instance(self.types.component_instance_at(*index)),
+                    self.types(),
                     &ComponentEntityType::Instance(ty),
                     types,
                 )
@@ -300,19 +298,13 @@ impl<'a> Component<'a> {
     /// Checks to see if an instance of this component would be a
     /// subtype of the given instance type.
     pub(crate) fn is_instance_subtype_of(&self, ty: TypeId, types: TypesRef) -> bool {
-        let exports = types
-            .type_from_id(ty)
-            .unwrap()
-            .as_component_instance_type()
-            .unwrap()
-            .exports
-            .iter();
+        let exports = types[ty].unwrap_component_instance().exports.iter();
 
         for (k, b) in exports {
             match self.exports.get_full(k.as_str()) {
                 Some((ai, _, _)) => {
                     let (_, a) = self.export_entity_type(ExportIndex(ai)).unwrap();
-                    if !ComponentEntityType::is_subtype_of(&a, self.types.as_ref(), b, types) {
+                    if !ComponentEntityType::is_subtype_of(&a, self.types(), b, types) {
                         return false;
                     }
                 }
@@ -752,9 +744,9 @@ impl<'a> CompositionGraph<'a> {
 
             if !ComponentEntityType::is_subtype_of(
                 &export_ty,
-                source_component.types.as_ref(),
+                source_component.types(),
                 &import_ty,
-                target_component.types.as_ref(),
+                target_component.types(),
             ) {
                 bail!(
                     "source {export_ty} export `{export_name}` is not compatible with target {import_ty} import `{import_name}`",
@@ -771,7 +763,7 @@ impl<'a> CompositionGraph<'a> {
                 ),
             };
 
-            if !source_component.is_instance_subtype_of(ty, target_component.types.as_ref()) {
+            if !source_component.is_instance_subtype_of(ty, target_component.types()) {
                 bail!(
                     "source instance is not compatible with target {import_ty} import `{import_name}`",
                     import_ty = type_desc(import_ty)
@@ -1123,7 +1115,7 @@ mod test {
             validate: true,
         })?;
 
-        let wat = wasmprinter::print_bytes(&encoded)?;
+        let wat = wasmprinter::print_bytes(encoded)?;
         assert_eq!(r#"(component)"#, wat);
 
         Ok(())
@@ -1143,7 +1135,7 @@ mod test {
             validate: true,
         })?;
 
-        let wat = wasmprinter::print_bytes(&encoded)?.replace("\r\n", "\n");
+        let wat = wasmprinter::print_bytes(encoded)?.replace("\r\n", "\n");
         assert_eq!(
             r#"(component
   (type (;0;)
@@ -1172,7 +1164,7 @@ mod test {
             validate: true,
         })?;
 
-        let wat = wasmprinter::print_bytes(&encoded)?.replace("\r\n", "\n");
+        let wat = wasmprinter::print_bytes(encoded)?.replace("\r\n", "\n");
         assert_eq!(
             r#"(component
   (component (;0;))
@@ -1235,7 +1227,7 @@ mod test {
             validate: true,
         })?;
 
-        let wat = wasmprinter::print_bytes(&encoded)?.replace("\r\n", "\n");
+        let wat = wasmprinter::print_bytes(encoded)?.replace("\r\n", "\n");
         assert_eq!(
             r#"(component
   (type (;0;)

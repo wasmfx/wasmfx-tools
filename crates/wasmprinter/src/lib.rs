@@ -56,7 +56,7 @@ pub struct Printer {
 
 #[derive(Default)]
 struct CoreState {
-    types: Vec<Option<Type>>,
+    types: Vec<Option<SubType>>,
     funcs: u32,
     memories: u32,
     tags: u32,
@@ -645,7 +645,11 @@ impl Printer {
                 self.start_group("func");
                 self.print_func_type(states.last().unwrap(), &ty, None)?;
                 self.end_group();
-                Some(Type::Func(ty))
+                Some(SubType {
+                    is_final: false,
+                    supertype_idx: None,
+                    structural_type: StructuralType::Func(ty),
+                })
             }
             CoreType::Module(decls) => {
                 self.print_module_type(states, decls.into_vec())?;
@@ -658,39 +662,62 @@ impl Printer {
         Ok(())
     }
 
-    fn print_type(&mut self, state: &mut State, ty: wasmparser::Type) -> Result<()> {
+    fn print_type(&mut self, state: &mut State, ty: SubType) -> Result<()> {
         self.start_group("type ");
         self.print_name(&state.core.type_names, state.core.types.len() as u32)?;
         self.result.push(' ');
-        let ty = match ty {
-            Type::Func(ty) => {
-                self.start_group("func");
-                self.print_func_type(state, &ty, None)?;
-                self.end_group();
-                Type::Func(ty)
-            }
-            Type::Array(ty) => {
-                self.start_group("array");
-                self.print_array_type(&ty)?;
-                self.end_group();
-                Type::Array(ty)
-            }
-            Type::Struct(ty) => {
-                self.start_group("struct");
-                self.print_struct_type(&ty)?;
-                self.end_group();
-                Type::Struct(ty)
-            }
-            Type::Cont(type_index) => {
-                self.start_group("cont");
-                self.print_cont_type(state, type_index)?;
-                self.end_group();
-                Type::Cont(type_index)
-            }
-        };
-        self.end_group(); // `type` itself
+        self.print_sub(state, &ty, None)?;
+        self.end_group(); // `type`
         state.core.types.push(Some(ty));
         Ok(())
+    }
+
+    fn print_sub(&mut self, state: &State, ty: &SubType, names_for: Option<u32>) -> Result<u32> {
+        let r = if ty.is_final || !ty.supertype_idx.is_none() {
+            self.start_group("sub");
+            self.print_sub_type(state, ty)?;
+            let r = self.print_structural(state, &ty.structural_type, names_for)?;
+            self.end_group(); // `sub`
+            r
+        } else {
+            self.print_structural(state, &ty.structural_type, names_for)?
+        };
+        Ok(r)
+    }
+
+    fn print_structural(
+        &mut self,
+        state: &State,
+        ty: &StructuralType,
+        names_for: Option<u32>,
+    ) -> Result<u32> {
+        let r = match &ty {
+            StructuralType::Func(ty) => {
+                self.start_group("func");
+                let r = self.print_func_type(state, ty, names_for)?;
+                self.end_group(); // `func`
+                r
+            }
+            StructuralType::Array(ty) => {
+                self.start_group("array");
+                let r = self.print_array_type(ty)?;
+                self.end_group(); // `array`
+                r
+            }
+            StructuralType::Struct(ty) => {
+                self.start_group("struct");
+                let r = self.print_struct_type(ty)?;
+                self.end_group(); // `struct`
+                r
+            }
+            StructuralType::Cont(type_index) => {
+                self.start_group("cont");
+                let r = self.print_cont_type(state, *type_index)?;
+                self.end_group();
+                r
+            }
+        };
+        Ok(r)
     }
 
     fn print_core_types(
@@ -726,11 +753,11 @@ impl Printer {
         self.print_core_type_ref(state, idx)?;
 
         match state.core.types.get(idx as usize) {
-            Some(Some(Type::Func(ty))) => self.print_func_type(state, ty, names_for).map(Some),
-            Some(Some(Type::Array(ty))) => self.print_array_type(ty).map(Some),
-            Some(Some(Type::Struct(ty))) => self.print_struct_type(ty).map(Some),
-            Some(Some(Type::Cont(type_index))) => self.print_cont_type(state, *type_index).map(Some),
-            Some(None) | None => Ok(None),
+            Some(Some(SubType {
+                structural_type: StructuralType::Func(ty),
+                ..
+            })) => self.print_func_type(state, ty, names_for).map(Some),
+            Some(Some(_)) | Some(None) | None => Ok(None),
         }
     }
 
@@ -795,6 +822,18 @@ impl Printer {
             self.result.push_str(" (field");
             self.print_field_type(field)?;
             self.result.push(')');
+        }
+        Ok(0)
+    }
+
+    fn print_sub_type(&mut self, state: &State, ty: &SubType) -> Result<u32> {
+        self.result.push(' ');
+        if ty.is_final {
+            self.result.push_str("final ");
+        }
+        for idx in &ty.supertype_idx {
+            self.print_name(&state.core.type_names, *idx)?;
+            self.result.push(' ');
         }
         Ok(0)
     }
@@ -1798,7 +1837,7 @@ impl Printer {
                 self.print_valtype(rep)?;
                 self.result.push_str(")");
                 if let Some(dtor) = dtor {
-                    self.result.push_str("(dtor (func ");
+                    self.result.push_str(" (dtor (func ");
                     self.print_idx(&states.last().unwrap().core.func_names, dtor)?;
                     self.result.push_str("))");
                 }
@@ -2145,12 +2184,12 @@ impl Printer {
                     self.end_group();
                     state.core.funcs += 1;
                 }
-                CanonicalFunction::ResourceDrop { ty } => {
+                CanonicalFunction::ResourceDrop { resource } => {
                     self.start_group("core func ");
                     self.print_name(&state.core.func_names, state.core.funcs)?;
                     self.result.push(' ');
                     self.start_group("canon resource.drop ");
-                    self.print_component_val_type(state, &ty)?;
+                    self.print_idx(&state.component.type_names, resource)?;
                     self.end_group();
                     self.end_group();
                     state.core.funcs += 1;

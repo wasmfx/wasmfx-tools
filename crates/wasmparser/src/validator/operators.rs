@@ -3465,7 +3465,7 @@ where
             .skip(src_cont.len_inputs() - dst_cont.len_inputs());
         if !self.resources.match_functypes(
             &crate::FuncType::new(src_suffix, src_cont.outputs()),
-            dst_cont,
+            &crate::FuncType::new(dst_cont.inputs(), dst_cont.outputs()),
         ) {
             bail!(self.offset, "type mismatch in continuation types");
         }

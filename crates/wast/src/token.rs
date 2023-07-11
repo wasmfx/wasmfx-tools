@@ -3,7 +3,7 @@
 //! contexts too perhaps).
 
 use crate::annotation;
-use crate::lexer::FloatVal;
+use crate::lexer::Float;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -167,14 +167,15 @@ impl Index<'_> {
 
 impl<'a> Parse<'a> for Index<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
-        let mut l = parser.lookahead1();
-        if l.peek::<Id>() {
+        if parser.peek::<Id>() {
             Ok(Index::Id(parser.parse()?))
-        } else if l.peek::<u32>() {
+        } else if parser.peek::<u32>() {
             let (val, span) = parser.parse()?;
             Ok(Index::Num(val, span))
         } else {
-            Err(l.error())
+            Err(parser.error(format!(
+                "unexpected token, expected an index or an identifier"
+            )))
         }
     }
 }
@@ -389,11 +390,11 @@ macro_rules! float {
             fn parse(parser: Parser<'a>) -> Result<Self> {
                 parser.step(|c| {
                     let (val, rest) = if let Some((f, rest)) = c.float() {
-                        ($parse(f.val()), rest)
+                        ($parse(&f), rest)
                     } else if let Some((i, rest)) = c.integer() {
                         let (s, base) = i.val();
                         (
-                            $parse(&FloatVal::Val {
+                            $parse(&Float::Val {
                                 hex: base == 16,
                                 integral: s.into(),
                                 decimal: None,
@@ -412,7 +413,7 @@ macro_rules! float {
             }
         }
 
-        fn $parse(val: &FloatVal<'_>) -> Option<$int> {
+        fn $parse(val: &Float<'_>) -> Option<$int> {
             // Compute a few well-known constants about the float representation
             // given the parameters to the macro here.
             let width = std::mem::size_of::<$int>() * 8;
@@ -425,7 +426,7 @@ macro_rules! float {
             let (hex, integral, decimal, exponent_str) = match val {
                 // Infinity is when the exponent bits are all set and
                 // the significand is zero.
-                FloatVal::Inf { negative } => {
+                Float::Inf { negative } => {
                     let exp_bits = (1 << $exp_bits) - 1;
                     let neg_bit = *negative as $int;
                     return Some(
@@ -437,7 +438,7 @@ macro_rules! float {
                 // NaN is when the exponent bits are all set and
                 // the significand is nonzero. The default of NaN is
                 // when only the highest bit of the significand is set.
-                FloatVal::Nan { negative, val } => {
+                Float::Nan { negative, val } => {
                     let exp_bits = (1 << $exp_bits) - 1;
                     let neg_bit = *negative as $int;
                     let signif = val.unwrap_or(1 << (signif_bits - 1)) as $int;
@@ -454,7 +455,7 @@ macro_rules! float {
                 }
 
                 // This is trickier, handle this below
-                FloatVal::Val { hex, integral, decimal, exponent } => {
+                Float::Val { hex, integral, decimal, exponent } => {
                     (hex, integral, decimal, exponent)
                 }
             };
@@ -663,7 +664,7 @@ mod tests {
             ($a:tt p $e:tt) => (f!(@mk $a, None, Some($e.into())));
             ($a:tt . $b:tt) => (f!(@mk $a, Some($b.into()), None));
             ($a:tt . $b:tt p $e:tt) => (f!(@mk $a, Some($b.into()), Some($e.into())));
-            (@mk $a:tt, $b:expr, $e:expr) => (crate::lexer::FloatVal::Val {
+            (@mk $a:tt, $b:expr, $e:expr) => (crate::lexer::Float::Val {
                 hex: true,
                 integral: $a.into(),
                 decimal: $b,

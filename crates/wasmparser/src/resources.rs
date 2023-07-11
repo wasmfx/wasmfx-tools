@@ -221,7 +221,7 @@ pub trait WasmModuleResources {
     /// Returns the element type at the given index.
     fn element_type_at(&self, at: u32) -> Option<RefType>;
     /// Checks whether the function type t1 is a subtype of the function type t2.
-    fn match_functypes(&self, t1: &impl WasmFuncType, t2: &impl WasmFuncType) -> bool;
+    fn match_functypes(&self, t1: &crate::FuncType, t2: &crate::FuncType) -> bool;
     /// Under the function references proposal, returns whether t1 <=
     /// t2. Otherwise, returns whether t1 == t2
     fn matches(&self, t1: ValType, t2: ValType) -> bool;
@@ -307,7 +307,7 @@ where
     fn element_type_at(&self, at: u32) -> Option<RefType> {
         T::element_type_at(self, at)
     }
-    fn match_functypes(&self, t1: &impl WasmFuncType, t2: &impl WasmFuncType) -> bool {
+    fn match_functypes(&self, t1: &crate::FuncType, t2: &crate::FuncType) -> bool {
         T::match_functypes(self, t1, t2)
     }
     fn matches(&self, t1: ValType, t2: ValType) -> bool {
@@ -376,7 +376,7 @@ where
         T::element_type_at(self, at)
     }
 
-    fn match_functypes(&self, t1: &impl WasmFuncType, t2: &impl WasmFuncType) -> bool {
+    fn match_functypes(&self, t1: &crate::FuncType, t2: &crate::FuncType) -> bool {
         T::match_functypes(self, t1, t2)
     }
 
