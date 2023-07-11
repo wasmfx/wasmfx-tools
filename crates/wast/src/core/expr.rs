@@ -1165,7 +1165,11 @@ instructions! {
 const _: () = {
     let size = std::mem::size_of::<Instruction<'_>>();
     let pointer = std::mem::size_of::<u64>();
-    assert!(size <= pointer * 10);
+    //assert!(size <= pointer * 10);
+    assert!(size <= pointer * 16); // TODO(dhil): the typed
+                                   // continuations additions increases the size of the Instruction
+                                   // structure, making it surpass the arbitrary threshold defined
+                                   // above.
 };
 
 impl<'a> Instruction<'a> {
