@@ -117,7 +117,7 @@ impl<'a> ExpressionParser<'a> {
             // of an `if block then we require that all sub-components are
             // s-expressions surrounded by `(` and `)`, so verify that here.
             if let Some(Level::If(_)) | Some(Level::Try(_)) = self.stack.last() {
-                if !parser.is_empty() && !parser.peek::<LParen>() {
+                if !parser.is_empty() && !parser.peek::<LParen>()? {
                     return Err(parser.error("expected `(`"));
                 }
             }
@@ -221,10 +221,10 @@ impl<'a> ExpressionParser<'a> {
     /// Parses either `(`, `)`, or nothing.
     fn paren(&self, parser: Parser<'a>) -> Result<Paren> {
         parser.step(|cursor| {
-            Ok(match cursor.lparen() {
+            Ok(match cursor.lparen()? {
                 Some(rest) => (Paren::Left, rest),
                 None if self.stack.is_empty() => (Paren::None, cursor),
-                None => match cursor.rparen() {
+                None => match cursor.rparen()? {
                     Some(rest) => (Paren::Right, rest),
                     None => (Paren::None, cursor),
                 },
@@ -266,7 +266,7 @@ impl<'a> ExpressionParser<'a> {
         if let If::Clause(if_instr) = i {
             let instr = mem::replace(if_instr, Instruction::End(None));
             *i = If::Then(instr);
-            if !parser.peek::<kw::then>() {
+            if !parser.peek::<kw::then>()? {
                 return Ok(false);
             }
         }
@@ -427,7 +427,7 @@ macro_rules! instructions {
                     }
                 )*
                 let parse_remainder = parser.step(|c| {
-                    let (kw, rest) = match c.keyword() {
+                    let (kw, rest) = match c.keyword() ?{
                         Some(pair) => pair,
                         None => return Err(c.error("expected an instruction")),
                     };
@@ -1305,7 +1305,7 @@ pub struct BrTableIndices<'a> {
 impl<'a> Parse<'a> for BrTableIndices<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut labels = vec![parser.parse()?];
-        while parser.peek::<Index>() {
+        while parser.peek::<Index>()? {
             labels.push(parser.parse()?);
         }
         let default = labels.pop().unwrap();
@@ -1321,8 +1321,8 @@ pub struct ResumeTableIndices<'a> {
 }
 
 impl Peek for (Index<'_>, Index<'_>) {
-    fn peek(cursor: Cursor<'_>) -> bool {
-        Index::peek(cursor) && Index::peek2(cursor)
+    fn peek(cursor: Cursor<'_>) -> Result<bool> {
+        Ok(Index::peek(cursor)? && Index::peek2(cursor)?)
     }
 
     fn display() -> &'static str {
@@ -1332,9 +1332,9 @@ impl Peek for (Index<'_>, Index<'_>) {
 
 impl<'a> Parse<'a> for (Index<'a>, Index<'a>) {
     fn parse(parser: Parser<'a>) -> Result<Self> {
-        if parser.peek::<Index>() {
+        if parser.peek::<Index>()? {
             let fst = parser.parse()?;
-            if parser.peek::<Index>() {
+            if parser.peek::<Index>()? {
                 let snd = parser.parse()?;
                 Ok((fst, snd))
             } else {
@@ -1349,7 +1349,7 @@ impl<'a> Parse<'a> for (Index<'a>, Index<'a>) {
 impl<'a> Parse<'a> for ResumeTableIndices<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut targets = vec![];
-        while parser.peek2::<kw::tag>() {
+        while parser.peek2::<kw::tag>()? {
             parser.parens(|p| {
                 p.parse::<kw::tag>()?;
                 targets.push(p.parse()?);
@@ -1370,7 +1370,7 @@ pub struct LaneArg {
 impl<'a> Parse<'a> for LaneArg {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let lane = parser.step(|c| {
-            if let Some((i, rest)) = c.integer() {
+            if let Some((i, rest)) = c.integer()? {
                 if i.sign() == None {
                     let (src, radix) = i.val();
                     let val = u8::from_str_radix(src, radix)
@@ -1410,7 +1410,7 @@ impl<'a> MemArg<'a> {
             f: impl FnOnce(Cursor<'_>, &str, u32) -> Result<T>,
         ) -> Result<Option<T>> {
             parser.step(|c| {
-                let (kw, rest) = match c.keyword() {
+                let (kw, rest) = match c.keyword()? {
                     Some(p) => p,
                     None => return Ok((None, c)),
                 };
@@ -1477,17 +1477,17 @@ impl<'a> LoadOrStoreLane<'a> {
         // This is sort of funky. The first integer we see could be the lane
         // index, but it could also be the memory index. To determine what it is
         // then if we see a second integer we need to look further.
-        let has_memarg = parser.step(|c| match c.integer() {
+        let has_memarg = parser.step(|c| match c.integer()? {
             Some((_, after_int)) => {
                 // Two integers in a row? That means that the first one is the
                 // memory index and the second must be the lane index.
-                if after_int.integer().is_some() {
+                if after_int.integer()?.is_some() {
                     return Ok((true, c));
                 }
 
                 // If the first integer is trailed by `offset=...` or
                 // `align=...` then this is definitely a memarg.
-                if let Some((kw, _)) = after_int.keyword() {
+                if let Some((kw, _)) = after_int.keyword()? {
                     if kw.starts_with("offset=") || kw.starts_with("align=") {
                         return Ok((true, c));
                     }
@@ -1550,7 +1550,7 @@ pub struct TableInit<'a> {
 impl<'a> Parse<'a> for TableInit<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let prev_span = parser.prev_span();
-        let (elem, table) = if parser.peek2::<Index>() {
+        let (elem, table) = if parser.peek2::<Index>()? {
             let table = parser.parse()?;
             (parser.parse()?, table)
         } else {
@@ -1630,7 +1630,7 @@ pub struct MemoryInit<'a> {
 impl<'a> Parse<'a> for MemoryInit<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let prev_span = parser.prev_span();
-        let (data, mem) = if parser.peek2::<Index>() {
+        let (data, mem) = if parser.peek2::<Index>()? {
             let memory = parser.parse()?;
             (parser.parse()?, memory)
         } else {
@@ -1963,7 +1963,7 @@ impl V128Const {
 impl<'a> Parse<'a> for V128Const {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut l = parser.lookahead1();
-        if l.peek::<kw::i8x16>() {
+        if l.peek::<kw::i8x16>()? {
             parser.parse::<kw::i8x16>()?;
             Ok(V128Const::I8x16([
                 parser.parse()?,
@@ -1983,7 +1983,7 @@ impl<'a> Parse<'a> for V128Const {
                 parser.parse()?,
                 parser.parse()?,
             ]))
-        } else if l.peek::<kw::i16x8>() {
+        } else if l.peek::<kw::i16x8>()? {
             parser.parse::<kw::i16x8>()?;
             Ok(V128Const::I16x8([
                 parser.parse()?,
@@ -1995,7 +1995,7 @@ impl<'a> Parse<'a> for V128Const {
                 parser.parse()?,
                 parser.parse()?,
             ]))
-        } else if l.peek::<kw::i32x4>() {
+        } else if l.peek::<kw::i32x4>()? {
             parser.parse::<kw::i32x4>()?;
             Ok(V128Const::I32x4([
                 parser.parse()?,
@@ -2003,10 +2003,10 @@ impl<'a> Parse<'a> for V128Const {
                 parser.parse()?,
                 parser.parse()?,
             ]))
-        } else if l.peek::<kw::i64x2>() {
+        } else if l.peek::<kw::i64x2>()? {
             parser.parse::<kw::i64x2>()?;
             Ok(V128Const::I64x2([parser.parse()?, parser.parse()?]))
-        } else if l.peek::<kw::f32x4>() {
+        } else if l.peek::<kw::f32x4>()? {
             parser.parse::<kw::f32x4>()?;
             Ok(V128Const::F32x4([
                 parser.parse()?,
@@ -2014,7 +2014,7 @@ impl<'a> Parse<'a> for V128Const {
                 parser.parse()?,
                 parser.parse()?,
             ]))
-        } else if l.peek::<kw::f64x2>() {
+        } else if l.peek::<kw::f64x2>()? {
             parser.parse::<kw::f64x2>()?;
             Ok(V128Const::F64x2([parser.parse()?, parser.parse()?]))
         } else {
@@ -2066,7 +2066,7 @@ impl<'a> Parse<'a> for SelectTypes<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut found = false;
         let mut list = Vec::new();
-        while parser.peek2::<kw::result>() {
+        while parser.peek2::<kw::result>()? {
             found = true;
             parser.parens(|p| {
                 p.parse::<kw::result>()?;

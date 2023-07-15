@@ -937,7 +937,12 @@ impl Module {
         ty1.inherits(&ty2, &|idx| self.subtype_at(types, idx, 0).unwrap())
     }
 
-    pub(crate) fn match_functypes(&self, t1: &crate::FuncType, t2: &crate::FuncType, types: &TypeList) -> bool {
+    pub(crate) fn match_functypes(
+        &self,
+        t1: &crate::FuncType,
+        t2: &crate::FuncType,
+        types: &TypeList,
+    ) -> bool {
         t1.inherits(t2, &|idx| self.subtype_at(types, idx, 0).unwrap())
     }
 
