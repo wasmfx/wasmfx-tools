@@ -1077,7 +1077,7 @@ impl<'a> FromReader<'a> for SubType {
     fn from_reader(reader: &mut BinaryReader<'a>) -> Result<Self> {
         let pos = reader.original_position();
         Ok(match reader.read_u8()? {
-           opcode @ (0x4e | 0x50) => {
+            opcode @ (0x4e | 0x50) => {
                 let idx_iter = reader.read_iter(MAX_WASM_SUPERTYPES, "supertype idxs")?;
                 let idxs = idx_iter.collect::<Result<Vec<u32>>>()?;
                 if idxs.len() > 1 {

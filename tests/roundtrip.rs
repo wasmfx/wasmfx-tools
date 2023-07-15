@@ -147,7 +147,6 @@ fn skip_test(test: &Path, contents: &[u8]) -> bool {
         // the GC proposal isn't implemented yet
         "gc/gc-array.wat",
         "gc/gc-rec-sub.wat",
-        "gc/gc-ref.wat",
         "gc/gc-ref-global-import.wat",
         "gc/gc-struct.wat",
         "gc/let.wat",
@@ -232,7 +231,10 @@ impl TestState {
         // Both of these cases indicate possible bugs in `wasmprinter` itself
         // which while they don't actually affect the meaning they do "affect"
         // humans reading the output.
-        for token in wast::lexer::Lexer::new(&string).allow_confusing_unicode(true) {
+        for token in wast::lexer::Lexer::new(&string)
+            .allow_confusing_unicode(true)
+            .iter(0)
+        {
             let token = token?;
             let ws = match token.kind {
                 wast::lexer::TokenKind::Whitespace => token.src(&string),

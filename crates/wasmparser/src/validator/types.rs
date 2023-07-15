@@ -309,7 +309,7 @@ impl Type {
             Self::Sub(ty) => {
                 1 + match ty.clone().structural_type {
                     StructuralType::Func(ty) => 1 + (ty.params().len() + ty.results().len()) as u32,
-                    StructuralType::Cont(_)  => 1,
+                    StructuralType::Cont(_) => 1,
                     StructuralType::Array(_) => 2,
                     StructuralType::Struct(ty) => 1 + 2 * ty.fields.len() as u32,
                 }
