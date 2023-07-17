@@ -555,6 +555,10 @@ impl Encode for Elem<'_> {
                 offset.encode(e);
                 e.push(0x00); // extern_kind
             }
+            (ElemKind::Declared, ElemPayload::Indices(_)) => {
+                e.push(0x03); // flags
+                e.push(0x00); // extern_kind
+            }
             (
                 ElemKind::Active {
                     table: Index::Num(0, _),
@@ -581,10 +585,6 @@ impl Encode for Elem<'_> {
                 table.encode(e);
                 offset.encode(e);
                 ty.encode(e);
-            }
-            (ElemKind::Declared, ElemPayload::Indices(_)) => {
-                e.push(0x03); // flags
-                e.push(0x00); // extern_kind
             }
             (ElemKind::Declared, ElemPayload::Exprs { ty, .. }) => {
                 e.push(0x07); // flags
