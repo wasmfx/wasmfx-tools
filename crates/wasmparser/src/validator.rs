@@ -249,6 +249,8 @@ pub struct WasmFeatures {
     pub memory_control: bool,
     /// The WebAssembly gc proposal
     pub gc: bool,
+    /// Support for the `value` type in the component model proposal.
+    pub component_model_values: bool,
 }
 
 impl WasmFeatures {
@@ -339,6 +341,7 @@ impl Default for WasmFeatures {
             typed_continuations: false,
             memory_control: false,
             gc: false,
+            component_model_values: false,
 
             // On-by-default features (phase 4 or greater).
             mutable_global: true,
@@ -1065,11 +1068,11 @@ impl Validator {
                 current.instances.reserve(count as usize);
                 Ok(())
             },
-            |components, types, _, instance, offset| {
+            |components, types, features, instance, offset| {
                 components
                     .last_mut()
                     .unwrap()
-                    .add_instance(instance, types, offset)
+                    .add_instance(instance, features, types, offset)
             },
         )
     }
@@ -1085,8 +1088,8 @@ impl Validator {
             section,
             "alias",
             |_, _, _, _| Ok(()), // maximums checked via `add_alias`
-            |components, types, _, alias, offset| -> Result<(), BinaryReaderError> {
-                ComponentState::add_alias(components, alias, types, offset)
+            |components, types, features, alias, offset| -> Result<(), BinaryReaderError> {
+                ComponentState::add_alias(components, alias, features, types, offset)
             },
         )
     }
@@ -1184,6 +1187,7 @@ impl Validator {
             f.func_index,
             &f.arguments,
             f.results,
+            &self.features,
             &self.types,
             range.start,
         )
@@ -1200,11 +1204,11 @@ impl Validator {
             section,
             "import",
             |_, _, _, _| Ok(()), // add_import will check limits
-            |components, types, _, import, offset| {
+            |components, types, features, import, offset| {
                 components
                     .last_mut()
                     .unwrap()
-                    .add_import(import, types, offset)
+                    .add_import(import, features, types, offset)
             },
         )
     }
@@ -1231,12 +1235,13 @@ impl Validator {
                 current.exports.reserve(count as usize);
                 Ok(())
             },
-            |components, types, _, export, offset| {
+            |components, types, features, export, offset| {
                 let current = components.last_mut().unwrap();
-                let ty = current.export_to_entity_type(&export, types, offset)?;
+                let ty = current.export_to_entity_type(&export, features, types, offset)?;
                 current.add_export(
                     export.name,
                     ty,
+                    features,
                     types,
                     offset,
                     false, /* checked above */
