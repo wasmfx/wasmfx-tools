@@ -348,6 +348,7 @@ impl<'a> Metadata<'a> {
                             r.map(|ty| match ty.structural_type {
                                 StructuralType::Func(ty) => Some(ty),
                                 StructuralType::Array(_) | StructuralType::Struct(_) => None,
+                                StructuralType::Cont(_) => todo!()
                             })
                             .transpose()
                         })
