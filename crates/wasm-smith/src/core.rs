@@ -587,28 +587,34 @@ impl Module {
             let serialized_sig_idx = match available_types.get_mut(parsed_sig_idx as usize) {
                 None => panic!("signature index refers to a type out of bounds"),
                 Some((_, Some(idx))) => *idx as usize,
-                Some((func_type, index_store)) => {
-                    let multi_value_required = func_type.results().len() > 1;
-                    let new_index = first_type_index + new_types.len();
-                    if new_index >= max_types || (multi_value_required && !multi_value_enabled) {
-                        return None;
+                Some((func_type, index_store)) => match func_type {
+                    wasmparser::FuncOrContType::Func(func_type) => {
+                        let multi_value_required = func_type.results().len() > 1;
+                        let new_index = first_type_index + new_types.len();
+                        if new_index >= max_types || (multi_value_required && !multi_value_enabled)
+                        {
+                            return None;
+                        }
+                        let func_type = Rc::new(FuncType {
+                            params: func_type
+                                .params()
+                                .iter()
+                                .map(|t| convert_type(*t))
+                                .collect(),
+                            results: func_type
+                                .results()
+                                .iter()
+                                .map(|t| convert_type(*t))
+                                .collect(),
+                        });
+                        index_store.replace(new_index as u32);
+                        new_types.push(Type::Func(Rc::clone(&func_type)));
+                        new_index
                     }
-                    let func_type = Rc::new(FuncType {
-                        params: func_type
-                            .params()
-                            .iter()
-                            .map(|t| convert_type(*t))
-                            .collect(),
-                        results: func_type
-                            .results()
-                            .iter()
-                            .map(|t| convert_type(*t))
-                            .collect(),
-                    });
-                    index_store.replace(new_index as u32);
-                    new_types.push(Type::Func(Rc::clone(&func_type)));
-                    new_index
-                }
+                    wasmparser::FuncOrContType::Cont(_) => {
+                        unimplemented!("Continuation types are not supported yet.")
+                    }
+                },
             };
             match &new_types[serialized_sig_idx - first_type_index] {
                 Type::Func(f) => Some((serialized_sig_idx as u32, Rc::clone(f))),
