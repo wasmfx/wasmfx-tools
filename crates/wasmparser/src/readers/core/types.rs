@@ -913,7 +913,6 @@ impl Inherits for StructuralType {
                 let x = type_at(*a);
                 let y = type_at(*b);
                 x.inherits(y, self_base_idx, other_base_idx, type_at)
-
             }
             (StructuralType::Func(_), _) => false,
             (StructuralType::Array(_), _) => false,
@@ -1196,7 +1195,9 @@ impl<'a> TypeSectionReader<'a> {
             }
             match ty.structural_type {
                 StructuralType::Func(f) => Ok(f),
-                StructuralType::Cont(_) => bail!(offset, "typed continuations proposal not supported"),
+                StructuralType::Cont(_) => {
+                    bail!(offset, "typed continuations proposal not supported")
+                }
                 StructuralType::Array(_) | StructuralType::Struct(_) => {
                     bail!(offset, "gc proposal not supported");
                 }

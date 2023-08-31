@@ -981,7 +981,9 @@ impl Module {
         t2: &crate::FuncType,
         types: &TypeList,
     ) -> bool {
-        t1.inherits(t2, None, None, &|idx| self.subtype_at(types, idx, 0).unwrap())
+        t1.inherits(t2, None, None, &|idx| {
+            self.subtype_at(types, idx, 0).unwrap()
+        })
     }
 
     fn check_tag_type(
