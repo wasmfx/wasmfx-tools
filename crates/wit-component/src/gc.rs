@@ -246,7 +246,12 @@ impl<'a> Module<'a> {
                 Payload::End(_) => {}
                 Payload::TypeSection(s) => {
                     for ty in s.into_iter_err_on_gc_types() {
-                        self.types.push(ty?);
+                        match ty? {
+                            wasmparser::FuncOrContType::Func(ty) => self.types.push(ty),
+                            wasmparser::FuncOrContType::Cont(_) => {
+                                unimplemented!("Continuation types are not supported yet.")
+                            }
+                        }
                     }
                 }
                 Payload::ImportSection(s) => {

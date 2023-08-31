@@ -1179,11 +1179,35 @@ pub struct TagType {
 /// A reader for the type section of a WebAssembly module.
 pub type TypeSectionReader<'a> = SectionLimited<'a, RecGroup>;
 
+// A sum type used by TypeSectionReader to return either a function
+// type or a continuation type.  NOTE(dhil): This is only intended as
+// a temporary workaround/hack.
+#[allow(missing_docs)]
+pub enum FuncOrContType {
+    Func(FuncType),
+    Cont(u32),
+}
+
+impl FuncOrContType {
+    #[allow(missing_docs)]
+    pub fn unwrap_func(self) -> Result<FuncType> {
+        match self {
+            FuncOrContType::Func(f) => Ok(f),
+            _ => panic!("attempt to unwrap non-function type"),
+        }
+    }
+}
+
 impl<'a> TypeSectionReader<'a> {
     /// Returns an iterator over this type section which will only yield
     /// function types and any usage of GC types from the GC proposal will
     /// be translated into an error.
-    pub fn into_iter_err_on_gc_types(self) -> impl Iterator<Item = Result<FuncType>> + 'a {
+    pub fn into_iter_err_on_gc_types(self) -> impl Iterator<Item = Result<FuncOrContType>> + 'a {
+        // TODO(dhil): Upstream need only return a FuncType at the
+        // moment, we need both FuncType and ContType. Thus we
+        // temporary fix the return to be a sum. Eventually upstream
+        // will have to return a sum-like thing, at which point we
+        // will revert from using this workaround.
         self.into_iter_with_offsets().map(|item| {
             let (offset, group) = item?;
             let ty = match group {
@@ -1194,15 +1218,28 @@ impl<'a> TypeSectionReader<'a> {
                 bail!(offset, "gc proposal not supported");
             }
             match ty.structural_type {
-                StructuralType::Func(f) => Ok(f),
-                StructuralType::Cont(_) => {
-                    bail!(offset, "typed continuations proposal not supported")
-                }
+                StructuralType::Func(f) => Ok(FuncOrContType::Func(f)),
+                StructuralType::Cont(c) => Ok(FuncOrContType::Cont(c)),
                 StructuralType::Array(_) | StructuralType::Struct(_) => {
                     bail!(offset, "gc proposal not supported");
                 }
             }
         })
+    }
+}
+
+impl<'a> FromReader<'a> for FuncOrContType {
+    fn from_reader(reader: &mut BinaryReader<'a>) -> Result<Self> {
+        match read_structural_type(reader.read_u8()?, reader)? {
+            StructuralType::Func(f) => Ok(FuncOrContType::Func(f)),
+            StructuralType::Cont(u) => Ok(FuncOrContType::Cont(u)),
+            _ => {
+                return Err(BinaryReaderError::new(
+                    "gc types are not supported",
+                    reader.original_position(),
+                ))
+            }
+        }
     }
 }
 
