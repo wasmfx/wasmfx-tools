@@ -614,7 +614,8 @@ impl Validator {
                 state
                     .module
                     .assert_mut()
-                    .add_type(def, features, types, offset, false /* checked above */)
+                    .add_types(&def, features, types, offset, true)?;
+                Ok(())
             },
         )
     }
