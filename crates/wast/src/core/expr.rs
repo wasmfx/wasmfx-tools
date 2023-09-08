@@ -1177,7 +1177,8 @@ impl<'a> Instruction<'a> {
         match self {
             Instruction::MemoryInit(_)
             | Instruction::DataDrop(_)
-            | Instruction::ArrayNewData(_) => true,
+            | Instruction::ArrayNewData(_)
+            | Instruction::ArrayInitData(_) => true,
             _ => false,
         }
     }
