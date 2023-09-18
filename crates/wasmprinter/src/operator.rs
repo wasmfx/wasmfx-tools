@@ -914,7 +914,7 @@ macro_rules! define_visit {
     (name Suspend) => ("suspend");
     (name Barrier) => ("barrier");
 
-    (name I31New) => ("i31.new");
+    (name RefI31) => ("ref.i31");
     (name I31GetS) => ("i31.get_s");
     (name I31GetU) => ("i31.get_u");
 }
