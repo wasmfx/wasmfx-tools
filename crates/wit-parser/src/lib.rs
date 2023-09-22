@@ -19,7 +19,8 @@ mod live;
 pub use live::LiveTypes;
 mod serde_;
 use serde_::{
-    serialize_anon_result, serialize_id, serialize_id_map, serialize_optional_id, serialize_params,
+    serialize_anon_result, serialize_id, serialize_id_map, serialize_none, serialize_optional_id,
+    serialize_params,
 };
 
 /// Checks if the given string is a legal identifier in wit.
@@ -62,9 +63,6 @@ pub struct UnresolvedPackage {
     /// The namespace, name, and version information for this package.
     pub name: PackageName,
 
-    /// Doc comments for this package.
-    pub docs: Docs,
-
     /// All worlds from all documents within this package.
     ///
     /// Each world lists the document that it is from.
@@ -95,6 +93,9 @@ pub struct UnresolvedPackage {
     /// fields of `self.interfaces` describes the required types that are from
     /// each foreign interface.
     pub foreign_deps: IndexMap<PackageName, IndexMap<String, AstItem>>,
+
+    /// Doc comments for this package.
+    pub docs: Docs,
 
     unknown_type_spans: Vec<Span>,
     world_item_spans: Vec<(Vec<Span>, Vec<Span>)>,
@@ -251,10 +252,6 @@ pub struct World {
     /// The WIT identifier name of this world.
     pub name: String,
 
-    /// Documentation associated with this world declaration.
-    #[serde(skip_serializing_if = "Docs::is_empty")]
-    pub docs: Docs,
-
     /// All imported items into this interface, both worlds and functions.
     pub imports: IndexMap<WorldKey, WorldItem>,
 
@@ -264,6 +261,10 @@ pub struct World {
     /// The package that owns this world.
     #[serde(serialize_with = "serialize_optional_id")]
     pub package: Option<PackageId>,
+
+    /// Documentation associated with this world declaration.
+    #[serde(skip_serializing_if = "Docs::is_empty")]
+    pub docs: Docs,
 
     /// All the included worlds from this world. Empty if this is fully resolved
     #[serde(skip)]
@@ -339,10 +340,6 @@ pub struct Interface {
     /// This is `None` for inline interfaces in worlds.
     pub name: Option<String>,
 
-    /// Documentation associated with this interface.
-    #[serde(skip_serializing_if = "Docs::is_empty")]
-    pub docs: Docs,
-
     /// Exported types from this interface.
     ///
     /// Export names are listed within the types themselves. Note that the
@@ -353,6 +350,10 @@ pub struct Interface {
     /// Exported functions from this interface.
     pub functions: IndexMap<String, Function>,
 
+    /// Documentation associated with this interface.
+    #[serde(skip_serializing_if = "Docs::is_empty")]
+    pub docs: Docs,
+
     /// The package that owns this interface.
     #[serde(serialize_with = "serialize_optional_id")]
     pub package: Option<PackageId>,
@@ -360,11 +361,11 @@ pub struct Interface {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypeDef {
+    pub name: Option<String>,
+    pub kind: TypeDefKind,
+    pub owner: TypeOwner,
     #[serde(skip_serializing_if = "Docs::is_empty")]
     pub docs: Docs,
-    pub kind: TypeDefKind,
-    pub name: Option<String>,
-    pub owner: TypeOwner,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -427,6 +428,7 @@ pub enum TypeOwner {
     Interface(InterfaceId),
     /// This type wasn't inherently defined anywhere, such as a `list<T>`, which
     /// doesn't need an owner.
+    #[serde(untagged, serialize_with = "serialize_none")]
     None,
 }
 
@@ -472,11 +474,11 @@ pub struct Record {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Field {
-    #[serde(skip_serializing_if = "Docs::is_empty")]
-    pub docs: Docs,
     pub name: String,
     #[serde(rename = "type")]
     pub ty: Type,
+    #[serde(skip_serializing_if = "Docs::is_empty")]
+    pub docs: Docs,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -486,9 +488,9 @@ pub struct Flags {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Flag {
+    pub name: String,
     #[serde(skip_serializing_if = "Docs::is_empty")]
     pub docs: Docs,
-    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -531,11 +533,11 @@ pub struct Variant {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Case {
-    #[serde(skip_serializing_if = "Docs::is_empty")]
-    pub docs: Docs,
     pub name: String,
     #[serde(rename = "type")]
     pub ty: Option<Type>,
+    #[serde(skip_serializing_if = "Docs::is_empty")]
+    pub docs: Docs,
 }
 
 impl Variant {
@@ -556,9 +558,9 @@ pub struct Enum {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EnumCase {
+    pub name: String,
     #[serde(skip_serializing_if = "Docs::is_empty")]
     pub docs: Docs,
-    pub name: String,
 }
 
 impl Enum {
@@ -667,13 +669,13 @@ impl Results {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Function {
-    #[serde(skip_serializing_if = "Docs::is_empty")]
-    pub docs: Docs,
     pub name: String,
     pub kind: FunctionKind,
     #[serde(serialize_with = "serialize_params")]
     pub params: Params,
     pub results: Results,
+    #[serde(skip_serializing_if = "Docs::is_empty")]
+    pub docs: Docs,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
