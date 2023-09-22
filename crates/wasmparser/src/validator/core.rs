@@ -6,7 +6,7 @@ use std::{collections::HashSet, sync::Arc};
 use indexmap::IndexMap;
 
 use crate::limits::*;
-use crate::readers::Inherits;
+use crate::readers::Matches;
 use crate::validator::core::arc::MaybeOwned;
 use crate::{
     BinaryReaderError, ConstExpr, Data, DataKind, Element, ElementKind, ExternalKind, FuncType,
@@ -505,17 +505,13 @@ impl Module {
         offset: usize,
         check_limit: bool,
     ) -> Result<()> {
-        match rec_group {
-            RecGroup::Single(_) => {}
-            RecGroup::Many(_) => {
-                if !features.gc {
-                    bail!(
-                        offset,
-                        "rec group usage requires `gc` proposal to be enabled"
-                    );
-                }
-            }
+        if matches!(&rec_group, RecGroup::Many(_)) && !features.gc {
+            bail!(
+                offset,
+                "rec group usage requires `gc` proposal to be enabled"
+            );
         }
+
         if check_limit {
             check_max(
                 self.types.len(),
@@ -525,6 +521,7 @@ impl Module {
                 offset,
             )?;
         }
+
         let idx_types: Vec<_> = rec_group
             .types()
             .iter()
@@ -572,9 +569,7 @@ impl Module {
             }
             match self.type_at(types, supertype_index, offset)? {
                 Type::Sub(st) => {
-                    if !&ty.inherits(st, Some(type_index), Some(supertype_index), &|idx| {
-                        self.subtype_at(types, idx, offset).unwrap()
-                    }) {
+                    if !&ty.matches(st, &|idx| self.subtype_at(types, idx, offset).unwrap()) {
                         bail!(offset, "subtype must match supertype");
                     }
                 }
@@ -970,9 +965,7 @@ impl Module {
     /// E.g. a non-nullable reference can be assigned to a nullable reference, but not vice versa.
     /// Or an indexed func ref is assignable to a generic func ref, but not vice versa.
     pub(crate) fn matches(&self, ty1: ValType, ty2: ValType, types: &TypeList) -> bool {
-        ty1.inherits(&ty2, None, None, &|idx| {
-            self.subtype_at(types, idx, 0).unwrap()
-        })
+        ty1.matches(&ty2, &|idx| self.subtype_at(types, idx, 0).unwrap())
     }
 
     pub(crate) fn match_functypes(
@@ -981,9 +974,7 @@ impl Module {
         t2: &crate::FuncType,
         types: &TypeList,
     ) -> bool {
-        t1.inherits(t2, None, None, &|idx| {
-            self.subtype_at(types, idx, 0).unwrap()
-        })
+        t1.matches(t2, &|idx| self.subtype_at(types, idx, 0).unwrap())
     }
 
     fn check_tag_type(
