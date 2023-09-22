@@ -277,6 +277,7 @@ impl WasmFeatures {
             memory_control: true,
             gc: true,
             component_model_values: true,
+            typed_continuations: true,
         }
     }
 
