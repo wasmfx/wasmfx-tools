@@ -950,9 +950,23 @@ impl Matches for ContType {
     where
         F: Fn(u32) -> &'a SubType,
     {
-        let x = type_at(self.0);
-        let y = type_at(other.0);
-        x.matches(y, type_at)
+        if self.0 == other.0 {
+            return true;
+        }
+        let x = type_at(self.0); // returns a SubType
+        let y = type_at(other.0); // returns a SubType
+                                  // TODO(dhil): we subvert the whole check for
+                                  // `matches(SubType, SubType)` here by projecting the
+                                  // structural types. If we do not project them, then the
+                                  // `matches` on `SubType` may fail for valid continuation
+                                  // types due to the implementation (in particular the test of
+                                  // `!other.is_final` which may evaluate to `false` causing the
+                                  // subtyping check to inadvertently short-circuit). Looking at
+                                  // the other uses of elements returned from `type_at` this
+                                  // appears to be correct. However, we should revisit this once
+                                  // we have integrate the GC proposal into the reference
+                                  // interpreter.
+        x.structural_type.matches(&y.structural_type, type_at)
     }
 }
 
