@@ -9,7 +9,7 @@ use crate::limits::*;
 use crate::readers::Matches;
 use crate::validator::core::arc::MaybeOwned;
 use crate::{
-    BinaryReaderError, ConstExpr, Data, DataKind, Element, ElementKind, ExternalKind, FuncType,
+    BinaryReaderError, ConstExpr, ContType, Data, DataKind, Element, ElementKind, ExternalKind, FuncType,
     Global, GlobalType, HeapType, MemoryType, RecGroup, RefType, Result, StorageType,
     StructuralType, SubType, Table, TableInit, TableType, TagType, TypeRef, ValType, VisitOperator,
     WasmFeatures, WasmModuleResources,
@@ -557,7 +557,7 @@ impl Module {
             bail!(offset, "gc proposal must be enabled to use subtypes");
         }
 
-        self.check_structural_type(&ty.structural_type, features, offset)?;
+        self.check_structural_type(&ty.structural_type, types, features, offset)?;
 
         if let Some(supertype_index) = ty.supertype_idx {
             // Check the supertype exists, is not final, and the subtype matches it.
@@ -595,6 +595,7 @@ impl Module {
     fn check_structural_type(
         &mut self,
         ty: &StructuralType,
+        types: &TypeList,
         features: &WasmFeatures,
         offset: usize,
     ) -> Result<()> {
@@ -610,12 +611,14 @@ impl Module {
                     ));
                 }
             }
-            StructuralType::Cont(type_index) => {
-                if (*type_index as usize) >= self.types.len() {
+            StructuralType::Cont(ct) => {
+                let type_index = ct.0;
+                if (type_index as usize) >= self.types.len() {
                     return Err(BinaryReaderError::new("invalid type index", offset));
                     // TODO(dhil): tidy up error message.
-                    // technically need to check that it points to a function type, and not just another continuation ref.
                 }
+                // Check that the type index points to a valid function type.
+                let _ft = self.func_type_at(type_index, types, offset)?;
             }
             StructuralType::Array(t) => {
                 if !features.gc {
@@ -1213,11 +1216,10 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.module.function_references.contains(&idx)
     }
 
-    fn cont_type_at(&self, at: u32) -> Option<u32> {
+    fn cont_type_at(&self, at: u32) -> Option<&ContType> {
         Some(
             self.types[*self.module.types.get(at as usize)?]
-                .as_cont_func_index()
-                .unwrap(),
+                .unwrap_cont(),
         )
     }
 }
@@ -1287,11 +1289,10 @@ impl WasmModuleResources for ValidatorResources {
     }
 
     // Gives the index of the function
-    fn cont_type_at(&self, at: u32) -> Option<u32> {
+    fn cont_type_at(&self, at: u32) -> Option<&ContType> {
         Some(
             self.0.snapshot.as_ref().unwrap()[*self.0.types.get(at as usize)?]
-                .as_cont_func_index()
-                .unwrap(),
+                .unwrap_cont(),
         )
     }
 }

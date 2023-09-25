@@ -755,7 +755,7 @@ pub enum StructuralType {
     /// The type is for a function.
     Func(FuncType),
     /// The type is for a continuation.
-    Cont(u32),
+    Cont(ContType),
     /// The type is for an array.
     Array(ArrayType),
     /// The type is for a struct.
@@ -804,6 +804,10 @@ impl Matches for SubType {
     }
 }
 
+/// Represents a type of a continuation.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ContType(pub u32);
+
 /// Represents a type of a function in a WebAssembly module.
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct FuncType {
@@ -842,11 +846,7 @@ impl Matches for StructuralType {
             (StructuralType::Func(a), StructuralType::Func(b)) => a.matches(b, type_at),
             (StructuralType::Array(a), StructuralType::Array(b)) => a.matches(b, type_at),
             (StructuralType::Struct(a), StructuralType::Struct(b)) => a.matches(b, type_at),
-            (StructuralType::Cont(a), StructuralType::Cont(b)) => {
-                let x = type_at(*a);
-                let y = type_at(*b);
-                x.matches(y, type_at)
-            }
+            (StructuralType::Cont(a), StructuralType::Cont(b)) => a.matches(b, type_at),
             _ => false,
         }
     }
@@ -942,6 +942,17 @@ impl Matches for FuncType {
                 .iter()
                 .zip(other.results())
                 .all(|(a, b)| a.matches(b, type_at))
+    }
+}
+
+impl Matches for ContType {
+    fn matches<'a, F>(&self, other: &Self, type_at: &F) -> bool
+    where
+        F: Fn(u32) -> &'a SubType,
+    {
+        let x = type_at(self.0);
+        let y = type_at(other.0);
+        x.matches(y, type_at)
     }
 }
 
@@ -1076,7 +1087,7 @@ pub type TypeSectionReader<'a> = SectionLimited<'a, RecGroup>;
 #[allow(missing_docs)]
 pub enum FuncOrContType {
     Func(FuncType),
-    Cont(u32),
+    Cont(ContType),
 }
 
 impl FuncOrContType {
@@ -1206,6 +1217,12 @@ impl<'a> FromReader<'a> for FuncType {
             params_results.push(result?);
         }
         Ok(FuncType::from_raw_parts(params_results.into(), len_params))
+    }
+}
+
+impl<'a> FromReader<'a> for ContType {
+    fn from_reader(reader: &mut BinaryReader<'a>) -> Result<Self> {
+        Ok(ContType(reader.read()?))
     }
 }
 

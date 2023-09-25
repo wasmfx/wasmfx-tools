@@ -720,9 +720,9 @@ impl Printer {
                 self.end_group(); // `struct`
                 r
             }
-            StructuralType::Cont(type_index) => {
+            StructuralType::Cont(ct) => {
                 self.start_group("cont");
-                let r = self.print_cont_type(state, *type_index)?;
+                let r = self.print_cont_type(state, ct)?;
                 self.end_group();
                 r
             }
@@ -808,9 +808,9 @@ impl Printer {
         Ok(ty.params().len() as u32)
     }
 
-    fn print_cont_type(&mut self, state: &State, type_index: u32) -> Result<u32> {
+    fn print_cont_type(&mut self, state: &State, ct: &ContType) -> Result<u32> {
         self.result.push(' ');
-        self.print_idx(&state.core.type_names, type_index)?;
+        self.print_idx(&state.core.type_names, ct.0)?;
         Ok(0)
     }
 

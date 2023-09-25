@@ -23,7 +23,7 @@
 // the various methods here.
 
 use crate::{
-    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, HeapType, Ieee32,
+    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, ContType, HeapType, Ieee32,
     Ieee64, MemArg, RefType, Result, ResumeTable, ValType, VisitOperator, WasmFeatures,
     WasmFuncType, WasmModuleResources, V128,
 };
@@ -950,13 +950,19 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
         Ok(())
     }
 
-    fn cont_type_at(&self, at: u32) -> Result<u32> {
+    fn cont_type_at(&self, at: u32) -> Result<&ContType> {
         self.resources.cont_type_at(at).ok_or_else(|| {
             format_err!(
                 self.offset,
                 "unknown continuation type: type index out of bounds"
             )
         })
+    }
+
+    /// Retrieves the function type representation of the continuation
+    /// type stored at the given type index.
+    fn func_repr_cont_type_at(&self, at: u32) -> Result<&'resources R::FuncType> {
+        self.func_type_at(self.cont_type_at(at)?.0)
     }
 
     fn func_type_at(&self, at: u32) -> Result<&'resources R::FuncType> {
@@ -1047,7 +1053,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
             // Next check that ts1' <: ts1''.
             for (tagty, lblty) in labeltys.zip(tagtype.inputs()) {
                 if !self.resources.matches(tagty, lblty) {
-                    panic!("type mismatch between tag type and label type") // TODO(dhil): tidy up
+                    bail!(self.offset, "type mismatch between tag type and label type") // TODO(dhil): tidy up
                 }
             }
 
@@ -1055,7 +1061,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
             match self.label_types(block.0, block.1)?.last() {
                 Some(ValType::Ref(rt)) if rt.is_indexed_type_ref() /* TODO(dhil): we should probably add a continuation kind to the ref API */ => {
                     let z = rt.type_index().unwrap();
-                    let ctft2 = self.func_type_at(self.cont_type_at(z.into())?)?;
+                    let ctft2 = self.func_repr_cont_type_at(z)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
                     // This method should be exposed by resources to make this correct
                     for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
@@ -3441,7 +3447,7 @@ where
 
     // Typed continuations operators.
     fn visit_cont_new(&mut self, type_index: u32) -> Self::Output {
-        let fidx = self.cont_type_at(type_index)?;
+        let fidx = self.cont_type_at(type_index)?.0;
         let rt = RefType::indexed_func(false, fidx).unwrap(); // TODO(dhil): proper error handling
         self.pop_operand(Some(ValType::Ref(rt)))?;
         let result = RefType::indexed_func(false, type_index).unwrap(); // TODO(dhil): proper error handling
@@ -3449,8 +3455,8 @@ where
         Ok(())
     }
     fn visit_cont_bind(&mut self, src_index: u32, dst_index: u32) -> Self::Output {
-        let src_cont = self.func_type_at(self.cont_type_at(src_index.into())?)?;
-        let dst_cont = self.func_type_at(self.cont_type_at(dst_index.into())?)?;
+        let src_cont = self.func_repr_cont_type_at(src_index)?;
+        let dst_cont = self.func_repr_cont_type_at(dst_index)?;
 
         // Verify that the source domain is at least as large as the
         // target domain.
@@ -3515,7 +3521,7 @@ where
         Ok(())
     }
     fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
-        let ctft = self.func_type_at(self.cont_type_at(type_index)?)?;
+        let ctft = self.func_repr_cont_type_at(type_index)?;
         let expected = ValType::Ref(RefType::indexed_func(true, type_index).unwrap()); // TODO(dhil): proper error handling
         match self.pop_ref()? {
             None => {}
@@ -3550,7 +3556,7 @@ where
         tag_index: u32,
         resumetable: ResumeTable,
     ) -> Self::Output {
-        let ctft = self.func_type_at(self.cont_type_at(type_index)?)?;
+        let ctft = self.func_repr_cont_type_at(type_index)?;
         let expected = ValType::Ref(RefType::indexed_func(true, type_index).unwrap()); // TODO(dhil): proper error handling
         match self.pop_ref()? {
             None => {}
