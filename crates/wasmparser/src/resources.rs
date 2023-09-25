@@ -14,8 +14,8 @@
  */
 
 use crate::{
-    BinaryReaderError, FuncType, GlobalType, HeapType, MemoryType, RefType, TableType, ValType,
-    WasmFeatures,
+    BinaryReaderError, ContType, FuncType, GlobalType, HeapType, MemoryType, RefType, TableType,
+    ValType, WasmFeatures,
 };
 use std::ops::Range;
 
@@ -217,7 +217,7 @@ pub trait WasmModuleResources {
     /// Returns the `FuncType` associated with the given function index.
     fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType>;
     /// Return the `Cont` type associated with the given type index.
-    fn cont_type_at(&self, at: u32) -> Option<u32>;
+    fn cont_type_at(&self, at: u32) -> Option<&ContType>;
     /// Returns the element type at the given index.
     fn element_type_at(&self, at: u32) -> Option<RefType>;
     /// Checks whether the function type t1 is a subtype of the function type t2.
@@ -293,7 +293,7 @@ where
     fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType> {
         T::type_of_function(self, func_idx)
     }
-    fn cont_type_at(&self, at: u32) -> Option<u32> {
+    fn cont_type_at(&self, at: u32) -> Option<&ContType> {
         T::cont_type_at(self, at)
     }
     fn check_value_type(
@@ -359,7 +359,7 @@ where
         T::type_of_function(self, func_idx)
     }
 
-    fn cont_type_at(&self, at: u32) -> Option<u32> {
+    fn cont_type_at(&self, at: u32) -> Option<&ContType> {
         T::cont_type_at(self, at)
     }
 

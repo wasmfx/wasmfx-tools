@@ -6,9 +6,9 @@ use super::{
 };
 use crate::validator::names::KebabString;
 use crate::{
-    ArrayType, BinaryReaderError, Export, ExternalKind, FuncType, GlobalType, Import, MemoryType,
-    PrimitiveValType, RefType, Result, StructType, StructuralType, SubType, TableType, TypeRef,
-    ValType,
+    ArrayType, BinaryReaderError, ContType, Export, ExternalKind, FuncType, GlobalType, Import,
+    MemoryType, PrimitiveValType, RefType, Result, StructType, StructuralType, SubType, TableType,
+    TypeRef, ValType,
 };
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
@@ -286,12 +286,23 @@ impl Type {
         }
     }
 
+    /// Converts the type to a core continuation type.
+    pub fn unwrap_cont(&self) -> &ContType {
+        match self {
+            Type::Sub(SubType {
+                structural_type: StructuralType::Cont(ct),
+                ..
+            }) => ct,
+            _ => panic!("not a continuation type"),
+        }
+    }
+
     /// If the given type is a continuation type, give the index of its
     /// corresponding function type
     pub fn as_cont_func_index(&self) -> Option<u32> {
         match self {
             Self::Sub(SubType {
-                structural_type: StructuralType::Cont(fi),
+                structural_type: StructuralType::Cont(ContType(fi)),
                 ..
             }) => Some(*fi),
             _ => None,
