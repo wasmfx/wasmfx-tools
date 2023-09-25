@@ -23,8 +23,8 @@
 // the various methods here.
 
 use crate::{
-    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, ContType, HeapType, Ieee32,
-    Ieee64, MemArg, RefType, Result, ResumeTable, ValType, VisitOperator, WasmFeatures,
+    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, ContType, HeapType,
+    Ieee32, Ieee64, MemArg, RefType, Result, ResumeTable, ValType, VisitOperator, WasmFeatures,
     WasmFuncType, WasmModuleResources, V128,
 };
 use std::ops::{Deref, DerefMut};
@@ -1053,7 +1053,8 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
             // Next check that ts1' <: ts1''.
             for (tagty, lblty) in labeltys.zip(tagtype.inputs()) {
                 if !self.resources.matches(tagty, lblty) {
-                    bail!(self.offset, "type mismatch between tag type and label type") // TODO(dhil): tidy up
+                    bail!(self.offset, "type mismatch between tag type and label type")
+                    // TODO(dhil): tidy up
                 }
             }
 

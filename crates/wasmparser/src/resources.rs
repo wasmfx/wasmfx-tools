@@ -14,8 +14,8 @@
  */
 
 use crate::{
-    BinaryReaderError, ContType, FuncType, GlobalType, HeapType, MemoryType, RefType, TableType, ValType,
-    WasmFeatures,
+    BinaryReaderError, ContType, FuncType, GlobalType, HeapType, MemoryType, RefType, TableType,
+    ValType, WasmFeatures,
 };
 use std::ops::Range;
 

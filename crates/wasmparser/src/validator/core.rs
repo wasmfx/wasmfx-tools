@@ -9,8 +9,8 @@ use crate::limits::*;
 use crate::readers::Matches;
 use crate::validator::core::arc::MaybeOwned;
 use crate::{
-    BinaryReaderError, ConstExpr, ContType, Data, DataKind, Element, ElementKind, ExternalKind, FuncType,
-    Global, GlobalType, HeapType, MemoryType, RecGroup, RefType, Result, StorageType,
+    BinaryReaderError, ConstExpr, ContType, Data, DataKind, Element, ElementKind, ExternalKind,
+    FuncType, Global, GlobalType, HeapType, MemoryType, RecGroup, RefType, Result, StorageType,
     StructuralType, SubType, Table, TableInit, TableType, TagType, TypeRef, ValType, VisitOperator,
     WasmFeatures, WasmModuleResources,
 };
@@ -1217,10 +1217,7 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
     }
 
     fn cont_type_at(&self, at: u32) -> Option<&ContType> {
-        Some(
-            self.types[*self.module.types.get(at as usize)?]
-                .unwrap_cont(),
-        )
+        Some(self.types[*self.module.types.get(at as usize)?].unwrap_cont())
     }
 }
 
@@ -1290,10 +1287,7 @@ impl WasmModuleResources for ValidatorResources {
 
     // Gives the index of the function
     fn cont_type_at(&self, at: u32) -> Option<&ContType> {
-        Some(
-            self.0.snapshot.as_ref().unwrap()[*self.0.types.get(at as usize)?]
-                .unwrap_cont(),
-        )
+        Some(self.0.snapshot.as_ref().unwrap()[*self.0.types.get(at as usize)?].unwrap_cont())
     }
 }
 
