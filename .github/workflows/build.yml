@@ -3,8 +3,7 @@ on:
   push:
     tags:
   pull_request:
-    branches:
-    - main
+    branches: []
 
 defaults:
   run:
