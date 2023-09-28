@@ -694,7 +694,9 @@ pub struct ContinuationType<'a> {
 
 impl<'a> Parse<'a> for ContinuationType<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
-        Ok(ContinuationType { idx: parser.parse::<Index<'a>>()? })
+        Ok(ContinuationType {
+            idx: parser.parse::<Index<'a>>()?,
+        })
     }
 }
 
