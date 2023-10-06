@@ -1,15 +1,18 @@
 //! The WebAssembly component tool command line interface.
 
-use anyhow::{bail, Context, Result};
-use clap::Parser;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use wasm_encoder::{Encode, Section};
+
+use anyhow::{bail, Context, Result};
+use clap::Parser;
+
 use wasm_tools::Output;
-use wit_component::{ComponentEncoder, DecodedWasm, Linker, StringEncoding, WitPrinter};
-use wit_parser::{PackageId, Resolve, UnresolvedPackage};
+use wit_component::{
+    embed_component_metadata, is_wasm_binary_or_wat, parse_wit_from_path, ComponentEncoder,
+    DecodedWasm, Linker, StringEncoding, WitPrinter,
+};
+use wit_parser::{Resolve, UnresolvedPackage};
 
 /// WebAssembly wit-based component tooling.
 #[derive(Parser)]
@@ -210,23 +213,17 @@ impl EmbedOpts {
         } else {
             Some(self.io.parse_input_wasm()?)
         };
-        let (resolve, id) = parse_wit(&self.wit)?;
+        let (resolve, id) = parse_wit_from_path(self.wit)?;
         let world = resolve.select_world(id, self.world.as_deref())?;
 
-        let encoded = wit_component::metadata::encode(
+        let mut wasm = wasm.unwrap_or_else(|| wit_component::dummy_module(&resolve, world));
+
+        embed_component_metadata(
+            &mut wasm,
             &resolve,
             world,
             self.encoding.unwrap_or(StringEncoding::UTF8),
-            None,
         )?;
-
-        let section = wasm_encoder::CustomSection {
-            name: "component-type".into(),
-            data: Cow::Borrowed(&encoded),
-        };
-        let mut wasm = wasm.unwrap_or_else(|| wit_component::dummy_module(&resolve, world));
-        wasm.push(section.id());
-        section.encode(&mut wasm);
 
         self.io.output(Output::Wasm {
             bytes: &wasm,
@@ -456,7 +453,7 @@ impl WitOpts {
                     decode_wasm(&bytes).context("failed to decode WIT document")?
                 }
                 _ => {
-                    let (resolve, id) = parse_wit(input)?;
+                    let (resolve, id) = parse_wit_from_path(input)?;
                     DecodedWasm::WitPackage(resolve, id)
                 }
             },
@@ -466,7 +463,7 @@ impl WitOpts {
                     .read_to_end(&mut stdin)
                     .context("failed to read <stdin>")?;
 
-                if is_wasm(&stdin) {
+                if is_wasm_binary_or_wat(&stdin) {
                     let bytes = wat::parse_bytes(&stdin).map_err(|mut e| {
                         e.set_path("<stdin>");
                         e
@@ -619,7 +616,7 @@ impl TargetsOpts {
 
     /// Executes the application.
     fn run(self) -> Result<()> {
-        let (resolve, package_id) = parse_wit(&self.wit)?;
+        let (resolve, package_id) = parse_wit_from_path(&self.wit)?;
         let world = resolve.select_world(package_id, self.world.as_deref())?;
         let component_to_test = self.input.parse_wasm()?;
 
@@ -627,67 +624,6 @@ impl TargetsOpts {
 
         Ok(())
     }
-}
-
-fn parse_wit(path: &Path) -> Result<(Resolve, PackageId)> {
-    let mut resolve = Resolve::default();
-    let id = if path.is_dir() {
-        resolve.push_dir(&path)?.0
-    } else {
-        let contents =
-            std::fs::read(&path).with_context(|| format!("failed to read file {path:?}"))?;
-        if is_wasm(&contents) {
-            let bytes = wat::parse_bytes(&contents).map_err(|mut e| {
-                e.set_path(path);
-                e
-            })?;
-            match wit_component::decode(&bytes)? {
-                DecodedWasm::Component(..) => {
-                    bail!("specified path is a component, not a wit package")
-                }
-                DecodedWasm::WitPackage(resolve, pkg) => return Ok((resolve, pkg)),
-            }
-        } else {
-            let text = match std::str::from_utf8(&contents) {
-                Ok(s) => s,
-                Err(_) => bail!("input file is not valid utf-8"),
-            };
-            let pkg = UnresolvedPackage::parse(&path, text)?;
-            resolve.push(pkg)?
-        }
-    };
-    Ok((resolve, id))
-}
-
-/// Test to see if a string is probably a `*.wat` text syntax.
-///
-/// This briefly lexes past whitespace and comments as a `*.wat` file to see if
-/// we can find a left-paren. If that fails then it's probably `*.wit` instead.
-fn is_wasm(bytes: &[u8]) -> bool {
-    use wast::lexer::{Lexer, TokenKind};
-
-    if bytes.starts_with(b"\0asm") {
-        return true;
-    }
-    let text = match std::str::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(_) => return true,
-    };
-
-    let lexer = Lexer::new(text);
-    let mut iter = lexer.iter(0);
-
-    while let Some(next) = iter.next() {
-        match next.map(|t| t.kind) {
-            Ok(TokenKind::Whitespace)
-            | Ok(TokenKind::BlockComment)
-            | Ok(TokenKind::LineComment) => {}
-            Ok(TokenKind::LParen) => return true,
-            _ => break,
-        }
-    }
-
-    false
 }
 
 fn decode_wasm(bytes: &[u8]) -> Result<DecodedWasm> {
