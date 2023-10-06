@@ -299,7 +299,10 @@ mod tests {
         fn is_function_referenced(&self, _idx: u32) -> bool {
             todo!()
         }
-        fn cont_type_at(&self, _at: u32) -> Option<u32> {
+        fn cont_type_at(&self, _at: u32) -> Option<&crate::ContType> {
+            todo!()
+        }
+        fn match_functypes(&self, _t1: &crate::FuncType, _t2: &crate::FuncType) -> bool {
             todo!()
         }
     }
