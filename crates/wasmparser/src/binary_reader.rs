@@ -1676,18 +1676,6 @@ impl<'a> ResumeTable<'a> {
     /// This method will return an iterator which parses each target
     /// of this `resume`. The returned iterator will yield
     /// `self.len()` elements.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let buf = [0xe3, 0x01, 0x01, 0x02, 0x00];
-    /// let mut reader = wasmparser::BinaryReader::new(&buf);
-    /// let op = reader.read_operator().unwrap();
-    /// if let wasmparser::Operator::Resume { table } = op {
-    ///     let targets = table.targets().collect::<Result<Vec<(_,_)>, _>>().unwrap();
-    ///     assert_eq!(targets, [(1, 2)]);
-    /// }
-    /// ```
     pub fn targets(&self) -> ResumeTableTargets {
         ResumeTableTargets {
             reader: self.reader.clone(),

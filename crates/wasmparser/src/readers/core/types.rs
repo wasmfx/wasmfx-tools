@@ -1099,6 +1099,7 @@ pub type TypeSectionReader<'a> = SectionLimited<'a, RecGroup>;
 // type or a continuation type.  NOTE(dhil): This is only intended as
 // a temporary workaround/hack.
 #[allow(missing_docs)]
+#[derive(Clone, Debug)]
 pub enum FuncOrContType {
     Func(FuncType),
     Cont(ContType),
@@ -1110,6 +1111,22 @@ impl FuncOrContType {
         match self {
             FuncOrContType::Func(f) => Ok(f),
             _ => panic!("attempt to unwrap non-function type"),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn params(self) -> Vec<ValType> {
+        match self {
+            FuncOrContType::Func(f) => f.params().to_vec(),
+            _ => panic!("attempt to apply params() on non-function type"),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn results(self) -> Vec<ValType> {
+        match self {
+            FuncOrContType::Func(f) => f.results().to_vec(),
+            _ => panic!("attempt to apply results() on non-function type"),
         }
     }
 }
