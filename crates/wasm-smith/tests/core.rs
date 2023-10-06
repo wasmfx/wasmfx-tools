@@ -153,8 +153,7 @@ fn smoke_test_imports_config() {
                             {
                                 *seen = true
                             }
-                            (Some((seen, I::Func(p, r))), TypeRef::Func(sig_idx)) =>
-                            {
+                            (Some((seen, I::Func(p, r))), TypeRef::Func(sig_idx)) => {
                                 let params = sig_types[*sig_idx as usize].clone().params();
                                 let results = sig_types[*sig_idx as usize].clone().results();
                                 if params == *p && results == *r {
@@ -162,15 +161,15 @@ fn smoke_test_imports_config() {
                                 } else {
                                     panic!(
                                         "import {:?} type mismatch, expected: {:?}",
-                                        import, I::Func(p, r)
+                                        import,
+                                        I::Func(p, r)
                                     )
                                 }
                             }
                             (
                                 Some((seen, I::Tag(p))),
                                 TypeRef::Tag(wasmparser::TagType { func_type_idx, .. }),
-                            ) =>
-                            {
+                            ) => {
                                 let params = sig_types[*func_type_idx as usize].clone().params();
                                 let results = sig_types[*func_type_idx as usize].clone().results();
                                 if params == *p && results.is_empty() {
@@ -178,7 +177,8 @@ fn smoke_test_imports_config() {
                                 } else {
                                     panic!(
                                         "import {:?} type mismatch, expected: {:?}",
-                                        import, I::Tag(p)
+                                        import,
+                                        I::Tag(p)
                                     )
                                 }
                             }
