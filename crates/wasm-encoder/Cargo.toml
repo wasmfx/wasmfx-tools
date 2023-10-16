@@ -1,6 +1,6 @@
 [package]
 name = "wasm-encoder"
-version = "0.33.2"
+version = "0.35.0"
 authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
 edition.workspace = true
 license = "Apache-2.0 WITH LLVM-exception"
@@ -14,6 +14,10 @@ A low-level WebAssembly encoder.
 
 [dependencies]
 leb128 = { workspace = true }
+
+# Enable this dependency to get a bunch of `From<wasmparser::Foo> for
+# wasm_encoder::Foo` impls.
+wasmparser = { optional = true, workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

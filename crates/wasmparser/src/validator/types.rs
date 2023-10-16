@@ -1452,6 +1452,13 @@ impl<'a> TypesRef<'a> {
             TypesRefKind::Component(component) => Some(*component.exports.get(name)?),
         }
     }
+
+    /// Attempts to lookup the type id that `ty` is an alias of.
+    ///
+    /// Returns `None` if `ty` wasn't listed as aliasing a prior type.
+    pub fn peel_alias(&self, ty: TypeId) -> Option<TypeId> {
+        self.list.peel_alias(ty)
+    }
 }
 
 impl Index<TypeId> for TypesRef<'_> {
@@ -1743,7 +1750,7 @@ impl Types {
     ///
     /// Returns `None` if `ty` wasn't listed as aliasing a prior type.
     pub fn peel_alias(&self, ty: TypeId) -> Option<TypeId> {
-        self.list.peel_alias(ty)
+        self.as_ref().peel_alias(ty)
     }
 }
 
