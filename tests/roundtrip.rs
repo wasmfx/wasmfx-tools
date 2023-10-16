@@ -419,6 +419,12 @@ impl TestState {
                 }
             }
 
+            WastDirective::Thread(thread) => {
+                for (i, directive) in thread.directives.into_iter().enumerate() {
+                    self.test_wast_directive(test, directive, idx * 1000 + i)?;
+                }
+            }
+
             // This test suite doesn't actually execute any wasm code, so ignore
             // all of these assertions.
             WastDirective::Register { .. }
@@ -428,7 +434,8 @@ impl TestState {
             | WastDirective::AssertExhaustion { .. }
             | WastDirective::AssertUnlinkable { .. }
             | WastDirective::AssertException { .. }
-            | WastDirective::AssertSuspension { .. } => {}
+            | WastDirective::AssertSuspension { .. }
+            | WastDirective::Wait { .. } => {}
         }
         Ok(())
     }
@@ -607,7 +614,16 @@ impl TestState {
         };
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
-                "testsuite" => features = WasmFeatures::default(),
+                "testsuite" => {
+                    features = WasmFeatures::default();
+
+                    // NB: when these proposals are merged upstream in the spec
+                    // repo then this should be removed. Currently this hasn't
+                    // happened so this is required to get tests passing for
+                    // when these proposals are enabled by default.
+                    features.multi_memory = false;
+                    features.threads = false;
+                }
                 "missing-features" => {
                     features = WasmFeatures::default();
                     features.simd = false;
