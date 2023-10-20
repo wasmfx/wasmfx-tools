@@ -779,6 +779,14 @@ impl<'a> FromReader<'a> for HeapType {
                 reader.position += 1;
                 Ok(HeapType::NoFunc)
             }
+            0x74 => {
+                reader.position += 1;
+                Ok(HeapType::NoCont)
+            }
+            0x69 => {
+                reader.position += 1;
+                Ok(HeapType::Cont)
+            }
             0x6D => {
                 reader.position += 1;
                 Ok(HeapType::Eq)
@@ -794,14 +802,6 @@ impl<'a> FromReader<'a> for HeapType {
             0x6C => {
                 reader.position += 1;
                 Ok(HeapType::I31)
-            }
-            0x68 => {
-                reader.position += 1;
-                Ok(HeapType::Cont)
-            }
-            0x67 => {
-                reader.position += 1;
-                Ok(HeapType::NoCont)
             }
             _ => {
                 let idx = match u32::try_from(reader.read_var_s33()?) {

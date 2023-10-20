@@ -263,7 +263,7 @@ impl<'a> Encode for HeapType<'a> {
             HeapType::Struct => e.push(0x6b),
             HeapType::Array => e.push(0x6a),
             HeapType::I31 => e.push(0x6c),
-            HeapType::NoCont => e.push(0x67),
+            HeapType::NoCont => e.push(0x74),
             HeapType::NoFunc => e.push(0x73),
             HeapType::NoExtern => e.push(0x72),
             HeapType::None => e.push(0x71),
