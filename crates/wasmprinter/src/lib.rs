@@ -640,7 +640,16 @@ impl Printer {
             states.last().unwrap().core.types.len() as u32,
         )?;
         let ty = match ty {
-            CoreType::Func(ty) => {
+            CoreType::Sub(ty) => {
+                let ty = match &ty.structural_type {
+                    StructuralType::Func(f) => f,
+                    StructuralType::Cont(_) => {
+                        unreachable!("Continuation types cannot appear in components yet")
+                    }
+                    StructuralType::Array(_) | StructuralType::Struct(_) => {
+                        unreachable!("Wasm GC types cannot appear in components yet")
+                    }
+                };
                 self.result.push(' ');
                 self.start_group("func");
                 self.print_func_type(states.last().unwrap(), &ty, None)?;
@@ -648,7 +657,7 @@ impl Printer {
                 Some(SubType {
                     is_final: true,
                     supertype_idx: None,
-                    structural_type: StructuralType::Func(ty),
+                    structural_type: StructuralType::Func(ty.clone()),
                 })
             }
             CoreType::Module(decls) => {
