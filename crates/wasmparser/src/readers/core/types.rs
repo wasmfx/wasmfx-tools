@@ -256,6 +256,10 @@ impl Debug for RefType {
             (false, HeapType::Func) => write!(f, "(ref func)"),
             (true, HeapType::Indexed(idx)) => write!(f, "(ref null {idx})"),
             (false, HeapType::Indexed(idx)) => write!(f, "(ref {idx})"),
+            (true, HeapType::Cont) => write!(f, "(ref null cont)"),
+            (false, HeapType::Cont) => write!(f, "(ref cont)"),
+            (true, HeapType::NoCont) => write!(f, "nullcontref"),
+            (false, HeapType::NoCont) => write!(f, "(ref nocont)"),
         }
     }
 }
@@ -298,11 +302,14 @@ impl RefType {
     const EXTERN_TYPE: u32 = 0b0011 << 18;
     const NOEXTERN_TYPE: u32 = 0b0010 << 18;
     const NONE_TYPE: u32 = 0b0000 << 18;
+    const CONT_TYPE: u32 = 0b0111 << 18;
+    const NOCONT_TYPE: u32 = 0b0110 << 18;
 
-    const KIND_MASK: u32 = 0b11 << 20; // 2 bits #21-#20 (if `indexed == 1`)
-    const STRUCT_KIND: u32 = 0b10 << 20;
-    const ARRAY_KIND: u32 = 0b11 << 20;
-    const FUNC_KIND: u32 = 0b01 << 20;
+    const KIND_MASK: u32 = 0b111 << 20; // 3 bits #22-#20 (if `indexed == 1`)
+    const STRUCT_KIND: u32 = 0b100 << 20;
+    const ARRAY_KIND: u32 = 0b110 << 20;
+    const FUNC_KIND: u32 = 0b010 << 20;
+    const CONT_KIND: u32 = 0b011 << 20;
 
     const INDEX_MASK: u32 = (1 << 20) - 1; // 20 bits #19-#0 (if `indexed == 1`)
 
@@ -344,6 +351,12 @@ impl RefType {
     /// A non-nullable reference to an i31 object aka `(ref i31)`.
     pub const I31: Self = RefType::from_u32(Self::I31_TYPE);
 
+    /// A non-nullable reference to a cont type aka `(ref cont)`.
+    pub const CONT: Self = RefType::from_u32(Self::CONT_TYPE);
+
+    /// A non-nullable reference to a nocont type aka `(ref nocont)`.
+    pub const NOCONT: Self = RefType::from_u32(Self::NOCONT_TYPE);
+
     const fn can_represent_type_index(index: u32) -> bool {
         index & Self::INDEX_MASK == index
     }
@@ -383,6 +396,8 @@ impl RefType {
                         | Self::EXTERN_TYPE
                         | Self::NOEXTERN_TYPE
                         | Self::NONE_TYPE
+                        | Self::CONT_TYPE
+                        | Self::NOCONT_TYPE
                 )
         );
         RefType(Self::u32_to_u24(x))
@@ -446,6 +461,8 @@ impl RefType {
             HeapType::Struct => Some(Self::from_u32(nullable32 | Self::STRUCT_TYPE)),
             HeapType::Array => Some(Self::from_u32(nullable32 | Self::ARRAY_TYPE)),
             HeapType::I31 => Some(Self::from_u32(nullable32 | Self::I31_TYPE)),
+            HeapType::Cont => Some(Self::from_u32(nullable32 | Self::CONT_TYPE)),
+            HeapType::NoCont => Some(Self::from_u32(nullable32 | Self::NOCONT_TYPE)),
         }
     }
 
@@ -510,6 +527,8 @@ impl RefType {
                 Self::STRUCT_TYPE => HeapType::Struct,
                 Self::ARRAY_TYPE => HeapType::Array,
                 Self::I31_TYPE => HeapType::I31,
+                Self::CONT_TYPE => HeapType::Cont,
+                Self::NOCONT_TYPE => HeapType::NoCont,
                 _ => unreachable!(),
             }
         }
@@ -530,6 +549,8 @@ impl RefType {
             (true, HeapType::Struct) => "structref",
             (true, HeapType::Array) => "arrayref",
             (true, HeapType::I31) => "i31ref",
+            (true, HeapType::Cont) => "contref",
+            (true, HeapType::NoCont) => "nullcontref",
             (false, HeapType::Func) => "(ref func)",
             (false, HeapType::Extern) => "(ref extern)",
             (false, HeapType::Indexed(_)) => "(ref $type)",
@@ -541,6 +562,8 @@ impl RefType {
             (false, HeapType::Struct) => "(ref struct)",
             (false, HeapType::Array) => "(ref array)",
             (false, HeapType::I31) => "(ref i31)",
+            (false, HeapType::Cont) => "(ref cont)",
+            (false, HeapType::NoCont) => "(ref nocont)",
         }
     }
 }
@@ -596,6 +619,8 @@ impl fmt::Display for RefType {
             (true, HeapType::Struct) => "structref",
             (true, HeapType::Array) => "arrayref",
             (true, HeapType::I31) => "i31ref",
+            (true, HeapType::Cont) => "contref",
+            (true, HeapType::NoCont) => "nullcontref",
             (false, HeapType::Func) => "(ref func)",
             (false, HeapType::Extern) => "(ref extern)",
             (false, HeapType::Indexed(i)) => return write!(f, "(ref {i})"),
@@ -607,6 +632,8 @@ impl fmt::Display for RefType {
             (false, HeapType::Struct) => "(ref struct)",
             (false, HeapType::Array) => "(ref array)",
             (false, HeapType::I31) => "(ref i31)",
+            (false, HeapType::Cont) => "(ref cont)",
+            (false, HeapType::NoCont) => "(ref nocont)",
         };
         f.write_str(s)
     }
@@ -639,6 +666,10 @@ pub enum HeapType {
     Array,
     /// The i31 heap type.
     I31,
+    /// The `cont` heap type. The common supertype of all continuation types.
+    Cont,
+    /// The `nocont` heap type. The common subtype (a.k.a. bottom) of all continuation types.
+    NoCont,
 }
 
 impl Matches for HeapType {
@@ -656,6 +687,7 @@ impl Matches for HeapType {
             (HT::I31 | HT::Struct | HT::Array | HT::None, HT::Eq) => true,
             (HT::NoExtern, HT::Extern) => true,
             (HT::NoFunc, HT::Func) => true,
+            (HT::NoCont, HT::Cont) => true,
             (HT::None, HT::I31 | HT::Array | HT::Struct) => true,
 
             (HT::Indexed(a), HT::Eq | HT::Any) => matches!(
@@ -687,6 +719,15 @@ impl Matches for HeapType {
             (HT::NoFunc, HT::Indexed(b)) => {
                 matches!(type_at(*b).structural_type, StructuralType::Func(_))
             }
+
+            (HT::Indexed(a), HT::Cont) => {
+                matches!(type_at(*a).structural_type, StructuralType::Cont(_))
+            }
+
+            (HT::NoCont, HT::Indexed(b)) => matches!(
+                type_at(*b).structural_type,
+                StructuralType::Cont(_)
+            ),
 
             _ => false,
         }
@@ -735,6 +776,14 @@ impl<'a> FromReader<'a> for HeapType {
             0x6C => {
                 reader.position += 1;
                 Ok(HeapType::I31)
+            }
+            0x69 => {
+                reader.position += 1;
+                Ok(HeapType::Cont)
+            }
+            0x68 => {
+                reader.position += 1;
+                Ok(HeapType::NoCont)
             }
             _ => {
                 let idx = match u32::try_from(reader.read_var_s33()?) {
