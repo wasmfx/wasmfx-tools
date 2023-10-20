@@ -937,9 +937,9 @@ impl Module {
             | HeapType::Eq
             | HeapType::Struct
             | HeapType::Array
-                | HeapType::I31
-                | HeapType::Cont
-                | HeapType::NoCont => (),
+            | HeapType::I31
+            | HeapType::Cont
+            | HeapType::NoCont => (),
             HeapType::Indexed(type_index) => {
                 // Just check that the index is valid
                 self.type_id_at(type_index, offset)?;

@@ -496,9 +496,9 @@ impl<'a> Module<'a> {
             | HeapType::Eq
             | HeapType::Struct
             | HeapType::Array
-                | HeapType::I31
-                | HeapType::Cont
-                | HeapType::NoCont => {}
+            | HeapType::I31
+            | HeapType::Cont
+            | HeapType::NoCont => {}
             HeapType::Indexed(i) => self.ty(i),
         }
     }

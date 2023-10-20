@@ -742,10 +742,9 @@ impl Matches for HeapType {
                 matches!(type_at(*a).structural_type, StructuralType::Cont(_))
             }
 
-            (HT::NoCont, HT::Indexed(b)) => matches!(
-                type_at(*b).structural_type,
-                StructuralType::Cont(_)
-            ),
+            (HT::NoCont, HT::Indexed(b)) => {
+                matches!(type_at(*b).structural_type, StructuralType::Cont(_))
+            }
 
             _ => false,
         }
