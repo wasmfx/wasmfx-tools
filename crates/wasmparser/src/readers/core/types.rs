@@ -305,11 +305,11 @@ impl RefType {
     const CONT_TYPE: u32 = 0b0111 << 18;
     const NOCONT_TYPE: u32 = 0b0110 << 18;
 
-    const KIND_MASK: u32 = 0b111 << 20; // 3 bits #22-#20 (if `indexed == 1`)
-    const STRUCT_KIND: u32 = 0b100 << 20;
-    const ARRAY_KIND: u32 = 0b110 << 20;
-    const FUNC_KIND: u32 = 0b010 << 20;
-    const CONT_KIND: u32 = 0b011 << 20;
+    const KIND_MASK: u32 = 0b11 << 20; // 2 bits #21-#20 (if `indexed == 1`)
+    const STRUCT_KIND: u32 = 0b10 << 20;
+    const ARRAY_KIND: u32 = 0b11 << 20;
+    const FUNC_KIND: u32 = 0b01 << 20;
+    const CONT_KIND: u32 = 0b00 << 20;
 
     const INDEX_MASK: u32 = (1 << 20) - 1; // 20 bits #19-#0 (if `indexed == 1`)
 
@@ -411,6 +411,14 @@ impl RefType {
         Self::indexed(nullable, Self::FUNC_KIND, index)
     }
 
+    /// Create a reference to a typed continuation with the type at the given index.
+    ///
+    /// Returns `None` when the type index is beyond this crate's implementation
+    /// limits and therefore is not representable.
+    pub const fn indexed_cont(nullable: bool, index: u32) -> Option<Self> {
+        Self::indexed(nullable, Self::CONT_KIND, index)
+    }
+
     /// Create a reference to an array with the type at the given index.
     ///
     /// Returns `None` when the type index is beyond this crate's implementation
@@ -471,6 +479,11 @@ impl RefType {
         self.is_indexed_type_ref() && self.as_u32() & Self::KIND_MASK == Self::FUNC_KIND
     }
 
+    /// Is this a reference to a typed continuation?
+    pub const fn is_typed_cont_ref(&self) -> bool {
+        self.is_indexed_type_ref() && self.as_u32() & Self::KIND_MASK == Self::CONT_KIND
+    }
+
     /// Is this a reference to an indexed type?
     pub const fn is_indexed_type_ref(&self) -> bool {
         self.as_u32() & Self::INDEXED_BIT != 0
@@ -488,6 +501,11 @@ impl RefType {
     /// Is this an untyped function reference aka `(ref null func)` aka `funcref` aka `anyfunc`?
     pub const fn is_func_ref(&self) -> bool {
         !self.is_indexed_type_ref() && self.as_u32() & Self::TYPE_MASK == Self::FUNC_TYPE
+    }
+
+    /// Is this an untyped continuation reference aka `(ref null cont)`
+    pub const fn is_cont_ref(&self) -> bool {
+        !self.is_indexed_type_ref() && self.as_u32() & Self::TYPE_MASK == Self::CONT_TYPE
     }
 
     /// Is this a `(ref null extern)` aka `externref`?
@@ -777,11 +795,11 @@ impl<'a> FromReader<'a> for HeapType {
                 reader.position += 1;
                 Ok(HeapType::I31)
             }
-            0x69 => {
+            0x68 => {
                 reader.position += 1;
                 Ok(HeapType::Cont)
             }
-            0x68 => {
+            0x67 => {
                 reader.position += 1;
                 Ok(HeapType::NoCont)
             }

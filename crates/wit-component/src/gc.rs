@@ -496,7 +496,9 @@ impl<'a> Module<'a> {
             | HeapType::Eq
             | HeapType::Struct
             | HeapType::Array
-            | HeapType::I31 => {}
+                | HeapType::I31
+                | HeapType::Cont
+                | HeapType::NoCont => {}
             HeapType::Indexed(i) => self.ty(i),
         }
     }
@@ -1123,6 +1125,7 @@ impl Encoder {
             HeapType::Struct => wasm_encoder::HeapType::Struct,
             HeapType::Array => wasm_encoder::HeapType::Array,
             HeapType::I31 => wasm_encoder::HeapType::I31,
+            HeapType::Cont | HeapType::NoCont => todo!(), // TODO(dhil): Some day.
             HeapType::Indexed(idx) => wasm_encoder::HeapType::Indexed(self.types.remap(idx)),
         }
     }
