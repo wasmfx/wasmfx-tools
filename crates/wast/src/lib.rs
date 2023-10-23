@@ -400,6 +400,7 @@ pub mod kw {
     custom_keyword!(code);
     custom_keyword!(component);
     custom_keyword!(cont);
+    custom_keyword!(contref);
     custom_keyword!(data);
     custom_keyword!(declare);
     custom_keyword!(delegate);
@@ -448,10 +449,12 @@ pub mod kw {
     custom_keyword!(modulecode);
     custom_keyword!(nan_arithmetic = "nan:arithmetic");
     custom_keyword!(nan_canonical = "nan:canonical");
+    custom_keyword!(nocont);
     custom_keyword!(nofunc);
     custom_keyword!(noextern);
     custom_keyword!(none);
     custom_keyword!(null);
+    custom_keyword!(nullcontref);
     custom_keyword!(nullfuncref);
     custom_keyword!(nullexternref);
     custom_keyword!(nullref);

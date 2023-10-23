@@ -331,7 +331,9 @@ impl WasmFeatures {
                         | HeapType::Array
                         | HeapType::I31
                         | HeapType::NoExtern
-                        | HeapType::NoFunc,
+                        | HeapType::NoFunc
+                        | HeapType::Cont
+                        | HeapType::NoCont,
                         _,
                     ) => {
                         if self.gc {

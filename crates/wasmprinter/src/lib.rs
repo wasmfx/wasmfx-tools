@@ -920,6 +920,8 @@ impl Printer {
             HeapType::Struct => self.result.push_str("struct"),
             HeapType::Array => self.result.push_str("array"),
             HeapType::I31 => self.result.push_str("i31"),
+            HeapType::Cont => self.result.push_str("cont"),
+            HeapType::NoCont => self.result.push_str("nocont"),
             HeapType::Indexed(i) => self.result.push_str(&format!("{}", u32::from(i))),
         }
         Ok(())

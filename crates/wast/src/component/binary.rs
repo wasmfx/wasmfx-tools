@@ -617,6 +617,9 @@ impl From<core::HeapType<'_>> for wasm_encoder::HeapType {
             | core::HeapType::I31 => {
                 todo!("encoding of GC proposal types not yet implemented")
             }
+            core::HeapType::Cont | core::HeapType::NoCont => {
+                todo!("encoding of typed continuations proposal types not yet implemented")
+            }
         }
     }
 }

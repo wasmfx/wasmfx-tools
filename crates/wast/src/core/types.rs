@@ -60,6 +60,9 @@ impl<'a> Peek for ValType<'a> {
 #[allow(missing_docs)]
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum HeapType<'a> {
+    /// An untyped continuation reference: contref. This is part of
+    /// the typed continuations proposal.
+    Cont,
     /// An untyped function reference: funcref. This is part of the reference
     /// types proposal.
     Func,
@@ -80,6 +83,8 @@ pub enum HeapType<'a> {
     Array,
     /// An unboxed 31-bit integer: i31ref. Part of the GC proposal.
     I31,
+    /// The bottom type of the contref hierarchy. Part of the typed continuations proposal.
+    NoCont,
     /// The bottom type of the funcref hierarchy. Part of the GC proposal.
     NoFunc,
     /// The bottom type of the externref hierarchy. Part of the GC proposal.
@@ -94,7 +99,10 @@ pub enum HeapType<'a> {
 impl<'a> Parse<'a> for HeapType<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut l = parser.lookahead1();
-        if l.peek::<kw::func>()? {
+        if l.peek::<kw::cont>()? {
+            parser.parse::<kw::cont>()?;
+            Ok(HeapType::Cont)
+        } else if l.peek::<kw::func>()? {
             parser.parse::<kw::func>()?;
             Ok(HeapType::Func)
         } else if l.peek::<kw::r#extern>()? {
@@ -118,6 +126,9 @@ impl<'a> Parse<'a> for HeapType<'a> {
         } else if l.peek::<kw::i31>()? {
             parser.parse::<kw::i31>()?;
             Ok(HeapType::I31)
+        } else if l.peek::<kw::nocont>()? {
+            parser.parse::<kw::nocont>()?;
+            Ok(HeapType::NoCont)
         } else if l.peek::<kw::nofunc>()? {
             parser.parse::<kw::nofunc>()?;
             Ok(HeapType::NoFunc)
@@ -137,7 +148,8 @@ impl<'a> Parse<'a> for HeapType<'a> {
 
 impl<'a> Peek for HeapType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
-        Ok(kw::func::peek(cursor)?
+        Ok(kw::cont::peek(cursor)?
+            || kw::func::peek(cursor)?
             || kw::r#extern::peek(cursor)?
             || kw::exn::peek(cursor)?
             || kw::any::peek(cursor)?
@@ -145,6 +157,7 @@ impl<'a> Peek for HeapType<'a> {
             || kw::r#struct::peek(cursor)?
             || kw::array::peek(cursor)?
             || kw::i31::peek(cursor)?
+            || kw::nocont::peek(cursor)?
             || kw::nofunc::peek(cursor)?
             || kw::noextern::peek(cursor)?
             || kw::none::peek(cursor)?
@@ -251,12 +264,31 @@ impl<'a> RefType<'a> {
             heap: HeapType::None,
         }
     }
+
+    /// A `contref` as abbreviation for `(ref null cont)`.
+    pub fn cont() -> Self {
+        RefType {
+            nullable: true,
+            heap: HeapType::Cont,
+        }
+    }
+
+    /// A `contref` as abbreviation for `(ref null nocont)`.
+    pub fn nullcontref() -> Self {
+        RefType {
+            nullable: true,
+            heap: HeapType::NoCont,
+        }
+    }
 }
 
 impl<'a> Parse<'a> for RefType<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut l = parser.lookahead1();
-        if l.peek::<kw::funcref>()? {
+        if l.peek::<kw::contref>()? {
+            parser.parse::<kw::contref>()?;
+            Ok(RefType::cont())
+        } else if l.peek::<kw::funcref>()? {
             parser.parse::<kw::funcref>()?;
             Ok(RefType::func())
         } else if l.peek::<kw::anyfunc>()? {
@@ -283,6 +315,9 @@ impl<'a> Parse<'a> for RefType<'a> {
         } else if l.peek::<kw::i31ref>()? {
             parser.parse::<kw::i31ref>()?;
             Ok(RefType::i31())
+        } else if l.peek::<kw::nullcontref>()? {
+            parser.parse::<kw::nullcontref>()?;
+            Ok(RefType::nullcontref())
         } else if l.peek::<kw::nullfuncref>()? {
             parser.parse::<kw::nullfuncref>()?;
             Ok(RefType::nullfuncref())
@@ -320,7 +355,8 @@ impl<'a> Parse<'a> for RefType<'a> {
 
 impl<'a> Peek for RefType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
-        Ok(kw::funcref::peek(cursor)?
+        Ok(kw::contref::peek(cursor)?
+            || kw::funcref::peek(cursor)?
             || /* legacy */ kw::anyfunc::peek(cursor)?
             || kw::externref::peek(cursor)?
             || kw::exnref::peek(cursor)?

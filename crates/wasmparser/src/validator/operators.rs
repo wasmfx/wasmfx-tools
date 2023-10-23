@@ -3451,7 +3451,7 @@ where
         let fidx = self.cont_type_at(type_index)?.0;
         let rt = RefType::indexed_func(false, fidx).expect("type index is too large");
         self.pop_operand(Some(ValType::Ref(rt)))?;
-        let result = RefType::indexed_func(false, type_index).expect("type index is too large");
+        let result = RefType::indexed_cont(false, type_index).expect("type index is too large");
         self.push_operand(ValType::Ref(result))?;
         Ok(())
     }
@@ -3485,7 +3485,7 @@ where
             None => {} // bot case
             Some(rt) => {
                 let expected = ValType::Ref(
-                    RefType::indexed_func(false, src_index).expect("type index is too large"),
+                    RefType::indexed_cont(false, src_index).expect("type index is too large"),
                 );
                 if !self.resources.matches(expected, ValType::Ref(rt)) {
                     bail!(
@@ -3504,7 +3504,7 @@ where
         }
 
         // Construct the result type.
-        let result_type = RefType::indexed_func(false, dst_index).expect("type index is too large");
+        let result_type = RefType::indexed_cont(false, dst_index).expect("type index is too large");
 
         // Push the continuation reference.
         self.push_operand(result_type)?;
@@ -3524,7 +3524,7 @@ where
     fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
         let ctft = self.func_repr_cont_type_at(type_index)?;
         let expected =
-            ValType::Ref(RefType::indexed_func(true, type_index).expect("type index is too large"));
+            ValType::Ref(RefType::indexed_cont(true, type_index).expect("type index is too large"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.matches(ValType::Ref(rt), expected) => {
@@ -3560,7 +3560,7 @@ where
     ) -> Self::Output {
         let ctft = self.func_repr_cont_type_at(type_index)?;
         let expected =
-            ValType::Ref(RefType::indexed_func(true, type_index).expect("type index is too large"));
+            ValType::Ref(RefType::indexed_cont(true, type_index).expect("type index is too large"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.matches(ValType::Ref(rt), expected) => {
