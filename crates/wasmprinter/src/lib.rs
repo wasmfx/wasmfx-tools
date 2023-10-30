@@ -641,13 +641,13 @@ impl Printer {
         )?;
         let ty = match ty {
             CoreType::Sub(ty) => {
-                let ty = match &ty.structural_type {
-                    StructuralType::Func(f) => f,
-                    StructuralType::Cont(_) => {
-                        unreachable!("Continuation types cannot appear in components yet")
-                    }
-                    StructuralType::Array(_) | StructuralType::Struct(_) => {
+                let ty = match &ty.composite_type {
+                    CompositeType::Func(f) => f,
+                    CompositeType::Array(_) | CompositeType::Struct(_) => {
                         unreachable!("Wasm GC types cannot appear in components yet")
+                    }
+                    CompositeType::Cont(_) => {
+                        unreachable!("Continuation types cannot appear in components yet")
                     }
                 };
                 self.result.push(' ');
@@ -657,7 +657,7 @@ impl Printer {
                 Some(SubType {
                     is_final: true,
                     supertype_idx: None,
-                    structural_type: StructuralType::Func(ty.clone()),
+                    composite_type: CompositeType::Func(ty.clone()),
                 })
             }
             CoreType::Module(decls) => {
@@ -671,7 +671,12 @@ impl Printer {
         Ok(())
     }
 
-    fn print_rec(&mut self, state: &mut State, offset: usize, types: Vec<SubType>) -> Result<()> {
+    fn print_rec(
+        &mut self,
+        state: &mut State,
+        offset: usize,
+        types: impl Iterator<Item = SubType>,
+    ) -> Result<()> {
         self.start_group("rec");
         for ty in types {
             self.newline(offset + 2);
@@ -695,41 +700,41 @@ impl Printer {
         let r = if !ty.is_final || !ty.supertype_idx.is_none() {
             self.start_group("sub");
             self.print_sub_type(state, ty)?;
-            let r = self.print_structural(state, &ty.structural_type, names_for)?;
+            let r = self.print_composite(state, &ty.composite_type, names_for)?;
             self.end_group(); // `sub`
             r
         } else {
-            self.print_structural(state, &ty.structural_type, names_for)?
+            self.print_composite(state, &ty.composite_type, names_for)?
         };
         Ok(r)
     }
 
-    fn print_structural(
+    fn print_composite(
         &mut self,
         state: &State,
-        ty: &StructuralType,
+        ty: &CompositeType,
         names_for: Option<u32>,
     ) -> Result<u32> {
         let r = match &ty {
-            StructuralType::Func(ty) => {
+            CompositeType::Func(ty) => {
                 self.start_group("func");
                 let r = self.print_func_type(state, ty, names_for)?;
                 self.end_group(); // `func`
                 r
             }
-            StructuralType::Array(ty) => {
+            CompositeType::Array(ty) => {
                 self.start_group("array");
                 let r = self.print_array_type(ty)?;
                 self.end_group(); // `array`
                 r
             }
-            StructuralType::Struct(ty) => {
+            CompositeType::Struct(ty) => {
                 self.start_group("struct");
                 let r = self.print_struct_type(ty)?;
                 self.end_group(); // `struct`
                 r
             }
-            StructuralType::Cont(ct) => {
+            CompositeType::Cont(ct) => {
                 self.start_group("cont");
                 let r = self.print_cont_type(state, ct)?;
                 self.end_group();
@@ -757,9 +762,11 @@ impl Printer {
         for ty in parser.into_iter_with_offsets() {
             let (offset, rec_group) = ty?;
             self.newline(offset);
-            match rec_group {
-                RecGroup::Many(items) => self.print_rec(state, offset, items)?,
-                RecGroup::Single(ty) => self.print_type(state, ty)?,
+            if rec_group.types().len() == 1 {
+                let ty = rec_group.into_types().next().unwrap();
+                self.print_type(state, ty)?;
+            } else {
+                self.print_rec(state, offset, rec_group.into_types())?
             }
         }
 
@@ -776,7 +783,7 @@ impl Printer {
 
         match state.core.types.get(idx as usize) {
             Some(Some(SubType {
-                structural_type: StructuralType::Func(ty),
+                composite_type: CompositeType::Func(ty),
                 ..
             })) => self.print_func_type(state, ty, names_for).map(Some),
             Some(Some(_)) | Some(None) | None => Ok(None),
@@ -922,7 +929,7 @@ impl Printer {
             HeapType::I31 => self.result.push_str("i31"),
             HeapType::Cont => self.result.push_str("cont"),
             HeapType::NoCont => self.result.push_str("nocont"),
-            HeapType::Indexed(i) => self.result.push_str(&format!("{}", u32::from(i))),
+            HeapType::Concrete(i) => self.result.push_str(&format!("{}", u32::from(i))),
         }
         Ok(())
     }
@@ -1702,7 +1709,7 @@ impl Printer {
                 ComponentTypeDeclaration::Export { name, ty } => {
                     self.start_group("export ");
                     self.print_component_kind_name(states.last_mut().unwrap(), ty.kind())?;
-                    self.print_component_import_name(name.into())?;
+                    self.print_str(name.0)?;
                     self.result.push(' ');
                     self.print_component_import_ty(states.last_mut().unwrap(), &ty, false)?;
                     self.end_group();
@@ -1736,7 +1743,7 @@ impl Printer {
                 InstanceTypeDeclaration::Export { name, ty } => {
                     self.start_group("export ");
                     self.print_component_kind_name(states.last_mut().unwrap(), ty.kind())?;
-                    self.print_component_import_name(name.into())?;
+                    self.print_str(name.0)?;
                     self.result.push(' ');
                     self.print_component_import_ty(states.last_mut().unwrap(), &ty, false)?;
                     self.end_group();
@@ -1900,23 +1907,11 @@ impl Printer {
         index: bool,
     ) -> Result<()> {
         self.start_group("import ");
-        self.print_component_import_name(import.name)?;
+        self.print_str(import.name.0)?;
         self.result.push(' ');
         self.print_component_import_ty(state, &import.ty, index)?;
         self.end_group();
         Ok(())
-    }
-
-    fn print_component_import_name(&mut self, name: ComponentExternName<'_>) -> Result<()> {
-        match name {
-            ComponentExternName::Kebab(s) => self.print_str(s),
-            ComponentExternName::Interface(s) => {
-                self.start_group("interface ");
-                self.print_str(s)?;
-                self.end_group();
-                Ok(())
-            }
-        }
     }
 
     fn print_component_import_ty(
@@ -2027,7 +2022,7 @@ impl Printer {
         if named {
             self.print_component_kind_name(state, export.kind)?;
         }
-        self.print_component_import_name(export.name.into())?;
+        self.print_str(export.name.0)?;
         self.result.push(' ');
         self.print_component_external_kind(state, export.kind, export.index)?;
         if let Some(ty) = &export.ty {

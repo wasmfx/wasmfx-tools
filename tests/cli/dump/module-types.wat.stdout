@@ -2,7 +2,7 @@
       | 0d 00 01 00
   0x8 | 03 23       | core type section
   0xa | 01          | 1 count
-  0xb | 50 05 01 60 | [core type 0] Module([Type(SubType { is_final: true, supertype_idx: None, structural_type: Func(FuncType { params: [], returns: [] }) }), Import(Import { module: "", name: "f", ty: Func(0) }), Import(Import { module: "", name: "g", ty: Global(GlobalType { content_type: I32, mutable: false }) }), Import(Import { module: "", name: "t", ty: Table(TableType { element_type: funcref, initial: 1, maximum: None }) }), Import(Import { module: "", name: "m", ty: Memory(MemoryType { memory64: false, shared: false, initial: 1, maximum: None }) })])
+  0xb | 50 05 01 60 | [core type 0] Module([Type(SubType { is_final: true, supertype_idx: None, composite_type: Func(FuncType { params: [], results: [] }) }), Import(Import { module: "", name: "f", ty: Func(0) }), Import(Import { module: "", name: "g", ty: Global(GlobalType { content_type: I32, mutable: false }) }), Import(Import { module: "", name: "t", ty: Table(TableType { element_type: funcref, initial: 1, maximum: None }) }), Import(Import { module: "", name: "m", ty: Memory(MemoryType { memory64: false, shared: false, initial: 1, maximum: None }) })])
       | 00 00 00 00
       | 01 66 00 00
       | 00 00 01 67
@@ -13,7 +13,7 @@
       | 00 01      
  0x2d | 0a 07       | component import section
  0x2f | 01          | 1 count
- 0x30 | 00 01 61 00 | [module 0] ComponentImport { name: Kebab("a"), ty: Module(0) }
+ 0x30 | 00 01 61 00 | [module 0] ComponentImport { name: ComponentImportName("a"), ty: Module(0) }
       | 11 00      
  0x36 | 07 03       | component type section
  0x38 | 01          | 1 count

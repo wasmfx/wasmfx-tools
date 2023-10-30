@@ -436,7 +436,7 @@ impl<'a> TypeEncoder<'a> {
                 wasmparser::HeapType::I31 => HeapType::I31,
                 wasmparser::HeapType::Cont => todo!(), // TODO(dhil): Some day.
                 wasmparser::HeapType::NoCont => todo!(), // TODO(dhil): Some day.
-                wasmparser::HeapType::Indexed(i) => HeapType::Indexed(i),
+                wasmparser::HeapType::Concrete(i) => HeapType::Concrete(i),
             },
         }
     }

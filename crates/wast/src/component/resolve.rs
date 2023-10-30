@@ -534,7 +534,7 @@ impl<'a> Resolver<'a> {
                         | core::HeapType::NoCont
                         | core::HeapType::NoFunc
                         | core::HeapType::NoExtern => {}
-                        core::HeapType::Index(id) => {
+                        core::HeapType::Concrete(id) => {
                             self.resolve_ns(id, Ns::Type)?;
                         }
                     },
