@@ -446,7 +446,7 @@ macro_rules! define_core_wasm_types {
                     (true, HeapType::Cont) => write!(f, "(ref null cont)"),
                     (false, HeapType::Cont) => write!(f, "(ref cont)"),
                     (true, HeapType::NoCont) => write!(f, "nullcontref"),
-                    (false, HeapType::NoCont) => write!(f, "(ref nocont)")
+                    (false, HeapType::NoCont) => write!(f, "(ref nocont)"),
                 }
             }
         }
