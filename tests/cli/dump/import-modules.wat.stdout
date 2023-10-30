@@ -2,19 +2,19 @@
       | 0d 00 01 00
   0x8 | 03 0d       | core type section
   0xa | 01          | 1 count
-  0xb | 50 02 01 60 | [core type 0] Module([Type(SubType { is_final: true, supertype_idx: None, structural_type: Func(FuncType { params: [], returns: [] }) }), Import(Import { module: "", name: "f", ty: Func(0) })])
+  0xb | 50 02 01 60 | [core type 0] Module([Type(SubType { is_final: true, supertype_idx: None, composite_type: Func(FuncType { params: [], results: [] }) }), Import(Import { module: "", name: "f", ty: Func(0) })])
       | 00 00 00 00
       | 01 66 00 00
  0x17 | 0a 07       | component import section
  0x19 | 01          | 1 count
- 0x1a | 00 01 61 00 | [module 0] ComponentImport { name: Kebab("a"), ty: Module(0) }
+ 0x1a | 00 01 61 00 | [module 0] ComponentImport { name: ComponentImportName("a"), ty: Module(0) }
       | 11 00      
  0x20 | 01 2b       | [core module 1] inline size
    0x22 | 00 61 73 6d | version 1 (Module)
         | 01 00 00 00
    0x2a | 01 04       | type section
    0x2c | 01          | 1 count
-   0x2d | 60 00 00    | [type 0] Single(SubType { is_final: true, supertype_idx: None, structural_type: Func(FuncType { params: [], returns: [] }) })
+   0x2d | 60 00 00    | [type 0] RecGroup { inner: Implicit(SubType { is_final: true, supertype_idx: None, composite_type: Func(FuncType { params: [], results: [] }) }) }
    0x30 | 03 02       | func section
    0x32 | 01          | 1 count
    0x33 | 00          | [func 0] type 0

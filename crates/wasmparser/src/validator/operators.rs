@@ -1060,7 +1060,7 @@ impl<'resources, R: WasmModuleResources> OperatorValidatorTemp<'_, 'resources, R
 
             // Retrieve the continuation reference type (i.e. (cont $ft)).
             match self.label_types(block.0, block.1)?.last() {
-                Some(ValType::Ref(rt)) if rt.is_indexed_type_ref() /* TODO(dhil): we should probably add a continuation kind to the ref API */ => {
+                Some(ValType::Ref(rt)) if rt.is_concrete_type_ref() => {
                     let z = rt.type_index().unwrap();
                     let ctft2 = self.func_repr_cont_type_at(z)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
@@ -1379,13 +1379,13 @@ where
         Ok(())
     }
     fn visit_call_ref(&mut self, type_index: u32) -> Self::Output {
-        let hty = HeapType::Indexed(type_index);
+        let hty = HeapType::Concrete(type_index);
         self.resources
             .check_heap_type(hty, &self.features, self.offset)?;
         // If `None` is popped then that means a "bottom" type was popped which
         // is always considered equivalent to the `hty` tag.
         if let Some(rt) = self.pop_ref()? {
-            let expected = RefType::indexed_func(true, type_index)
+            let expected = RefType::concrete(true, type_index)
                 .expect("existing heap types should be within our limits");
             if !self
                 .resources
@@ -2399,7 +2399,7 @@ where
         // proposals.
         if self.features.function_references {
             self.push_operand(
-                RefType::indexed_func(false, type_index)
+                RefType::concrete(false, type_index)
                     .expect("our limits on number of types should fit into ref type"),
             )?;
         } else {
@@ -3449,9 +3449,9 @@ where
     // Typed continuations operators.
     fn visit_cont_new(&mut self, type_index: u32) -> Self::Output {
         let fidx = self.cont_type_at(type_index)?.0;
-        let rt = RefType::indexed_func(false, fidx).expect("type index is too large");
+        let rt = RefType::concrete(false, fidx).expect("type index is too large");
         self.pop_operand(Some(ValType::Ref(rt)))?;
-        let result = RefType::indexed_cont(false, type_index).expect("type index is too large");
+        let result = RefType::concrete(false, type_index).expect("type index is too large");
         self.push_operand(ValType::Ref(result))?;
         Ok(())
     }
@@ -3485,7 +3485,7 @@ where
             None => {} // bot case
             Some(rt) => {
                 let expected = ValType::Ref(
-                    RefType::indexed_cont(false, src_index).expect("type index is too large"),
+                    RefType::concrete(false, src_index).expect("type index is too large"),
                 );
                 if !self.resources.matches(expected, ValType::Ref(rt)) {
                     bail!(
@@ -3504,7 +3504,7 @@ where
         }
 
         // Construct the result type.
-        let result_type = RefType::indexed_cont(false, dst_index).expect("type index is too large");
+        let result_type = RefType::concrete(false, dst_index).expect("type index is too large");
 
         // Push the continuation reference.
         self.push_operand(result_type)?;
@@ -3524,7 +3524,7 @@ where
     fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
         let ctft = self.func_repr_cont_type_at(type_index)?;
         let expected =
-            ValType::Ref(RefType::indexed_cont(true, type_index).expect("type index is too large"));
+            ValType::Ref(RefType::concrete(true, type_index).expect("type index is too large"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.matches(ValType::Ref(rt), expected) => {
@@ -3560,7 +3560,7 @@ where
     ) -> Self::Output {
         let ctft = self.func_repr_cont_type_at(type_index)?;
         let expected =
-            ValType::Ref(RefType::indexed_cont(true, type_index).expect("type index is too large"));
+            ValType::Ref(RefType::concrete(true, type_index).expect("type index is too large"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.matches(ValType::Ref(rt), expected) => {

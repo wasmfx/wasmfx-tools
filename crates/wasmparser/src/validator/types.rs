@@ -6,8 +6,8 @@ use super::{
 };
 use crate::validator::names::KebabString;
 use crate::{
-    BinaryReaderError, ContType, Export, ExternalKind, FuncType, GlobalType, Import, MemoryType,
-    PrimitiveValType, RefType, Result, StructuralType, SubType, TableType, TypeRef, ValType,
+    BinaryReaderError, CompositeType, ContType, Export, ExternalKind, FuncType, GlobalType, Import,
+    MemoryType, PrimitiveValType, RefType, Result, SubType, TableType, TypeRef, ValType,
 };
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
@@ -294,11 +294,11 @@ impl TypeData for SubType {
 
     fn type_info(&self, _types: &TypeList) -> TypeInfo {
         // TODO(#1036): calculate actual size for func, array, struct.
-        let size = 1 + match &self.structural_type {
-            StructuralType::Func(ty) => 1 + (ty.params().len() + ty.results().len()) as u32,
-            StructuralType::Array(_) => 2,
-            StructuralType::Struct(ty) => 1 + 2 * ty.fields.len() as u32,
-            StructuralType::Cont(_) => 1, // TODO(dhil): Changes to the `ContType` structure needs to be reflected here.
+        let size = 1 + match &self.composite_type {
+            CompositeType::Func(ty) => 1 + (ty.params().len() + ty.results().len()) as u32,
+            CompositeType::Array(_) => 2,
+            CompositeType::Struct(ty) => 1 + 2 * ty.fields.len() as u32,
+            CompositeType::Cont(_) => 1, // TODO(dhil): Changes to the `ContType` structure needs to be reflected here.
         };
         TypeInfo::core(size)
     }
@@ -315,19 +315,19 @@ impl CoreType {
 
     /// Get the underlying `FuncType` within this `SubType` or panic.
     pub fn unwrap_func(&self) -> &FuncType {
-        match &self.unwrap_sub().structural_type {
-            StructuralType::Func(f) => f,
-            StructuralType::Array(_) | StructuralType::Struct(_) | StructuralType::Cont(_) => {
-                panic!("`unwrap_func` on non-func structural type")
+        match &self.unwrap_sub().composite_type {
+            CompositeType::Func(f) => f,
+            CompositeType::Array(_) | CompositeType::Struct(_) | CompositeType::Cont(_) => {
+                panic!("`unwrap_func` on non-func composite type")
             }
         }
     }
 
     /// Get the underlying `ContType` within this `SubType` or panic.
     pub fn unwrap_cont(&self) -> &ContType {
-        match &self.unwrap_sub().structural_type {
-            StructuralType::Cont(ct) => ct,
-            _ => panic!("`unwrap_cont` on non-cont structural type"),
+        match &self.unwrap_sub().composite_type {
+            CompositeType::Cont(ct) => ct,
+            _ => panic!("`unwrap_cont` on non-cont composite type"),
         }
     }
 
