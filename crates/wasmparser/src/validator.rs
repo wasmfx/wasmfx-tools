@@ -322,6 +322,16 @@ impl WasmFeatures {
                         }
                     }
 
+                    // abstract continuation types require the typed
+                    // continuations proposal.
+                    (HeapType::Cont | HeapType::NoCont, _) => {
+                        if self.typed_continuations {
+                            Ok(())
+                        } else {
+                            Err("typed continuations required for abstract continuation types")
+                        }
+                    }
+
                     // types added in the gc proposal
                     (
                         HeapType::Any
@@ -331,9 +341,7 @@ impl WasmFeatures {
                         | HeapType::Array
                         | HeapType::I31
                         | HeapType::NoExtern
-                        | HeapType::NoFunc
-                        | HeapType::Cont
-                        | HeapType::NoCont,
+                        | HeapType::NoFunc,
                         _,
                     ) => {
                         if self.gc {
