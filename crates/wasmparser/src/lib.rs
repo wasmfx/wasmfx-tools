@@ -726,9 +726,6 @@ pub use crate::readers::*;
 pub use crate::resources::*;
 pub use crate::validator::*;
 
-#[macro_use]
-mod define_types;
-
 mod binary_reader;
 mod limits;
 mod parser;

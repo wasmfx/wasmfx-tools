@@ -826,7 +826,7 @@ impl Printer {
 
     fn print_cont_type(&mut self, state: &State, ct: &ContType) -> Result<u32> {
         self.result.push(' ');
-        self.print_idx(&state.core.type_names, ct.0)?;
+        self.print_idx(&state.core.type_names, ct.0.as_module_index().unwrap())?;
         Ok(0)
     }
 
@@ -861,7 +861,7 @@ impl Printer {
             self.result.push_str("final ");
         }
         for idx in &ty.supertype_idx {
-            self.print_name(&state.core.type_names, *idx)?;
+            self.print_name(&state.core.type_names, idx.as_module_index().unwrap())?;
             self.result.push(' ');
         }
         Ok(0)
@@ -929,7 +929,9 @@ impl Printer {
             HeapType::I31 => self.result.push_str("i31"),
             HeapType::Cont => self.result.push_str("cont"),
             HeapType::NoCont => self.result.push_str("nocont"),
-            HeapType::Concrete(i) => self.result.push_str(&format!("{}", u32::from(i))),
+            HeapType::Concrete(i) => self
+                .result
+                .push_str(&format!("{}", i.as_module_index().unwrap())),
         }
         Ok(())
     }
