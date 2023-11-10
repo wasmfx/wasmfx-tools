@@ -1076,11 +1076,11 @@ where
         for pair in table.targets() {
             let (tag, relative_depth) = pair?;
             // tagtype := ts1' -> ts2'
-            let tagtype = self.tag_at(tag)?;
+            let tagtype = &self.tag_at(tag)?;
             let block = self.jump(relative_depth)?;
 
             // label_types(offset, block.0, block.1) := ts1''* (ref null? (cont $ft))
-            if tagtype.clone().inputs().len() != self.label_types(block.0, block.1)?.len() - 1 {
+            if tagtype.inputs().len() != self.label_types(block.0, block.1)?.len() - 1 {
                 bail!(
                     self.offset,
                     "type mismatch between label type and tag type length"
@@ -1088,10 +1088,10 @@ where
             }
             let labeltys = self
                 .label_types(block.0, block.1)?
-                .take(tagtype.clone().inputs().len());
+                .take(tagtype.inputs().len());
 
             // Next check that ts1' <: ts1''.
-            for (tagty, lblty) in labeltys.zip(tagtype.clone().inputs()) {
+            for (tagty, lblty) in labeltys.zip(tagtype.inputs()) {
                 if !self.resources.is_subtype(tagty, lblty) {
                     bail!(self.offset, "type mismatch between tag type and label type")
                     // TODO(dhil): tidy up
@@ -1102,16 +1102,16 @@ where
             match self.label_types(block.0, block.1)?.last() {
                 Some(ValType::Ref(rt)) if rt.is_concrete_type_ref() => {
                     let z = rt.type_index().unwrap().unpack();
-                    let ctft2 = self.func_repr_cont_type_at(z)?; // TODO(dhil): proper error handling
+                    let ctft2 = &self.func_repr_cont_type_at(z)?; // TODO(dhil): proper error handling
                     // Now we must check that (ts2' -> ts2) <: $ft
                     // This method should be exposed by resources to make this correct
-                    for (tagty, ct2ty) in tagtype.clone().outputs().zip(ctft2.clone().inputs()) {
+                    for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
                         // Note: according to spec we should check for equality here
                         if !self.resources.is_subtype(ct2ty, tagty) {
                             bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
                         }
                     }
-                    for (ctty, ct2ty) in ctft.clone().outputs().zip(ctft2.clone().outputs()) {
+                    for (ctty, ct2ty) in ctft.outputs().zip(ctft2.outputs()) {
                         // Note: according to spec we should check for equality here
                         if !self.resources.is_subtype(ctty, ct2ty) {
                             bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
@@ -3540,12 +3540,12 @@ where
     fn visit_cont_bind(&mut self, src_index: u32, dst_index: u32) -> Self::Output {
         let src_unpacked_index = UnpackedIndex::Module(src_index);
         let dst_unpacked_index = UnpackedIndex::Module(dst_index);
-        let src_cont = self.func_repr_cont_type_at(src_unpacked_index)?;
-        let dst_cont = self.func_repr_cont_type_at(dst_unpacked_index)?;
+        let src_cont = &self.func_repr_cont_type_at(src_unpacked_index)?;
+        let dst_cont = &self.func_repr_cont_type_at(dst_unpacked_index)?;
 
         // Verify that the source domain is at least as large as the
         // target domain.
-        if src_cont.clone().len_inputs() < dst_cont.clone().len_inputs() {
+        if src_cont.len_inputs() < dst_cont.len_inputs() {
             bail!(self.offset, "type mismatch in continuation arguments");
         }
 
@@ -3554,15 +3554,15 @@ where
         let src_prefix = src_cont
             .clone()
             .inputs()
-            .take(src_cont.clone().len_inputs() - dst_cont.clone().len_inputs());
+            .take(src_cont.len_inputs() - dst_cont.len_inputs());
         let src_suffix = src_cont
             .clone()
             .inputs()
-            .skip(src_cont.clone().len_inputs() - dst_cont.len_inputs());
+            .skip(src_cont.len_inputs() - dst_cont.len_inputs());
         if !self.resources.is_func_subtype(
             // TODO(dhil): potential problem here, non-canonicalised types.
-            crate::FuncType::new(src_suffix, src_cont.clone().outputs()),
-            crate::FuncType::new(dst_cont.clone().inputs(), dst_cont.clone().outputs()),
+            crate::FuncType::new(src_suffix, src_cont.outputs()),
+            crate::FuncType::new(dst_cont.inputs(), dst_cont.outputs()),
         ) {
             bail!(self.offset, "type mismatch in continuation types");
         }
@@ -3612,18 +3612,18 @@ where
         Ok(())
     }
     fn visit_suspend(&mut self, tag_index: u32) -> Self::Output {
-        let ft = self.tag_at(tag_index)?;
-        for ty in ft.clone().inputs().rev() {
+        let ft = &self.tag_at(tag_index)?;
+        for ty in ft.inputs().rev() {
             self.pop_operand(Some(ty))?;
         }
-        for ty in ft.clone().outputs() {
+        for ty in ft.outputs() {
             self.push_operand(ty)?;
         }
         Ok(())
     }
     fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
         let unpacked_index = UnpackedIndex::Module(type_index);
-        let ctft = self.func_repr_cont_type_at(unpacked_index)?;
+        let ctft = &self.func_repr_cont_type_at(unpacked_index)?;
         let mut expected = ValType::Ref(RefType::concrete(
             true,
             unpacked_index.pack().ok_or_else(|| {
@@ -3638,12 +3638,12 @@ where
                 self.check_resume_table(resumetable, &ctft)?;
 
                 // Check that ts1 are available on the stack.
-                for ty in ctft.clone().inputs().rev() {
+                for ty in ctft.inputs().rev() {
                     self.pop_operand(Some(ty))?;
                 }
 
                 // Make ts2 available on the stack.
-                for ty in ctft.clone().outputs() {
+                for ty in ctft.outputs() {
                     self.push_operand(ty)?;
                 }
             }
@@ -3665,7 +3665,7 @@ where
         resumetable: ResumeTable,
     ) -> Self::Output {
         let unpacked_index = UnpackedIndex::Module(type_index);
-        let ctft = self.func_repr_cont_type_at(unpacked_index)?;
+        let ctft = &self.func_repr_cont_type_at(unpacked_index)?;
         let mut expected = ValType::Ref(RefType::concrete(
             true,
             unpacked_index.pack().ok_or_else(|| {
@@ -3680,15 +3680,15 @@ where
                 self.check_resume_table(resumetable, &ctft)?;
 
                 // tagtype := ts1' -> []
-                let tagtype = self.tag_at(tag_index)?;
+                let tagtype = &self.tag_at(tag_index)?;
 
                 // Check that ts1' are available on the stack.
-                for tagty in tagtype.clone().inputs().rev() {
+                for tagty in tagtype.inputs().rev() {
                     self.pop_operand(Some(tagty))?;
                 }
 
                 // Make ts2 available on the stack.
-                for ty in ctft.clone().outputs() {
+                for ty in ctft.outputs() {
                     self.push_operand(ty)?;
                 }
             }
