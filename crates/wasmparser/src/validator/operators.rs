@@ -996,9 +996,16 @@ where
     }
     fn func_repr_cont_type_at_raw(&self, at: u32) -> Result<R::FuncType> {
         let ct = self.cont_type_at(at)?;
-        let idx =
-            crate::types::TypeIdentifier::index(&UnpackedIndex::as_core_type_id(&ct.0).unwrap())
-                as u32;
+        let idx = match &UnpackedIndex::as_core_type_id(&ct.0) {
+            None => {
+                return Err(format_err!(
+                    self.offset,
+                    "failed to construct core type id from {:?}",
+                    ct.0
+                ))
+            }
+            Some(coreid) => crate::types::TypeIdentifier::index(coreid) as u32,
+        };
         self.func_type_at(idx)
     }
 
@@ -1101,8 +1108,15 @@ where
             // Retrieve the continuation reference type (i.e. (cont $ft)).
             match self.label_types(block.0, block.1)?.last() {
                 Some(ValType::Ref(rt)) if rt.is_concrete_type_ref() => {
-                    let z = rt.type_index().unwrap().unpack();
-                    let ctft2 = &self.func_repr_cont_type_at(z)?; // TODO(dhil): proper error handling
+                    let z =
+                        match rt.type_index() {
+                            None => return Err(BinaryReaderError::new(
+                                "attempt to take type index of non-index reference type",
+                                self.offset,
+                            )),
+                            Some(idx) => idx.unpack(),
+                        };
+                    let ctft2 = &self.func_repr_cont_type_at(z)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
                     // This method should be exposed by resources to make this correct
                     for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
@@ -3525,7 +3539,12 @@ where
     fn visit_cont_new(&mut self, type_index: u32) -> Self::Output {
         let unpacked_index = UnpackedIndex::Module(type_index);
         let fidx = self.cont_type_at(type_index)?.0;
-        let rt = RefType::concrete(false, fidx.pack().unwrap()); // TODO(dhil): proper error handling
+        let rt = RefType::concrete(
+            false,
+            fidx.pack().ok_or_else(|| {
+                BinaryReaderError::new("implementation limit: type index too large", self.offset)
+            })?,
+        );
         self.pop_operand(Some(ValType::Ref(rt)))?;
         let mut result = ValType::Ref(RefType::concrete(
             false,
@@ -3552,15 +3571,16 @@ where
         // Next check that the source and target agrees modulo the
         // prefix.
         let src_prefix = src_cont
-            .clone()
             .inputs()
             .take(src_cont.len_inputs() - dst_cont.len_inputs());
         let src_suffix = src_cont
-            .clone()
             .inputs()
             .skip(src_cont.len_inputs() - dst_cont.len_inputs());
+        // TODO(dhil): `is_func_subtype` is a kind of convenience hack
+        // that implements the subtyping relation for function
+        // types. Ideally, we would use the upstream implementation of
+        // function subtyping.
         if !self.resources.is_func_subtype(
-            // TODO(dhil): potential problem here, non-canonicalised types.
             crate::FuncType::new(src_suffix, src_cont.outputs()),
             crate::FuncType::new(dst_cont.inputs(), dst_cont.outputs()),
         ) {
