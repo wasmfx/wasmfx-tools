@@ -102,7 +102,7 @@ pub fn map_ref_type(ref_ty: wasmparser::RefType) -> Result<RefType> {
             wasmparser::HeapType::Array => HeapType::Array,
             wasmparser::HeapType::I31 => HeapType::I31,
             wasmparser::HeapType::Cont | wasmparser::HeapType::NoCont => todo!(), // TODO(dhil): Some day.
-            wasmparser::HeapType::Concrete(i) => HeapType::Concrete(i.into()),
+            wasmparser::HeapType::Concrete(i) => HeapType::Concrete(i.as_module_index().unwrap()),
         },
     })
 }
