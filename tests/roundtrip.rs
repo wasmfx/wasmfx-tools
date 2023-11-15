@@ -35,6 +35,8 @@ use wast::parser::ParseBuffer;
 use wast::{parser, QuoteWat, Wast, WastDirective, Wat};
 
 fn main() {
+    env_logger::init();
+
     let tests = find_tests();
     let filter = std::env::args().nth(1);
     let bless = std::env::var_os("BLESS").is_some();
@@ -168,7 +170,6 @@ fn skip_test(test: &Path, contents: &[u8]) -> bool {
 fn skip_validation(test: &Path) -> bool {
     let broken = &[
         "gc/gc-array.wat",
-        "gc/gc-rec-sub.wat",
         "gc/gc-struct.wat",
         "/proposals/gc/array.wast",
         "/proposals/gc/array_copy.wast",
@@ -178,17 +179,12 @@ fn skip_validation(test: &Path) -> bool {
         "/proposals/gc/binary-gc.wast",
         "/proposals/gc/br_on_cast.wast",
         "/proposals/gc/br_on_cast_fail.wast",
-        "/proposals/gc/data.wast",
-        "/proposals/gc/elem.wast",
         "/proposals/gc/extern.wast",
         "/proposals/gc/global.wast",
-        "/proposals/gc/i31.wast",
         "/proposals/gc/ref_cast.wast",
         "/proposals/gc/ref_eq.wast",
         "/proposals/gc/ref_test.wast",
         "/proposals/gc/struct.wast",
-        "/proposals/gc/type-equivalence.wast",
-        "/proposals/gc/type-rec.wast",
         "/proposals/gc/type-subtyping.wast",
         "/exnref/exnref.wast",
         "/exnref/throw_ref.wast",
@@ -522,6 +518,19 @@ impl TestState {
             return Ok(());
         }
 
+        if log::log_enabled!(log::Level::Debug) {
+            static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let i = COUNTER.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+
+            let expected_path = format!("expected{i}.wasm");
+            log::debug!("Writing expected Wasm to: {expected_path}");
+            let _ = std::fs::write(expected_path, expected);
+
+            let actual_path = format!("actual{i}.wasm");
+            log::debug!("Writing actual Wasm to: {actual_path}");
+            let _ = std::fs::write(actual_path, actual);
+        }
+
         let difference = actual
             .iter()
             .enumerate()
@@ -572,7 +581,11 @@ impl TestState {
                     msg.push_str(&format!("+ {}\n", actual_state));
                     differences += 1;
                 }
+            } else {
+                msg.push_str("\nfailed to dump expected");
             }
+        } else {
+            msg.push_str("\nfailed to dump actual");
         }
 
         bail!("{}", msg);
@@ -668,6 +681,7 @@ impl TestState {
                 _ => {}
             }
         }
+        log::debug!("features for {} = {features:#?}", test.display());
         Validator::new_with_features(features)
     }
 
