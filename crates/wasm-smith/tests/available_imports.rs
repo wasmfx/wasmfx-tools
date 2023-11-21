@@ -59,16 +59,16 @@ fn smoke_test_imports_config() {
                                 *seen = true
                             }
                             (Some((seen, I::Func(p, r))), TypeRef::Func(sig_idx))
-                                if sig_types[*sig_idx as usize].params() == *p
-                                    && sig_types[*sig_idx as usize].results() == *r =>
+                                if sig_types[*sig_idx as usize].clone().params() == *p
+                                    && sig_types[*sig_idx as usize].clone().results() == *r =>
                             {
                                 *seen = true
                             }
                             (
                                 Some((seen, I::Tag(p))),
                                 TypeRef::Tag(wasmparser::TagType { func_type_idx, .. }),
-                            ) if sig_types[*func_type_idx as usize].params() == *p
-                                && sig_types[*func_type_idx as usize].results().is_empty() =>
+                            ) if sig_types[*func_type_idx as usize].clone().params() == *p
+                                && sig_types[*func_type_idx as usize].clone().results().is_empty() =>
                             {
                                 *seen = true
                             }
@@ -170,6 +170,7 @@ fn parser_features_from_config(config: &impl Config) -> WasmFeatures {
         exceptions: config.exceptions_enabled(),
         memory64: config.memory64_enabled(),
         tail_call: config.tail_call_enabled(),
+        typed_continuations: config.typed_continuations_enabled(),
 
         threads: false,
         floats: true,

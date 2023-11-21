@@ -355,6 +355,14 @@ pub trait Config: 'static + std::fmt::Debug {
         false
     }
 
+    /// Determines whether the typed continuations proposal is enabled
+    /// for generating instructions.
+    ///
+    /// Defaults to `false`.
+    fn typed_continuations_enabled(&self) -> bool {
+        false
+    }
+
     /// Determines whether the multi-value results are enabled.
     ///
     /// Defaults to `true`.
