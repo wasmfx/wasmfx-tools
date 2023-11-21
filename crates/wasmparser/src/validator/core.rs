@@ -982,6 +982,7 @@ impl Module {
             | HeapType::I31
             | HeapType::Cont
             | HeapType::NoCont => return Ok(()),
+            HeapType::Concrete(type_index) => type_index,
         };
         match type_index {
             UnpackedIndex::Module(idx) => {
@@ -1223,20 +1224,9 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.types.valtype_is_subtype(a, b)
     }
 
+    // TODO(dhil): This is sort of a hack; really we ought to be using
+    // the existing infrastructure to perform this subtype check.
     fn is_func_subtype(&self, mut a: FuncType, mut b: FuncType) -> bool {
-        // for ty in a.params_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-        // for ty in a.results_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-        // for ty in b.params_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-        // for ty in b.results_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-
         a.params_mut()
             .iter()
             .zip(b.params_mut())
@@ -1261,11 +1251,10 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
 
     fn cont_type_at(&self, at: u32) -> Option<ContType> {
         let id = *self.module.types.get(at as usize)?;
-        let mut ct = match &self.types[id].composite_type {
+        let ct = match &self.types[id].composite_type {
             CompositeType::Cont(c) => c.clone(),
             _ => return None,
         };
-        //canonicalize_conttype_impl(self.module, &mut ct, Some((self.types, id)));
         Some(ct)
     }
 }
@@ -1329,20 +1318,8 @@ impl WasmModuleResources for ValidatorResources {
         self.0.snapshot.as_ref().unwrap().valtype_is_subtype(a, b)
     }
 
-    fn is_func_subtype(&self, mut a: FuncType, mut b: FuncType) -> bool {
-        for ty in a.params_mut() {
-            self.canonicalize_valtype(ty);
-        }
-        for ty in a.results_mut() {
-            self.canonicalize_valtype(ty);
-        }
-        for ty in b.params_mut() {
-            self.canonicalize_valtype(ty);
-        }
-        for ty in b.results_mut() {
-            self.canonicalize_valtype(ty);
-        }
-
+    // TODO(dhil): See the comment on `is_func_subtype` above.
+    fn is_func_subtype(&self, a: FuncType, b: FuncType) -> bool {
         a.params().iter().zip(b.params()).all(|(aty, bty)| {
             self.0
                 .snapshot
@@ -1374,11 +1351,10 @@ impl WasmModuleResources for ValidatorResources {
     fn cont_type_at(&self, at: u32) -> Option<ContType> {
         let id = *self.0.types.get(at as usize)?;
         let types = self.0.snapshot.as_ref().unwrap();
-        let mut ct = match &types[id].composite_type {
+        let ct = match &types[id].composite_type {
             CompositeType::Cont(c) => c.clone(),
             _ => return None,
         };
-        //canonicalize_conttype_impl(&self.0, &mut ct, Some((types, id)));
         Some(ct)
     }
 }

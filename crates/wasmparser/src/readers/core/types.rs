@@ -431,6 +431,13 @@ impl SubType {
         self.composite_type.unwrap_struct()
     }
 
+    /// Unwrap an `ContType` or panic.
+    ///
+    /// Does not check finality or whether there is a supertype.
+    pub fn unwrap_cont(&self) -> &ContType {
+        self.composite_type.unwrap_cont()
+    }
+
     /// Maps any `UnpackedIndex` via the specified closure.
     pub(crate) fn remap_indices(
         &mut self,
@@ -455,6 +462,9 @@ impl SubType {
                 for field in ty.fields.iter_mut() {
                     field.remap_indices(f)?;
                 }
+            }
+            CompositeType::Cont(ct) => {
+                ct.remap_indices(f)?;
             }
         }
         Ok(())
@@ -496,6 +506,14 @@ impl CompositeType {
         match self {
             Self::Struct(s) => s,
             _ => panic!("not a struct"),
+        }
+    }
+
+    /// Unwrap a `ContType` or panic.
+    pub fn unwrap_cont(&self) -> &ContType {
+        match self {
+            Self::Cont(ct) => ct,
+            _ => panic!("not a cont"),
         }
     }
 }
@@ -641,6 +659,19 @@ pub struct StructType {
 /// Represents a type of a continuation in a WebAssembly module.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ContType(pub UnpackedIndex);
+
+impl ContType {
+    /// Maps any `UnpackedIndex` via the specified closure.
+    pub(crate) fn remap_indices(
+        &mut self,
+        map: &mut dyn FnMut(&mut PackedIndex) -> Result<()>,
+    ) -> Result<()> {
+        let mut idx = UnpackedIndex::pack(&self.0).expect("implementation limit: unable to pack continuation type index");
+        map(&mut idx)?;
+        *self = ContType(PackedIndex::unpack(&idx));
+        Ok(())
+    }
+}
 
 /// Represents the types of values in a WebAssembly module.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

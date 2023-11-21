@@ -987,7 +987,7 @@ where
 
     /// Retrieves the function type representation of the continuation
     /// type stored at the given type index.
-    fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<R::FuncType> {
+    fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<&'resources R::FuncType> {
         match at {
             UnpackedIndex::Module(idx) => self.func_repr_cont_type_at_raw(idx),
             UnpackedIndex::Id(cti) => {
@@ -996,7 +996,7 @@ where
             UnpackedIndex::RecGroup(_) => todo!(),
         }
     }
-    fn func_repr_cont_type_at_raw(&self, at: u32) -> Result<R::FuncType> {
+    fn func_repr_cont_type_at_raw(&self, at: u32) -> Result<&'resources R::FuncType> {
         let ct = self.cont_type_at(at)?;
         let idx = match &UnpackedIndex::as_core_type_id(&ct.0) {
             None => {
@@ -1115,7 +1115,7 @@ where
                             )),
                             Some(idx) => idx.unpack(),
                         };
-                    let ctft2 = &self.func_repr_cont_type_at(z)?;
+                    let ctft2 = self.func_repr_cont_type_at(z)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
                     // This method should be exposed by resources to make this correct
                     for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
@@ -3517,32 +3517,48 @@ where
         Ok(())
     }
 
+    // let unpacked_index = UnpackedIndex::Module(type_index);
+    // let mut hty = HeapType::Concrete(unpacked_index);
+    // self.resources.check_heap_type(&mut hty, self.offset)?;
+    // // If `None` is popped then that means a "bottom" type was popped which
+    // // is always considered equivalent to the `hty` tag.
+    // if let Some(rt) = self.pop_ref()? {
+    //     let expected = RefType::new(true, hty).expect("hty should be previously validated");
+    //     let expected = ValType::Ref(expected);
+    //     if !self.resources.is_subtype(ValType::Ref(rt), expected) {
+    //         bail!(
+    //             self.offset,
+    //             "type mismatch: funcref on stack does not match specified type",
+    //         );
+    //     }
+    // }
+    // self.check_call_type_index(type_index)
+
     // Typed continuations operators.
     fn visit_cont_new(&mut self, type_index: u32) -> Self::Output {
         let unpacked_index = UnpackedIndex::Module(type_index);
-        let fidx = self.cont_type_at(type_index)?.0;
-        let rt = RefType::concrete(
+        let mut c_hty = HeapType::Concrete(unpacked_index);
+        self.resources.check_heap_type(&mut c_hty, self.offset)?;
+        let f_hty = self.cont_type_at(type_index)?.0.pack().expect("hty should be previously validated");
+        let expected_rt = RefType::concrete(
             false,
-            fidx.pack().ok_or_else(|| {
-                BinaryReaderError::new("implementation limit: type index too large", self.offset)
-            })?,
+            f_hty,
         );
-        self.pop_operand(Some(ValType::Ref(rt)))?;
-        let mut result = ValType::Ref(RefType::concrete(
-            false,
-            unpacked_index.pack().ok_or_else(|| {
-                BinaryReaderError::new("implementation limit: type index too large", self.offset)
-            })?,
-        ));
-        self.resources.canonicalize_valtype(&mut result);
+        self.pop_operand(Some(ValType::Ref(expected_rt)))?;
+        let result = ValType::Ref(RefType::new(false, c_hty).expect("hty should be previously validated"));
         self.push_operand(result)?;
         Ok(())
     }
     fn visit_cont_bind(&mut self, src_index: u32, dst_index: u32) -> Self::Output {
         let src_unpacked_index = UnpackedIndex::Module(src_index);
+        let mut src_hty = HeapType::Concrete(src_unpacked_index);
+        self.resources.check_heap_type(&mut src_hty, self.offset)?;
+        let src_cont = self.func_repr_cont_type_at(src_unpacked_index)?;
+
         let dst_unpacked_index = UnpackedIndex::Module(dst_index);
-        let src_cont = &self.func_repr_cont_type_at(src_unpacked_index)?;
-        let dst_cont = &self.func_repr_cont_type_at(dst_unpacked_index)?;
+        let mut dst_hty = HeapType::Concrete(dst_unpacked_index);
+        self.resources.check_heap_type(&mut dst_hty, self.offset)?;
+        let dst_cont = self.func_repr_cont_type_at(dst_unpacked_index)?;
 
         // Verify that the source domain is at least as large as the
         // target domain.
@@ -3573,16 +3589,10 @@ where
         match self.pop_ref()? {
             None => {} // bot case
             Some(rt) => {
-                let mut expected = ValType::Ref(RefType::concrete(
+                let expected = ValType::Ref(RefType::new(
                     false,
-                    src_unpacked_index.pack().ok_or_else(|| {
-                        BinaryReaderError::new(
-                            "implementation limit: type index too large",
-                            self.offset,
-                        )
-                    })?,
-                ));
-                self.resources.canonicalize_valtype(&mut expected);
+                    src_hty
+                ).expect("hty should be previously validated"));
                 if !self.resources.is_subtype(expected, ValType::Ref(rt)) {
                     bail!(
                         self.offset,
@@ -3600,13 +3610,9 @@ where
         }
 
         // Construct the result type.
-        let mut result = ValType::Ref(RefType::concrete(
+        let result = ValType::Ref(RefType::new(
             false,
-            dst_unpacked_index.pack().ok_or_else(|| {
-                BinaryReaderError::new("implementation limit: type index too large", self.offset)
-            })?,
-        ));
-        self.resources.canonicalize_valtype(&mut result);
+            dst_hty).expect("hty should be previously validated"));
 
         // Push the continuation reference.
         self.push_operand(result)?;
@@ -3625,14 +3631,14 @@ where
     }
     fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
         let unpacked_index = UnpackedIndex::Module(type_index);
-        let ctft = &self.func_repr_cont_type_at(unpacked_index)?;
-        let mut expected = ValType::Ref(RefType::concrete(
+        let mut hty = HeapType::Concrete(unpacked_index);
+        self.resources.check_heap_type(&mut hty, self.offset)?;
+        let ctft = self.func_repr_cont_type_at(unpacked_index)?;
+
+        let expected = ValType::Ref(RefType::new(
             true,
-            unpacked_index.pack().ok_or_else(|| {
-                BinaryReaderError::new("implementation limit: type index too large", self.offset)
-            })?,
-        ));
-        self.resources.canonicalize_valtype(&mut expected);
+            hty,
+        ).expect("hty should be previously validated"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {
@@ -3667,14 +3673,13 @@ where
         resumetable: ResumeTable,
     ) -> Self::Output {
         let unpacked_index = UnpackedIndex::Module(type_index);
-        let ctft = &self.func_repr_cont_type_at(unpacked_index)?;
-        let mut expected = ValType::Ref(RefType::concrete(
+        let mut hty = HeapType::Concrete(unpacked_index);
+        self.resources.check_heap_type(&mut hty, self.offset)?;
+        let ctft = self.func_repr_cont_type_at(unpacked_index)?;
+        let expected = ValType::Ref(RefType::new(
             true,
-            unpacked_index.pack().ok_or_else(|| {
-                BinaryReaderError::new("implementation limit: type index too large", self.offset)
-            })?,
-        ));
-        self.resources.canonicalize_valtype(&mut expected);
+            hty,
+        ).expect("hty should be previously validated"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {
@@ -3706,8 +3711,8 @@ where
 
         Ok(())
     }
-    fn visit_barrier(&mut self, blockty: BlockType) -> Self::Output {
-        self.check_block_type(blockty)?;
+    fn visit_barrier(&mut self, mut blockty: BlockType) -> Self::Output {
+        self.check_block_type(&mut blockty)?;
         for ty in self.params(blockty)?.rev() {
             self.pop_operand(Some(ty))?;
         }
