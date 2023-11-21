@@ -23,9 +23,9 @@
 // the various methods here.
 
 use crate::{
-    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, ContType, HeapType, Ieee32,
-    Ieee64, MemArg, RefType, Result, ResumeTable, UnpackedIndex, ValType, VisitOperator, WasmFeatures,
-    WasmFuncType, WasmModuleResources, V128,
+    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, ContType, HeapType,
+    Ieee32, Ieee64, MemArg, RefType, Result, ResumeTable, UnpackedIndex, ValType, VisitOperator,
+    WasmFeatures, WasmFuncType, WasmModuleResources, V128,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -3539,13 +3539,15 @@ where
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut c_hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut c_hty, self.offset)?;
-        let f_hty = self.cont_type_at(type_index)?.0.pack().expect("hty should be previously validated");
-        let expected_rt = RefType::concrete(
-            false,
-            f_hty,
-        );
+        let f_hty = self
+            .cont_type_at(type_index)?
+            .0
+            .pack()
+            .expect("hty should be previously validated");
+        let expected_rt = RefType::concrete(false, f_hty);
         self.pop_operand(Some(ValType::Ref(expected_rt)))?;
-        let result = ValType::Ref(RefType::new(false, c_hty).expect("hty should be previously validated"));
+        let result =
+            ValType::Ref(RefType::new(false, c_hty).expect("hty should be previously validated"));
         self.push_operand(result)?;
         Ok(())
     }
@@ -3589,10 +3591,9 @@ where
         match self.pop_ref()? {
             None => {} // bot case
             Some(rt) => {
-                let expected = ValType::Ref(RefType::new(
-                    false,
-                    src_hty
-                ).expect("hty should be previously validated"));
+                let expected = ValType::Ref(
+                    RefType::new(false, src_hty).expect("hty should be previously validated"),
+                );
                 if !self.resources.is_subtype(expected, ValType::Ref(rt)) {
                     bail!(
                         self.offset,
@@ -3610,9 +3611,8 @@ where
         }
 
         // Construct the result type.
-        let result = ValType::Ref(RefType::new(
-            false,
-            dst_hty).expect("hty should be previously validated"));
+        let result =
+            ValType::Ref(RefType::new(false, dst_hty).expect("hty should be previously validated"));
 
         // Push the continuation reference.
         self.push_operand(result)?;
@@ -3635,10 +3635,8 @@ where
         self.resources.check_heap_type(&mut hty, self.offset)?;
         let ctft = self.func_repr_cont_type_at(unpacked_index)?;
 
-        let expected = ValType::Ref(RefType::new(
-            true,
-            hty,
-        ).expect("hty should be previously validated"));
+        let expected =
+            ValType::Ref(RefType::new(true, hty).expect("hty should be previously validated"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {
@@ -3676,10 +3674,8 @@ where
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
         let ctft = self.func_repr_cont_type_at(unpacked_index)?;
-        let expected = ValType::Ref(RefType::new(
-            true,
-            hty,
-        ).expect("hty should be previously validated"));
+        let expected =
+            ValType::Ref(RefType::new(true, hty).expect("hty should be previously validated"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {

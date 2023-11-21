@@ -344,7 +344,6 @@ impl WasmFeatures {
                 }
             }
 
-
             // These types were added in the gc proposal.
             (
                 HeapType::Any

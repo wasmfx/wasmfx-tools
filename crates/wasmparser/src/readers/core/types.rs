@@ -666,7 +666,8 @@ impl ContType {
         &mut self,
         map: &mut dyn FnMut(&mut PackedIndex) -> Result<()>,
     ) -> Result<()> {
-        let mut idx = UnpackedIndex::pack(&self.0).expect("implementation limit: unable to pack continuation type index");
+        let mut idx = UnpackedIndex::pack(&self.0)
+            .expect("implementation limit: unable to pack continuation type index");
         map(&mut idx)?;
         *self = ContType(PackedIndex::unpack(&idx));
         Ok(())
