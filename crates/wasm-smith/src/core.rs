@@ -773,6 +773,7 @@ impl Module {
                     wasmparser::HeapType::Concrete(i) => {
                         HeapType::Concrete(i.as_module_index().unwrap())
                     }
+                    wasmparser::HeapType::Cont | wasmparser::HeapType::NoCont => todo!(), // TODO(dhil): Some other day.
                 },
             }
         }
