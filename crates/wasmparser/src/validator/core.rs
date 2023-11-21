@@ -3,15 +3,13 @@
 
 mod canonical;
 
-use self::{
-    arc::MaybeOwned,
-    canonical::{canonicalize_and_intern_rec_group, TypeCanonicalizer},
-};
+use self::{arc::MaybeOwned, canonical::canonicalize_and_intern_rec_group};
 use super::{
     check_max, combine_type_sizes,
     operators::{ty_to_str, OperatorValidator, OperatorValidatorAllocations},
     types::{CoreTypeId, EntityType, RecGroupId, TypeAlloc, TypeList},
 };
+use crate::validator::types::TypeIdentifier;
 use crate::{
     limits::*, BinaryReaderError, CompositeType, ConstExpr, ContType, Data, DataKind, Element,
     ElementKind, ExternalKind, FuncType, Global, GlobalType, HeapType, MemoryType, PackedIndex,
@@ -128,13 +126,13 @@ impl ModuleState {
 
     pub fn add_global(
         &mut self,
-        global: Global,
+        mut global: Global,
         features: &WasmFeatures,
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
         self.module
-            .check_global_type(&global.ty, features, offset)?;
+            .check_global_type(&mut global.ty, features, offset)?;
         self.check_const_expr(&global.init_expr, global.ty.content_type, features, types)?;
         self.module.assert_mut().globals.push(global.ty);
         Ok(())
@@ -142,12 +140,13 @@ impl ModuleState {
 
     pub fn add_table(
         &mut self,
-        table: Table<'_>,
+        mut table: Table<'_>,
         features: &WasmFeatures,
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        self.module.check_table_type(&table.ty, features, offset)?;
+        self.module
+            .check_table_type(&mut table.ty, features, offset)?;
 
         match &table.init {
             TableInit::RefNull => {
@@ -191,18 +190,17 @@ impl ModuleState {
 
     pub fn add_element_segment(
         &mut self,
-        e: Element,
+        mut e: Element,
         features: &WasmFeatures,
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
         // the `funcref` value type is allowed all the way back to the MVP, so
         // don't check it here
-        let element_ty = match &e.items {
+        let element_ty = match &mut e.items {
             crate::ElementItems::Functions(_) => RefType::FUNC,
             crate::ElementItems::Expressions(ty, _) => {
-                self.module
-                    .check_value_type(ValType::Ref(*ty), features, offset)?;
+                self.module.check_ref_type(ty, features, offset)?;
                 *ty
             }
         };
@@ -560,8 +558,6 @@ impl Module {
             canonicalize_and_intern_rec_group(features, types, self, rec_group, offset)?;
 
         let range = &types[rec_group_id];
-
-        use crate::validator::types::TypeIdentifier;
         let start = range.start.index();
         let end = range.end.index();
 
@@ -614,10 +610,15 @@ impl Module {
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
+        let check = |ty: &ValType| {
+            features
+                .check_value_type(*ty)
+                .map_err(|e| BinaryReaderError::new(e, offset))
+        };
         match ty {
             CompositeType::Func(t) => {
                 for ty in t.params().iter().chain(t.results()) {
-                    self.check_value_type(*ty, features, offset)?;
+                    check(ty)?;
                 }
                 if t.results().len() > 1 && !features.multi_value {
                     return Err(BinaryReaderError::new(
@@ -650,11 +651,9 @@ impl Module {
                         offset,
                     ));
                 }
-                match t.0.element_type {
+                match &t.0.element_type {
                     StorageType::I8 | StorageType::I16 => {}
-                    StorageType::Val(value_type) => {
-                        self.check_value_type(value_type, features, offset)?;
-                    }
+                    StorageType::Val(value_type) => check(value_type)?,
                 };
             }
             CompositeType::Struct(t) => {
@@ -665,7 +664,10 @@ impl Module {
                     ));
                 }
                 for ty in t.fields.iter() {
-                    self.check_storage_type(ty.element_type, features, offset)?;
+                    match &ty.element_type {
+                        StorageType::I8 | StorageType::I16 => {}
+                        StorageType::Val(value_type) => check(value_type)?,
+                    }
                 }
             }
         }
@@ -674,12 +676,12 @@ impl Module {
 
     pub fn add_import(
         &mut self,
-        import: crate::Import,
+        mut import: crate::Import,
         features: &WasmFeatures,
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        let entity = self.check_type_ref(&import.ty, features, types, offset)?;
+        let entity = self.check_type_ref(&mut import.ty, features, types, offset)?;
 
         let (len, max, desc) = match import.ty {
             TypeRef::Func(type_index) => {
@@ -814,7 +816,7 @@ impl Module {
 
     pub fn check_type_ref(
         &self,
-        type_ref: &TypeRef,
+        type_ref: &mut TypeRef,
         features: &WasmFeatures,
         types: &TypeList,
         offset: usize,
@@ -845,14 +847,14 @@ impl Module {
 
     fn check_table_type(
         &self,
-        ty: &TableType,
+        ty: &mut TableType,
         features: &WasmFeatures,
         offset: usize,
     ) -> Result<()> {
         // the `funcref` value type is allowed all the way back to the MVP, so
         // don't check it here
         if ty.element_type != RefType::FUNCREF {
-            self.check_value_type(ValType::Ref(ty.element_type), features, offset)?
+            self.check_ref_type(&mut ty.element_type, features, offset)?
         }
 
         self.check_limits(ty.initial, ty.maximum, offset)?;
@@ -934,37 +936,40 @@ impl Module {
             .collect::<Result<_>>()
     }
 
-    fn check_storage_type(
+    fn check_value_type(
         &self,
-        ty: StorageType,
+        ty: &mut ValType,
         features: &WasmFeatures,
         offset: usize,
     ) -> Result<()> {
-        match ty {
-            StorageType::I8 | StorageType::I16 => {}
-            StorageType::Val(value_type) => {
-                self.check_value_type(value_type, features, offset)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn check_value_type(&self, ty: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
-        features
-            .check_value_type(ty)
-            .map_err(|e| BinaryReaderError::new(e, offset))?;
-
         // The above only checks the value type for features.
         // We must check it if it's a reference.
         match ty {
-            ValType::Ref(rt) => self.check_ref_type(rt, offset),
-            _ => Ok(()),
+            ValType::Ref(rt) => self.check_ref_type(rt, features, offset),
+            _ => features
+                .check_value_type(*ty)
+                .map_err(|e| BinaryReaderError::new(e, offset)),
         }
     }
 
-    fn check_ref_type(&self, ty: RefType, offset: usize) -> Result<()> {
+    fn check_ref_type(
+        &self,
+        ty: &mut RefType,
+        features: &WasmFeatures,
+        offset: usize,
+    ) -> Result<()> {
+        features
+            .check_ref_type(*ty)
+            .map_err(|e| BinaryReaderError::new(e, offset))?;
+        let mut hty = ty.heap_type();
+        self.check_heap_type(&mut hty, offset)?;
+        *ty = RefType::new(ty.is_nullable(), hty).unwrap();
+        Ok(())
+    }
+
+    fn check_heap_type(&self, ty: &mut HeapType, offset: usize) -> Result<()> {
         // Check that the heap type is valid
-        match ty.heap_type() {
+        let type_index = match ty {
             HeapType::Func
             | HeapType::Extern
             | HeapType::Any
@@ -976,21 +981,19 @@ impl Module {
             | HeapType::Array
             | HeapType::I31
             | HeapType::Cont
-            | HeapType::NoCont => Ok(()),
-            HeapType::Concrete(type_index) => {
-                match type_index {
-                    UnpackedIndex::Module(idx) => {
-                        let _ = self.type_id_at(idx, offset)?;
-                        Ok(())
-                    }
-                    UnpackedIndex::RecGroup(_) | UnpackedIndex::Id(_) => {
-                        // If the type index has already been canonicalized,
-                        // then we already checked that it was in bounds and
-                        // valid at that time.
-                        Ok(())
-                    }
-                }
+            | HeapType::NoCont => return Ok(()),
+            HeapType::Concrete(type_index) => type_index,
+        };
+        match type_index {
+            UnpackedIndex::Module(idx) => {
+                let id = self.type_id_at(*idx, offset)?;
+                *type_index = UnpackedIndex::Id(id);
+                Ok(())
             }
+            // Types at this stage should not be canonicalized. All
+            // canonicalized types should already be validated meaning they
+            // shouldn't be double-checked here again.
+            UnpackedIndex::RecGroup(_) | UnpackedIndex::Id(_) => unreachable!(),
         }
     }
 
@@ -1019,11 +1022,11 @@ impl Module {
 
     fn check_global_type(
         &self,
-        ty: &GlobalType,
+        ty: &mut GlobalType,
         features: &WasmFeatures,
         offset: usize,
     ) -> Result<()> {
-        self.check_value_type(ty.content_type, features, offset)
+        self.check_value_type(&mut ty.content_type, features, offset)
     }
 
     fn check_limits<T>(&self, initial: T, maximum: Option<T>, offset: usize) -> Result<()>
@@ -1171,129 +1174,59 @@ struct OperatorValidatorResources<'a> {
     types: &'a TypeList,
 }
 
-fn canonicalize_valtype_impl(
-    module: &Module,
-    valtype: &mut ValType,
-    referenced_from: Option<(&TypeList, CoreTypeId)>,
-) {
-    let mut canonicalizer = TypeCanonicalizer::new(module, usize::MAX);
-    canonicalizer.with_only_ids();
-
-    if let Some((types, id)) = referenced_from {
-        let group_id = types.rec_group_id_of(id);
-        canonicalizer.within_rec_group(types, group_id);
-    }
-
-    canonicalizer
-        .canonicalize_val_type(valtype)
-        .expect("already checked type references are in-bounds at this point");
-}
-
-fn canonicalize_conttype_impl(
-    module: &Module,
-    conttype: &mut ContType,
-    referenced_from: Option<(&TypeList, CoreTypeId)>,
-) {
-    let mut canonicalizer = TypeCanonicalizer::new(module, usize::MAX);
-    canonicalizer.with_only_ids();
-
-    if let Some((types, id)) = referenced_from {
-        let group_id = types.rec_group_id_of(id);
-        canonicalizer.within_rec_group(types, group_id);
-    }
-
-    canonicalizer
-        .canonicalize_cont_type(conttype)
-        .expect("already checked type references are in-bounds at this point");
-}
-
 impl WasmModuleResources for OperatorValidatorResources<'_> {
     type FuncType = crate::FuncType;
 
     fn table_at(&self, at: u32) -> Option<TableType> {
-        let mut ty = self.module.tables.get(at as usize).cloned()?;
-        let mut val_ty = ValType::Ref(ty.element_type);
-        self.canonicalize_valtype(&mut val_ty);
-        ty.element_type = match val_ty {
-            ValType::Ref(r) => r,
-            _ => unreachable!(),
-        };
-        Some(ty)
+        self.module.tables.get(at as usize).cloned()
     }
 
     fn memory_at(&self, at: u32) -> Option<MemoryType> {
         self.module.memories.get(at as usize).cloned()
     }
 
-    fn tag_at(&self, at: u32) -> Option<Self::FuncType> {
+    fn tag_at(&self, at: u32) -> Option<&Self::FuncType> {
         let type_id = *self.module.tags.get(at as usize)?;
-        let mut f = self.types[type_id].unwrap_func().clone();
-        for ty in f.params_mut() {
-            canonicalize_valtype_impl(self.module, ty, Some((self.types, type_id)));
-        }
-        for ty in f.results_mut() {
-            canonicalize_valtype_impl(self.module, ty, Some((self.types, type_id)));
-        }
-        Some(f)
+        Some(self.types[type_id].unwrap_func())
     }
 
     fn global_at(&self, at: u32) -> Option<GlobalType> {
-        let mut ty = self.module.globals.get(at as usize).cloned()?;
-        self.canonicalize_valtype(&mut ty.content_type);
-        Some(ty)
+        self.module.globals.get(at as usize).cloned()
     }
 
-    fn func_type_at(&self, at: u32) -> Option<Self::FuncType> {
+    fn func_type_at(&self, at: u32) -> Option<&Self::FuncType> {
         let id = *self.module.types.get(at as usize)?;
-        let mut f = match &self.types[id].composite_type {
-            CompositeType::Func(f) => f.clone(),
-            _ => return None,
-        };
-        for ty in f.params_mut() {
-            canonicalize_valtype_impl(self.module, ty, Some((self.types, id)));
+        match &self.types[id].composite_type {
+            CompositeType::Func(f) => Some(f),
+            _ => None,
         }
-        for ty in f.results_mut() {
-            canonicalize_valtype_impl(self.module, ty, Some((self.types, id)));
-        }
-        Some(f)
     }
 
-    fn type_index_of_function(&self, at: u32) -> Option<u32> {
-        self.module.functions.get(at as usize).cloned()
+    fn type_id_of_function(&self, at: u32) -> Option<CoreTypeId> {
+        let type_index = self.module.functions.get(at as usize)?;
+        self.module.types.get(*type_index as usize).copied()
     }
 
-    fn type_of_function(&self, at: u32) -> Option<Self::FuncType> {
-        self.func_type_at(self.type_index_of_function(at)?.into())
+    fn type_of_function(&self, at: u32) -> Option<&Self::FuncType> {
+        let type_index = self.module.functions.get(at as usize)?;
+        self.func_type_at(*type_index)
     }
 
-    fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
-        self.module.check_value_type(t, features, offset)
+    fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<()> {
+        self.module.check_heap_type(t, offset)
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
         self.module.element_types.get(at as usize).cloned()
     }
 
-    fn is_subtype(&self, mut a: ValType, mut b: ValType) -> bool {
-        self.canonicalize_valtype(&mut a);
-        self.canonicalize_valtype(&mut b);
+    fn is_subtype(&self, a: ValType, b: ValType) -> bool {
         self.types.valtype_is_subtype(a, b)
     }
 
+    // TODO(dhil): This is sort of a hack; really we ought to be using
+    // the existing infrastructure to perform this subtype check.
     fn is_func_subtype(&self, mut a: FuncType, mut b: FuncType) -> bool {
-        // for ty in a.params_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-        // for ty in a.results_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-        // for ty in b.params_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-        // for ty in b.results_mut() {
-        //     canonicalize_valtype_impl(self.module, ty, None);
-        // }
-
         a.params_mut()
             .iter()
             .zip(b.params_mut())
@@ -1318,16 +1251,11 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
 
     fn cont_type_at(&self, at: u32) -> Option<ContType> {
         let id = *self.module.types.get(at as usize)?;
-        let mut ct = match &self.types[id].composite_type {
+        let ct = match &self.types[id].composite_type {
             CompositeType::Cont(c) => c.clone(),
             _ => return None,
         };
-        canonicalize_conttype_impl(self.module, &mut ct, Some((self.types, id)));
         Some(ct)
-    }
-
-    fn canonicalize_valtype(&self, valtype: &mut ValType) {
-        canonicalize_valtype_impl(self.module, valtype, None);
     }
 }
 
@@ -1339,94 +1267,59 @@ impl WasmModuleResources for ValidatorResources {
     type FuncType = crate::FuncType;
 
     fn table_at(&self, at: u32) -> Option<TableType> {
-        let mut ty = self.0.tables.get(at as usize).cloned()?;
-        let mut val_ty = ValType::Ref(ty.element_type);
-        self.canonicalize_valtype(&mut val_ty);
-        ty.element_type = match val_ty {
-            ValType::Ref(r) => r,
-            _ => unreachable!(),
-        };
-        Some(ty)
+        self.0.tables.get(at as usize).cloned()
     }
 
     fn memory_at(&self, at: u32) -> Option<MemoryType> {
         self.0.memories.get(at as usize).cloned()
     }
 
-    fn tag_at(&self, at: u32) -> Option<Self::FuncType> {
+    fn tag_at(&self, at: u32) -> Option<&Self::FuncType> {
         let id = *self.0.tags.get(at as usize)?;
         let types = self.0.snapshot.as_ref().unwrap();
-        let mut f = match &types[id].composite_type {
-            CompositeType::Func(f) => f.clone(),
-            _ => return None,
-        };
-        for ty in f.params_mut() {
-            canonicalize_valtype_impl(&self.0, ty, Some((types, id)));
+        match &types[id].composite_type {
+            CompositeType::Func(f) => Some(f),
+            _ => None,
         }
-        for ty in f.results_mut() {
-            canonicalize_valtype_impl(&self.0, ty, Some((types, id)));
-        }
-        Some(f)
     }
 
     fn global_at(&self, at: u32) -> Option<GlobalType> {
-        let mut ty = self.0.globals.get(at as usize).cloned()?;
-        self.canonicalize_valtype(&mut ty.content_type);
-        Some(ty)
+        self.0.globals.get(at as usize).cloned()
     }
 
-    fn func_type_at(&self, at: u32) -> Option<Self::FuncType> {
+    fn func_type_at(&self, at: u32) -> Option<&Self::FuncType> {
         let id = *self.0.types.get(at as usize)?;
         let types = self.0.snapshot.as_ref().unwrap();
-        let mut f = match &types[id].composite_type {
-            CompositeType::Func(f) => f.clone(),
-            _ => return None,
-        };
-        for ty in f.params_mut() {
-            canonicalize_valtype_impl(&self.0, ty, Some((types, id)));
+        match &types[id].composite_type {
+            CompositeType::Func(f) => Some(f),
+            _ => None,
         }
-        for ty in f.results_mut() {
-            canonicalize_valtype_impl(&self.0, ty, Some((types, id)));
-        }
-        Some(f)
     }
 
-    fn type_index_of_function(&self, at: u32) -> Option<u32> {
-        self.0.functions.get(at as usize).cloned()
+    fn type_id_of_function(&self, at: u32) -> Option<CoreTypeId> {
+        let type_index = *self.0.functions.get(at as usize)?;
+        self.0.types.get(type_index as usize).copied()
     }
 
-    fn type_of_function(&self, at: u32) -> Option<Self::FuncType> {
-        self.func_type_at(self.type_index_of_function(at)?)
+    fn type_of_function(&self, at: u32) -> Option<&Self::FuncType> {
+        let type_index = *self.0.functions.get(at as usize)?;
+        self.func_type_at(type_index)
     }
 
-    fn check_value_type(&self, t: ValType, features: &WasmFeatures, offset: usize) -> Result<()> {
-        self.0.check_value_type(t, features, offset)
+    fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<()> {
+        self.0.check_heap_type(t, offset)
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
         self.0.element_types.get(at as usize).cloned()
     }
 
-    fn is_subtype(&self, mut a: ValType, mut b: ValType) -> bool {
-        self.canonicalize_valtype(&mut a);
-        self.canonicalize_valtype(&mut b);
+    fn is_subtype(&self, a: ValType, b: ValType) -> bool {
         self.0.snapshot.as_ref().unwrap().valtype_is_subtype(a, b)
     }
 
-    fn is_func_subtype(&self, mut a: FuncType, mut b: FuncType) -> bool {
-        for ty in a.params_mut() {
-            self.canonicalize_valtype(ty);
-        }
-        for ty in a.results_mut() {
-            self.canonicalize_valtype(ty);
-        }
-        for ty in b.params_mut() {
-            self.canonicalize_valtype(ty);
-        }
-        for ty in b.results_mut() {
-            self.canonicalize_valtype(ty);
-        }
-
+    // TODO(dhil): See the comment on `is_func_subtype` above.
+    fn is_func_subtype(&self, a: FuncType, b: FuncType) -> bool {
         a.params().iter().zip(b.params()).all(|(aty, bty)| {
             self.0
                 .snapshot
@@ -1458,16 +1351,11 @@ impl WasmModuleResources for ValidatorResources {
     fn cont_type_at(&self, at: u32) -> Option<ContType> {
         let id = *self.0.types.get(at as usize)?;
         let types = self.0.snapshot.as_ref().unwrap();
-        let mut ct = match &types[id].composite_type {
+        let ct = match &types[id].composite_type {
             CompositeType::Cont(c) => c.clone(),
             _ => return None,
         };
-        canonicalize_conttype_impl(&self.0, &mut ct, Some((types, id)));
         Some(ct)
-    }
-
-    fn canonicalize_valtype(&self, valtype: &mut ValType) {
-        canonicalize_valtype_impl(&self.0, valtype, None);
     }
 }
 
