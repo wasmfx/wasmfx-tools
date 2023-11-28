@@ -1,0 +1,20 @@
+(module
+  (type $int_to_int (;0;) (func (param i32) (result i32)))
+  (type $ft (;1;) (func (param i32) (result i32)))
+  (type $res_int_to_int (;2;) (cont $int_to_int))
+  (type $f3_t (;3;) (func (param i32) (result i32)))
+  (type $f3_ct (;4;) (cont $f3_t))
+  (type (;5;) (func (result i32)))
+  (type (;6;) (func (result i32 (ref 2))))
+  (func $test_case_4 (;0;) (type 5) (result i32)
+    block $on_e3 (type 6) (result i32 (ref 2)) ;; label = @1
+      i32.const 49
+      ref.null 4
+      resume $f3_ct (tag 0 0 (;@1;))
+      unreachable
+    end
+    unreachable
+  )
+  (tag (;0;) (type $int_to_int) (param i32) (result i32))
+  (export "test_case_4" (func $test_case_4))
+)
