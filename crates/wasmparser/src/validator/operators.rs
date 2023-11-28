@@ -976,11 +976,41 @@ where
         Ok(())
     }
 
-    fn cont_type_at(&self, at: u32) -> Result<ContType> {
-        self.resources.cont_type_at(at).ok_or_else(|| {
+    fn cont_type_of_heap_type(&self, hty: HeapType) -> Result<ContType> {
+        match hty {
+            HeapType::Concrete(unpacked_index) => {
+                match UnpackedIndex::as_core_type_id(&unpacked_index) {
+                    None => Err(format_err!(
+                        self.offset,
+                        "cannot convert heap type to continuation type. Has the heap type ({:?}) been canonicalised?", hty)),
+                    Some(id) => self.cont_type_at(id),
+                }
+            }
+            _ => Err(format_err!(
+                self.offset,
+                "cannot convert heap type to continuation type. The heap type was ({:?})",
+                hty
+            )),
+        }
+    }
+
+    fn func_repr_cont_type_of_heap_type(&self, hty: HeapType) -> Result<&'resources R::FuncType> {
+        match hty {
+            HeapType::Concrete(unpacked_index) => self.func_repr_cont_type_at(unpacked_index),
+            _ => Err(format_err!(
+                self.offset,
+                "cannot convert heap type to function type. The heap type was ({:?})",
+                hty
+            )),
+        }
+    }
+
+    fn cont_type_at(&self, id: crate::types::CoreTypeId) -> Result<ContType> {
+        self.resources.cont_type_at(id).ok_or_else(|| {
             format_err!(
                 self.offset,
-                "unknown continuation type: type index out of bounds"
+                "unknown continuation type: type index ({:?}) out of bounds",
+                id
             )
         })
     }
@@ -989,26 +1019,22 @@ where
     /// type stored at the given type index.
     fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<&'resources R::FuncType> {
         match at {
-            UnpackedIndex::Module(idx) => self.func_repr_cont_type_at_raw(idx),
-            UnpackedIndex::Id(cti) => {
-                self.func_repr_cont_type_at_raw(crate::types::TypeIdentifier::index(&cti) as u32)
+            UnpackedIndex::Id(id) => {
+                let ct = self.cont_type_at(id)?;
+                let unpacked_index = ct.0;
+                self.resources
+                    .func_type_at_id(UnpackedIndex::as_core_type_id(&unpacked_index).unwrap())
+                    .ok_or_else(|| {
+                        format_err!(
+                            self.offset,
+                            "unknown function type: type index ({:?}) out of bounds",
+                            id
+                        )
+                    })
             }
             UnpackedIndex::RecGroup(_) => todo!(),
+            UnpackedIndex::Module(_) => unreachable!(),
         }
-    }
-    fn func_repr_cont_type_at_raw(&self, at: u32) -> Result<&'resources R::FuncType> {
-        let ct = self.cont_type_at(at)?;
-        let idx = match &UnpackedIndex::as_core_type_id(&ct.0) {
-            None => {
-                return Err(format_err!(
-                    self.offset,
-                    "failed to construct core type id from {:?}",
-                    ct.0
-                ))
-            }
-            Some(coreid) => crate::types::TypeIdentifier::index(coreid) as u32,
-        };
-        self.func_type_at(idx)
     }
 
     fn func_type_at(&self, at: u32) -> Result<&'resources R::FuncType> {
@@ -1107,14 +1133,7 @@ where
             // Retrieve the continuation reference type (i.e. (cont $ft)).
             match self.label_types(block.0, block.1)?.last() {
                 Some(ValType::Ref(rt)) if rt.is_concrete_type_ref() => {
-                    let z =
-                        match rt.type_index() {
-                            None => return Err(BinaryReaderError::new(
-                                "attempt to take type index of non-index reference type",
-                                self.offset,
-                            )),
-                            Some(idx) => idx.unpack(),
-                        };
+                    let z = rt.type_index().unwrap().unpack();
                     let ctft2 = self.func_repr_cont_type_at(z)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
                     // This method should be exposed by resources to make this correct
@@ -3539,11 +3558,8 @@ where
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut c_hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut c_hty, self.offset)?;
-        let f_hty = self
-            .cont_type_at(type_index)?
-            .0
-            .pack()
-            .expect("hty should be previously validated");
+        let f_idx = self.cont_type_of_heap_type(c_hty)?.0;
+        let f_hty = f_idx.pack().expect("hty should be previously validated");
         let expected_rt = RefType::concrete(false, f_hty);
         self.pop_operand(Some(ValType::Ref(expected_rt)))?;
         let result =
@@ -3555,12 +3571,12 @@ where
         let src_unpacked_index = UnpackedIndex::Module(src_index);
         let mut src_hty = HeapType::Concrete(src_unpacked_index);
         self.resources.check_heap_type(&mut src_hty, self.offset)?;
-        let src_cont = self.func_repr_cont_type_at(src_unpacked_index)?;
+        let src_cont = self.func_repr_cont_type_of_heap_type(src_hty)?;
 
         let dst_unpacked_index = UnpackedIndex::Module(dst_index);
         let mut dst_hty = HeapType::Concrete(dst_unpacked_index);
         self.resources.check_heap_type(&mut dst_hty, self.offset)?;
-        let dst_cont = self.func_repr_cont_type_at(dst_unpacked_index)?;
+        let dst_cont = self.func_repr_cont_type_of_heap_type(dst_hty)?;
 
         // Verify that the source domain is at least as large as the
         // target domain.
@@ -3633,15 +3649,18 @@ where
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
-        let ctft = self.func_repr_cont_type_at(unpacked_index)?;
 
-        let expected =
-            ValType::Ref(RefType::new(true, hty).expect("hty should be previously validated"));
+        let expected = RefType::new(true, hty).expect("hty should be previously validated");
         match self.pop_ref()? {
             None => {}
-            Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {
+            Some(rt)
+                if self
+                    .resources
+                    .is_subtype(ValType::Ref(rt), ValType::Ref(expected)) =>
+            {
+                let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
                 // ft := ts1 -> ts2
-                self.check_resume_table(resumetable, &ctft)?;
+                self.check_resume_table(resumetable, ctft)?;
 
                 // Check that ts1 are available on the stack.
                 for ty in ctft.inputs().rev() {
@@ -3657,7 +3676,7 @@ where
                 bail!(
                     self.offset,
                     "type mismatch: instruction requires {} but stack has {}",
-                    ty_to_str(expected),
+                    ty_to_str(ValType::Ref(expected)),
                     ty_to_str(ValType::Ref(rt))
                 )
             }
@@ -3673,7 +3692,7 @@ where
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
-        let ctft = self.func_repr_cont_type_at(unpacked_index)?;
+        let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
         let expected =
             ValType::Ref(RefType::new(true, hty).expect("hty should be previously validated"));
         match self.pop_ref()? {
