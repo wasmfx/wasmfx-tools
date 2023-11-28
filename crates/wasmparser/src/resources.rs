@@ -227,8 +227,11 @@ pub trait WasmModuleResources {
     /// The function type must be canonicalized.
     fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType>;
 
-    /// Return the `Cont` type associated with the given type index.
-    fn cont_type_at(&self, at: u32) -> Option<ContType>;
+    /// Return the `ContType` associated with the given id.
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType>;
+
+    /// Return the `FuncType` associated with the given id.
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType>;
 
     /// Returns the element type at the given index.
     ///
@@ -315,8 +318,11 @@ where
     fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType> {
         T::type_of_function(self, func_idx)
     }
-    fn cont_type_at(&self, at: u32) -> Option<ContType> {
-        T::cont_type_at(self, at)
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
+        T::cont_type_at(self, id)
+    }
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType> {
+        T::func_type_at_id(self, id)
     }
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<(), BinaryReaderError> {
         T::check_heap_type(self, t, offset)
@@ -376,8 +382,12 @@ where
         T::type_of_function(self, func_idx)
     }
 
-    fn cont_type_at(&self, at: u32) -> Option<ContType> {
-        T::cont_type_at(self, at)
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
+        T::cont_type_at(self, id)
+    }
+
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType> {
+        T::func_type_at_id(self, id)
     }
 
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<(), BinaryReaderError> {

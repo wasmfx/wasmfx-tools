@@ -1249,13 +1249,19 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.module.function_references.contains(&idx)
     }
 
-    fn cont_type_at(&self, at: u32) -> Option<ContType> {
-        let id = *self.module.types.get(at as usize)?;
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
         let ct = match &self.types[id].composite_type {
             CompositeType::Cont(c) => c.clone(),
             _ => return None,
         };
         Some(ct)
+    }
+
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType> {
+        match &self.types[id].composite_type {
+            CompositeType::Func(f) => Some(f),
+            _ => None,
+        }
     }
 }
 
@@ -1347,15 +1353,22 @@ impl WasmModuleResources for ValidatorResources {
         self.0.function_references.contains(&idx)
     }
 
-    // Gives the index of the function
-    fn cont_type_at(&self, at: u32) -> Option<ContType> {
-        let id = *self.0.types.get(at as usize)?;
+    // Returns the continuation type at the type index, if any
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
         let types = self.0.snapshot.as_ref().unwrap();
         let ct = match &types[id].composite_type {
             CompositeType::Cont(c) => c.clone(),
             _ => return None,
         };
         Some(ct)
+    }
+
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType> {
+        let types = self.0.snapshot.as_ref().unwrap();
+        match &types[id].composite_type {
+            CompositeType::Func(f) => Some(f),
+            _ => None,
+        }
     }
 }
 
