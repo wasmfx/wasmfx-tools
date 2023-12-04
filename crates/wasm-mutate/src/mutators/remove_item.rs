@@ -137,13 +137,8 @@ impl RemoveItem {
                         TypeSectionReader::new(section.data, 0)?.into_iter_err_on_gc_types(),
                         Item::Type,
                         |me, ty, section| {
-                            match ty {
-                                wasmparser::FuncOrContType::Func(ty) => {
-                                    me.translate_func_type(ty,section)?;
-                                    Ok(())
-                                },
-                                wasmparser::FuncOrContType::Cont(_) => Err(Error::unsupported("Cont types are not supported yet.")),
-                            }
+                            me.translate_func_type(ty,section)?;
+                            Ok(())
                         },
                     )?;
                 },

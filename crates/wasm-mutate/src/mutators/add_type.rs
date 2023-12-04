@@ -2,7 +2,7 @@
 
 use super::Mutator;
 use crate::module::map_type;
-use crate::{Error, Result};
+use crate::Result;
 use rand::Rng;
 use std::iter;
 
@@ -56,26 +56,20 @@ impl Mutator for AddTypeMutator {
             // Copy the existing types section over into the encoder.
             let reader = wasmparser::TypeSectionReader::new(old_types.data, 0)?;
             for ty in reader.into_iter_err_on_gc_types() {
-                match ty? {
-                    wasmparser::FuncOrContType::Func(ty) => {
-                        let params = ty
-                            .params()
-                            .iter()
-                            .copied()
-                            .map(map_type)
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let results = ty
-                            .results()
-                            .iter()
-                            .copied()
-                            .map(map_type)
-                            .collect::<Result<Vec<_>, _>>()?;
-                        types.function(params, results);
-                    }
-                    wasmparser::FuncOrContType::Cont(_) => {
-                        return Err(Error::unsupported("Cont types are not supported yet."));
-                    }
-                }
+                let ty = ty?;
+                let params = ty
+                    .params()
+                    .iter()
+                    .copied()
+                    .map(map_type)
+                    .collect::<Result<Vec<_>, _>>()?;
+                let results = ty
+                    .results()
+                    .iter()
+                    .copied()
+                    .map(map_type)
+                    .collect::<Result<Vec<_>, _>>()?;
+                types.function(params, results);
             }
             // And then add our new type.
             types.function(params, results);

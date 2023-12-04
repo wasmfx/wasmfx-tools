@@ -1502,7 +1502,33 @@ impl<'a> TypeSectionReader<'a> {
     /// Returns an iterator over this type section which will only yield
     /// function types and any usage of GC types from the GC proposal will
     /// be translated into an error.
-    pub fn into_iter_err_on_gc_types(self) -> impl Iterator<Item = Result<FuncOrContType>> + 'a {
+    pub fn into_iter_err_on_gc_types(self) -> impl Iterator<Item = Result<FuncType>> + 'a {
+        self.into_iter_with_offsets().map(|item| {
+            let (offset, group) = item?;
+            let mut types = group.into_types();
+            let ty = match (types.next(), types.next()) {
+                (Some(ty), None) => ty,
+                _ => bail!(offset, "gc proposal not supported"),
+            };
+            if !ty.is_final || ty.supertype_idx.is_some() {
+                bail!(offset, "gc proposal not supported");
+            }
+            match ty.composite_type {
+                CompositeType::Func(f) => Ok(f),
+                CompositeType::Array(_) | CompositeType::Struct(_) => {
+                    bail!(offset, "gc proposal not supported");
+                }
+                CompositeType::Cont(_) => {
+                    bail!(offset, "typed continuations proposal not supported");
+                }
+            }
+        })
+    }
+
+    /// Returns an iterator over this type section which will only yield
+    /// function types and any usage of GC types from the GC proposal will
+    /// be translated into an error.
+    pub fn into_iter_err_on_gc_types_tc(self) -> impl Iterator<Item = Result<FuncOrContType>> + 'a {
         // TODO(dhil): Upstream need only return a FuncType at the
         // moment, we need both FuncType and ContType. Thus we
         // temporary fix the return to be a sum. Eventually upstream
