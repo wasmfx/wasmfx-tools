@@ -348,10 +348,6 @@ impl<'a> Metadata<'a> {
                 Payload::TypeSection(reader) => {
                     types = reader
                         .into_iter_err_on_gc_types()
-                        .map(|ty| {
-                            ty.expect("Continuation types are not supported yet.")
-                                .unwrap_func()
-                        })
                         .collect::<Result<Vec<_>, _>>()?;
                 }
 
