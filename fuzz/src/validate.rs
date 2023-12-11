@@ -25,6 +25,7 @@ pub fn run(u: &mut Unstructured<'_>) -> Result<()> {
         gc: u.arbitrary()?,
         component_model_values: u.arbitrary()?,
         typed_continuations: u.arbitrary()?,
+        component_model_nested_names: u.arbitrary()?,
     });
     let use_maybe_invalid = u.arbitrary()?;
 
