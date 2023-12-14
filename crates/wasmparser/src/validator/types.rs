@@ -2764,7 +2764,7 @@ impl TypeList {
             | HeapType::Struct
             | HeapType::Array
             | HeapType::I31
-                | HeapType::None => HeapType::Any,
+            | HeapType::None => HeapType::Any,
             HeapType::Cont | HeapType::NoCont => HeapType::Cont,
         }
     }
