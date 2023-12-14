@@ -12,30 +12,30 @@
     local.set $n
     i32.const 1
     local.set $consuming
-    loop $l ;; label = @1
+    loop $l
       local.get $consuming
       if ;; label = @2
-        block $on-receive (result (ref 3)) ;; label = @3
+        block $on-receive (result (ref 3))
           local.get $n
           local.get $c
-          resume $consumer (tag 1 0 (;@3;))
+          resume $consumer (tag 1 $on-receive)
           return
         end
         local.set $c
         i32.const 0
         local.set $consuming
-        br 1 (;@1;)
+        br $l
       end
-      block $on-send (type 6) (result i32 (ref 2)) ;; label = @2
+      block $on-send (type 6) (result i32 (ref 2))
         local.get $p
-        resume $producer (tag 0 0 (;@2;))
+        resume $producer (tag 0 $on-send)
         return
       end
       local.set $p
       local.set $n
       i32.const 1
       local.set $consuming
-      br 0 (;@1;)
+      br $l
     end
   )
   (tag (;0;) (type 4) (param i32))

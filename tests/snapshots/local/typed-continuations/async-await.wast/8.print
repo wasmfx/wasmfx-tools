@@ -28,21 +28,21 @@
   (import "promise" "fulfill" (func $fulfill-promise (;7;) (type 11)))
   (func $run (;8;) (type 9) (param $nextk (ref null 1))
     (local $p i32) (local $v i32) (local $ik (ref 3)) (local $ak (ref 3)) (local $k (ref null 1))
-    loop $l ;; label = @1
+    loop $l
       local.get $nextk
       ref.is_null
       if ;; label = @2
         return
       end
-      block $on_yield (result (ref 1)) ;; label = @2
-        block $on_fulfill (type 12) (result i32 i32 (ref 1)) ;; label = @3
-          block $on_async (type 13) (result (ref 3) (ref 3)) ;; label = @4
-            block $on_await (type 14) (result i32 (ref 3)) ;; label = @5
+      block $on_yield (result (ref 1))
+        block $on_fulfill (type 12) (result i32 i32 (ref 1))
+          block $on_async (type 13) (result (ref 3) (ref 3))
+            block $on_await (type 14) (result i32 (ref 3))
               local.get $nextk
-              resume $cont (tag 0 3 (;@2;))(tag 1 2 (;@3;))(tag 2 1 (;@4;))(tag 3 0 (;@5;))
+              resume $cont (tag 0 $on_yield)(tag 1 $on_fulfill)(tag 2 $on_async)(tag 3 $on_await)
               call $dequeue
               local.set $nextk
-              br 4 (;@1;)
+              br $l
             end
             local.set $ik
             local.set $p
@@ -61,7 +61,7 @@
               call $dequeue
               local.set $nextk
             end
-            br 3 (;@1;)
+            br $l
           end
           local.set $ik
           local.set $ak
@@ -75,7 +75,7 @@
           local.get $ak
           cont.bind $i-cont $cont
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         local.set $nextk
         local.set $v
@@ -91,12 +91,12 @@
           local.get $k
           call $enqueue
         end
-        br 1 (;@1;)
+        br $l
       end
       call $enqueue
       call $dequeue
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (export "run" (func $run))

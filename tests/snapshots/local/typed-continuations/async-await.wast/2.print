@@ -14,7 +14,7 @@
   (import "spectest" "print_i32" (func $log (;0;) (type $i-func)))
   (func $sum (;1;) (type $iii-fun) (param $i i32) (param $j i32) (param $p i32)
     (local $a i32)
-    loop $l ;; label = @1
+    loop $l
       local.get $i
       call $log
       local.get $a
@@ -30,7 +30,7 @@
       i32.le_u
       if ;; label = @2
         suspend 0
-        br 1 (;@1;)
+        br $l
       end
     end
     local.get $p

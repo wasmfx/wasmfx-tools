@@ -12,119 +12,119 @@
   (import "queue" "dequeue" (func $dequeue (;1;) (type 4)))
   (import "queue" "enqueue" (func $enqueue (;2;) (type 5)))
   (func $sync (;3;) (type 5) (param $nextk (ref null 1))
-    loop $l ;; label = @1
+    loop $l
       local.get $nextk
       ref.is_null
       if ;; label = @2
         return
       end
-      block $on_yield (result (ref 1)) ;; label = @2
-        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+      block $on_yield (result (ref 1))
+        block $on_fork (type 6) (result (ref 1) (ref 1))
           local.get $nextk
-          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
           call $dequeue
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         local.set $nextk
         call $enqueue
-        br 1 (;@1;)
+        br $l
       end
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (func $kt (;4;) (type 5) (param $nextk (ref null 1))
-    loop $l ;; label = @1
+    loop $l
       local.get $nextk
       ref.is_null
       if ;; label = @2
         return
       end
-      block $on_yield (result (ref 1)) ;; label = @2
-        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+      block $on_yield (result (ref 1))
+        block $on_fork (type 6) (result (ref 1) (ref 1))
           local.get $nextk
-          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
           call $dequeue
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         local.set $nextk
         call $enqueue
-        br 1 (;@1;)
+        br $l
       end
       call $enqueue
       call $dequeue
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (func $tk (;5;) (type 5) (param $nextk (ref null 1))
-    loop $l ;; label = @1
+    loop $l
       local.get $nextk
       ref.is_null
       if ;; label = @2
         return
       end
-      block $on_yield (result (ref 1)) ;; label = @2
-        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+      block $on_yield (result (ref 1))
+        block $on_fork (type 6) (result (ref 1) (ref 1))
           local.get $nextk
-          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
           call $dequeue
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         call $enqueue
         local.set $nextk
-        br 1 (;@1;)
+        br $l
       end
       call $enqueue
       call $dequeue
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (func $ykt (;6;) (type 5) (param $nextk (ref null 1))
-    loop $l ;; label = @1
+    loop $l
       local.get $nextk
       ref.is_null
       if ;; label = @2
         return
       end
-      block $on_yield (result (ref 1)) ;; label = @2
-        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+      block $on_yield (result (ref 1))
+        block $on_fork (type 6) (result (ref 1) (ref 1))
           local.get $nextk
-          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
           call $dequeue
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         call $enqueue
         call $enqueue
         call $dequeue
         local.set $nextk
-        br 1 (;@1;)
+        br $l
       end
       call $enqueue
       call $dequeue
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (func $ytk (;7;) (type 5) (param $nextk (ref null 1))
-    loop $l ;; label = @1
+    loop $l
       local.get $nextk
       ref.is_null
       if ;; label = @2
         return
       end
-      block $on_yield (result (ref 1)) ;; label = @2
-        block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @3
+      block $on_yield (result (ref 1))
+        block $on_fork (type 6) (result (ref 1) (ref 1))
           local.get $nextk
-          resume $cont (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
           call $dequeue
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         local.set $nextk
         call $enqueue
@@ -132,12 +132,12 @@
         call $enqueue
         call $dequeue
         local.set $nextk
-        br 1 (;@1;)
+        br $l
       end
       call $enqueue
       call $dequeue
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (export "sync" (func $sync))

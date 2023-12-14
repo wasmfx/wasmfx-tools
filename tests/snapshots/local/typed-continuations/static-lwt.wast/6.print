@@ -9,18 +9,18 @@
   (import "queue" "dequeue" (func $dequeue (;1;) (type 3)))
   (import "queue" "enqueue" (func $enqueue (;2;) (type 4)))
   (func $run (;3;) (type $func)
-    loop $l ;; label = @1
+    loop $l
       call $queue-empty
       if ;; label = @2
         return
       end
-      block $on_yield (result (ref 1)) ;; label = @2
+      block $on_yield (result (ref 1))
         call $dequeue
-        resume $cont (tag 0 0 (;@2;))
-        br 1 (;@1;)
+        resume $cont (tag 0 $on_yield)
+        br $l
       end
       call $enqueue
-      br 0 (;@1;)
+      br $l
     end
   )
   (export "run" (func $run))

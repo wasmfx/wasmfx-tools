@@ -27,22 +27,22 @@
   (import "actor" "recv" (tag (;5;) (type 8) (result i32)))
   (func $act-res (;6;) (type 11) (param $mine i32) (param $res i32) (param $ik (ref 3))
     (local $yours i32) (local $k (ref 1)) (local $you (ref 1))
-    block $on_self (result (ref 3)) ;; label = @1
-      block $on_spawn (type 12) (result (ref 1) (ref 3)) ;; label = @2
-        block $on_send (type 13) (result i32 i32 (ref 1)) ;; label = @3
-          block $on_recv (result (ref 3)) ;; label = @4
+    block $on_self (result (ref 3))
+      block $on_spawn (type 12) (result (ref 1) (ref 3))
+        block $on_send (type 13) (result i32 i32 (ref 1))
+          block $on_recv (result (ref 3))
             local.get $res
             local.get $ik
-            resume $i-cont (tag 2 3 (;@1;))(tag 3 2 (;@2;))(tag 4 1 (;@3;))(tag 5 0 (;@4;))
+            resume $i-cont (tag 2 $on_self)(tag 3 $on_spawn)(tag 4 $on_send)(tag 5 $on_recv)
             return
           end
           local.set $ik
-          loop $l ;; label = @4
+          loop $l
             local.get $mine
             call $empty-mb
             if ;; label = @5
               suspend 0
-              br 1 (;@4;)
+              br $l
             end
           end
           local.get $mine
@@ -82,21 +82,21 @@
   )
   (func $act-nullary (;7;) (type $icont-func) (param $mine i32) (param $k (ref 1))
     (local $res i32) (local $ik (ref 3)) (local $you (ref 1)) (local $yours i32)
-    block $on_self (result (ref 3)) ;; label = @1
-      block $on_spawn (type 12) (result (ref 1) (ref 3)) ;; label = @2
-        block $on_send (type 13) (result i32 i32 (ref 1)) ;; label = @3
-          block $on_recv (result (ref 3)) ;; label = @4
+    block $on_self (result (ref 3))
+      block $on_spawn (type 12) (result (ref 1) (ref 3))
+        block $on_send (type 13) (result i32 i32 (ref 1))
+          block $on_recv (result (ref 3))
             local.get $k
-            resume $cont (tag 2 3 (;@1;))(tag 3 2 (;@2;))(tag 4 1 (;@3;))(tag 5 0 (;@4;))
+            resume $cont (tag 2 $on_self)(tag 3 $on_spawn)(tag 4 $on_send)(tag 5 $on_recv)
             return
           end
           local.set $ik
-          loop $l ;; label = @4
+          loop $l
             local.get $mine
             call $empty-mb
             if ;; label = @5
               suspend 0
-              br 1 (;@4;)
+              br $l
             end
           end
           local.get $mine

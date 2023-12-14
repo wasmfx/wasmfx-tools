@@ -14,10 +14,10 @@
   )
   (func (;1;) (type $f0) (result i32 i32 i32 i32 i32 i32 i32)
     (local $k6 (ref null 7)) (local $k4 (ref null 6)) (local $k2 (ref null 5))
-    block $l (result (ref 7)) ;; label = @1
+    block $l (result (ref 7))
       ref.func $f
       cont.new $k0
-      resume $k0 (tag 0 0 (;@1;))
+      resume $k0 (tag 0 $l)
       unreachable
     end
     local.set $k6

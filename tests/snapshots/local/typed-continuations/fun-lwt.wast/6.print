@@ -17,10 +17,10 @@
     if ;; label = @1
       return
     end
-    block $on_yield (result (ref 1)) ;; label = @1
-      block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @2
+    block $on_yield (result (ref 1))
+      block $on_fork (type 6) (result (ref 1) (ref 1))
         local.get $nextk
-        resume $cont (tag 0 1 (;@1;))(tag 1 0 (;@2;))
+        resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
         call $dequeue
         return_call $sync
       end
@@ -37,10 +37,10 @@
     if ;; label = @1
       return
     end
-    block $on_yield (result (ref 1)) ;; label = @1
-      block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @2
+    block $on_yield (result (ref 1))
+      block $on_fork (type 6) (result (ref 1) (ref 1))
         local.get $nextk
-        resume $cont (tag 0 1 (;@1;))(tag 1 0 (;@2;))
+        resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
         call $dequeue
         return_call $tk
       end
@@ -59,10 +59,10 @@
     if ;; label = @1
       return
     end
-    block $on_yield (result (ref 1)) ;; label = @1
-      block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @2
+    block $on_yield (result (ref 1))
+      block $on_fork (type 6) (result (ref 1) (ref 1))
         local.get $nextk
-        resume $cont (tag 0 1 (;@1;))(tag 1 0 (;@2;))
+        resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
         call $dequeue
         return_call $kt
       end
@@ -79,10 +79,10 @@
     if ;; label = @1
       return
     end
-    block $on_yield (result (ref 1)) ;; label = @1
-      block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @2
+    block $on_yield (result (ref 1))
+      block $on_fork (type 6) (result (ref 1) (ref 1))
         local.get $nextk
-        resume $cont (tag 0 1 (;@1;))(tag 1 0 (;@2;))
+        resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
         call $dequeue
         return_call $ykt
       end
@@ -102,10 +102,10 @@
     if ;; label = @1
       return
     end
-    block $on_yield (result (ref 1)) ;; label = @1
-      block $on_fork (type 6) (result (ref 1) (ref 1)) ;; label = @2
+    block $on_yield (result (ref 1))
+      block $on_fork (type 6) (result (ref 1) (ref 1))
         local.get $nextk
-        resume $cont (tag 0 1 (;@1;))(tag 1 0 (;@2;))
+        resume $cont (tag 0 $on_yield)(tag 1 $on_fork)
         call $dequeue
         return_call $ytk
       end

@@ -54,7 +54,7 @@
     br_if 0 (;@0;)
     i32.const 21
     call $log
-    loop $l ;; label = @1
+    loop $l
       local.get $w
       if ;; label = @2
         i32.const 22
@@ -75,7 +75,7 @@
         i32.const 1
         i32.sub
         local.set $w
-        br 1 (;@1;)
+        br $l
       end
     end
     i32.const 25

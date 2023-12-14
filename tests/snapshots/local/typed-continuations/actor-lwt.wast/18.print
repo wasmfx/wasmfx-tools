@@ -30,22 +30,22 @@
   (import "actor" "recv" (tag (;5;) (type 8) (result i32)))
   (func $actk (;9;) (type $ic-func) (param $mine i32) (param $nextk (ref 1))
     (local $ik (ref 3)) (local $k (ref 1)) (local $you (ref 1)) (local $yours i32)
-    loop $l ;; label = @1
-      block $on_self (result (ref 3)) ;; label = @2
-        block $on_spawn (type 12) (result (ref 1) (ref 3)) ;; label = @3
-          block $on_send (type 13) (result i32 i32 (ref 1)) ;; label = @4
-            block $on_recv (result (ref 3)) ;; label = @5
+    loop $l
+      block $on_self (result (ref 3))
+        block $on_spawn (type 12) (result (ref 1) (ref 3))
+          block $on_send (type 13) (result i32 i32 (ref 1))
+            block $on_recv (result (ref 3))
               local.get $nextk
-              resume $cont (tag 2 3 (;@2;))(tag 3 2 (;@3;))(tag 4 1 (;@4;))(tag 5 0 (;@5;))
+              resume $cont (tag 2 $on_self)(tag 3 $on_spawn)(tag 4 $on_send)(tag 5 $on_recv)
               return
             end
             local.set $ik
-            loop $blocked ;; label = @5
+            loop $blocked
               local.get $mine
               call $empty-mb
               if ;; label = @6
                 suspend 0
-                br 1 (;@5;)
+                br $blocked
               end
             end
             local.get $mine
@@ -53,13 +53,13 @@
             local.get $ik
             cont.bind $i-cont $cont
             local.set $nextk
-            br 3 (;@1;)
+            br $l
           end
           local.set $k
           call $send-to-mb
           local.get $k
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         local.set $ik
         local.set $you
@@ -75,14 +75,14 @@
         local.get $ik
         cont.bind $i-cont $cont
         local.set $nextk
-        br 1 (;@1;)
+        br $l
       end
       local.set $ik
       local.get $mine
       local.get $ik
       cont.bind $i-cont $cont
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (func $act (;10;) (type 6) (param $k (ref 1))

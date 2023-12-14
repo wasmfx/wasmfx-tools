@@ -10,7 +10,7 @@
   (import "pipes" "pipe" (func $pipe (;0;) (type 5)))
   (import "spectest" "print_i32" (func $log (;1;) (type 4)))
   (func $nats (;2;) (type $cfun) (param $n i32) (result i32)
-    loop $l ;; label = @1
+    loop $l
       i32.const -1
       call $log
       local.get $n
@@ -21,7 +21,7 @@
       i32.const 1
       i32.add
       local.set $n
-      br 0 (;@1;)
+      br $l
     end
     unreachable
   )
@@ -31,7 +31,7 @@
     local.set $i
     i32.const 0
     local.set $a
-    loop $l ;; label = @1
+    loop $l
       local.get $a
       suspend 1
       i32.add
@@ -47,7 +47,7 @@
       local.get $i
       i32.const 0
       i32.ne
-      br_if 0 (;@1;)
+      br_if $l
     end
     local.get $a
     return

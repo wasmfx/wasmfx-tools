@@ -11,19 +11,19 @@
     resume $k1
   )
   (func (;2;) (type $f1)
-    block $h (result (ref 1)) ;; label = @1
+    block $h (result (ref 1))
       ref.func $f1
       cont.new $k1
-      resume $k1 (tag 2 0 (;@1;))
+      resume $k1 (tag 2 $h)
       unreachable
     end
     drop
   )
   (func (;3;) (type $f1)
-    block $h (result (ref 1)) ;; label = @1
+    block $h (result (ref 1))
       ref.func $f1
       cont.new $k1
-      resume $k1 (tag 1 0 (;@1;))
+      resume $k1 (tag 1 $h)
       unreachable
     end
     drop
@@ -32,19 +32,19 @@
     throw 0
   )
   (func (;5;) (type $f1)
-    block $h (result (ref 1)) ;; label = @1
+    block $h (result (ref 1))
       ref.func $f2
       cont.new $k1
-      resume $k1 (tag 1 0 (;@1;))
+      resume $k1 (tag 1 $h)
       unreachable
     end
     drop
   )
   (func (;6;) (type $f1)
-    block $h (result (ref 1)) ;; label = @1
+    block $h (result (ref 1))
       ref.func $f1
       cont.new $k1
-      resume $k1 (tag 1 0 (;@1;))
+      resume $k1 (tag 1 $h)
       unreachable
     end
     resume_throw $k1 0
@@ -58,10 +58,10 @@
     suspend 1
   )
   (func (;9;) (type $f1)
-    block $h (result (ref 1)) ;; label = @1
+    block $h (result (ref 1))
       ref.func $f3
       cont.new $k1
-      resume $k1 (tag 1 0 (;@1;))
+      resume $k1 (tag 1 $h)
       unreachable
     end
     resume_throw $k1 0
@@ -78,9 +78,9 @@
     resume $k1
   )
   (func $nl2 (;13;) (type 2) (param $k (ref 1))
-    block $h (result (ref 1)) ;; label = @1
+    block $h (result (ref 1))
       local.get $k
-      resume $k1 (tag 1 0 (;@1;))
+      resume $k1 (tag 1 $h)
       unreachable
     end
     local.get $k
@@ -89,15 +89,15 @@
   )
   (func $nl3 (;14;) (type 2) (param $k (ref 1))
     (local $k' (ref null 1))
-    block $h1 (result (ref 1)) ;; label = @1
+    block $h1 (result (ref 1))
       local.get $k
-      resume $k1 (tag 1 0 (;@1;))
+      resume $k1 (tag 1 $h1)
       unreachable
     end
     local.set $k'
-    block $h2 (result (ref 1)) ;; label = @1
+    block $h2 (result (ref 1))
       local.get $k'
-      resume $k1 (tag 1 0 (;@1;))
+      resume $k1 (tag 1 $h2)
       unreachable
     end
     local.get $k'

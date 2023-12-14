@@ -7,10 +7,10 @@
   (type (;5;) (func (result i32)))
   (type (;6;) (func (result i32 (ref 2))))
   (func $test_case_4 (;0;) (type 5) (result i32)
-    block $on_e3 (type 6) (result i32 (ref 2)) ;; label = @1
+    block $on_e3 (type 6) (result i32 (ref 2))
       i32.const 49
       ref.null 4
-      resume $f3_ct (tag 0 0 (;@1;))
+      resume $f3_ct (tag 0 $on_e3)
       unreachable
     end
     unreachable
