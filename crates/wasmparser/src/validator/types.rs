@@ -2755,6 +2755,7 @@ impl TypeList {
             HeapType::Concrete(idx) => match self[idx.as_core_type_id().unwrap()].composite_type {
                 CompositeType::Func(_) => HeapType::Func,
                 CompositeType::Array(_) | CompositeType::Struct(_) => HeapType::Any,
+                CompositeType::Cont(_) => HeapType::Cont,
             },
             HeapType::Func | HeapType::NoFunc => HeapType::Func,
             HeapType::Extern | HeapType::NoExtern => HeapType::Extern,
@@ -2763,7 +2764,8 @@ impl TypeList {
             | HeapType::Struct
             | HeapType::Array
             | HeapType::I31
-            | HeapType::None => HeapType::Any,
+                | HeapType::None => HeapType::Any,
+            HeapType::Cont | HeapType::NoCont => HeapType::Cont,
         }
     }
 
