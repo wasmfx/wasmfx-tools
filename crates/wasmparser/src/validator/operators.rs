@@ -1037,6 +1037,61 @@ where
         }
     }
 
+    /// Common helper for `ref.test` and `ref.cast` downcasting/checking
+    /// instructions. Returns the given `heap_type` as a `ValType`.
+    fn check_downcast(
+        &mut self,
+        nullable: bool,
+        mut heap_type: HeapType,
+        inst_name: &str,
+    ) -> Result<ValType> {
+        self.resources
+            .check_heap_type(&mut heap_type, self.offset)?;
+
+        let sub_ty = RefType::new(nullable, heap_type)
+            .map(ValType::from)
+            .ok_or_else(|| {
+                BinaryReaderError::new("implementation limit: type index too large", self.offset)
+            })?;
+
+        let sup_ty = match self.pop_ref()? {
+            None => bail!(
+                self.offset,
+                "type mismatch: expected (ref null? ...), found bottom"
+            ),
+            Some(ty) => ty,
+        };
+        let sup_ty = RefType::new(
+            sup_ty.is_nullable(),
+            self.resources.top_type(&sup_ty.heap_type()),
+        )
+        .unwrap();
+
+        if !self.resources.is_subtype(sub_ty, sup_ty.into()) {
+            bail!(
+                self.offset,
+                "{inst_name}'s heap type must be a sub type of the type on the stack: \
+                 {sub_ty} is not a sub type of {sup_ty}"
+            );
+        }
+
+        Ok(sub_ty)
+    }
+
+    /// Common helper for both nullable and non-nullable variants of `ref.test`
+    /// instructions.
+    fn check_ref_test(&mut self, nullable: bool, heap_type: HeapType) -> Result<()> {
+        self.check_downcast(nullable, heap_type, "ref.test")?;
+        self.push_operand(ValType::I32)
+    }
+
+    /// Common helper for both nullable and non-nullable variants of `ref.cast`
+    /// instructions.
+    fn check_ref_cast(&mut self, nullable: bool, heap_type: HeapType) -> Result<()> {
+        let sub_ty = self.check_downcast(nullable, heap_type, "ref.cast")?;
+        self.push_operand(sub_ty)
+    }
+
     fn func_type_at(&self, at: u32) -> Result<&'resources R::FuncType> {
         self.resources
             .func_type_at(at)
@@ -3541,23 +3596,6 @@ where
         Ok(())
     }
 
-    // let unpacked_index = UnpackedIndex::Module(type_index);
-    // let mut hty = HeapType::Concrete(unpacked_index);
-    // self.resources.check_heap_type(&mut hty, self.offset)?;
-    // // If `None` is popped then that means a "bottom" type was popped which
-    // // is always considered equivalent to the `hty` tag.
-    // if let Some(rt) = self.pop_ref()? {
-    //     let expected = RefType::new(true, hty).expect("hty should be previously validated");
-    //     let expected = ValType::Ref(expected);
-    //     if !self.resources.is_subtype(ValType::Ref(rt), expected) {
-    //         bail!(
-    //             self.offset,
-    //             "type mismatch: funcref on stack does not match specified type",
-    //         );
-    //     }
-    // }
-    // self.check_call_type_index(type_index)
-
     // Typed continuations operators.
     fn visit_cont_new(&mut self, type_index: u32) -> Self::Output {
         let unpacked_index = UnpackedIndex::Module(type_index);
@@ -3740,6 +3778,18 @@ where
         Ok(())
     }
 
+    fn visit_ref_test_non_null(&mut self, heap_type: HeapType) -> Self::Output {
+        self.check_ref_test(false, heap_type)
+    }
+    fn visit_ref_test_nullable(&mut self, heap_type: HeapType) -> Self::Output {
+        self.check_ref_test(true, heap_type)
+    }
+    fn visit_ref_cast_non_null(&mut self, heap_type: HeapType) -> Self::Output {
+        self.check_ref_cast(false, heap_type)
+    }
+    fn visit_ref_cast_nullable(&mut self, heap_type: HeapType) -> Self::Output {
+        self.check_ref_cast(true, heap_type)
+    }
     fn visit_ref_i31(&mut self) -> Self::Output {
         self.pop_operand(Some(ValType::I32))?;
         self.push_operand(ValType::Ref(RefType::I31))

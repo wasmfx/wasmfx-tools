@@ -291,9 +291,6 @@ impl<'a> Parse<'a> for RefType<'a> {
         } else if l.peek::<kw::funcref>()? {
             parser.parse::<kw::funcref>()?;
             Ok(RefType::func())
-        } else if l.peek::<kw::anyfunc>()? {
-            parser.parse::<kw::anyfunc>()?;
-            Ok(RefType::func())
         } else if l.peek::<kw::externref>()? {
             parser.parse::<kw::externref>()?;
             Ok(RefType::r#extern())
@@ -357,7 +354,6 @@ impl<'a> Peek for RefType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(kw::contref::peek(cursor)?
             || kw::funcref::peek(cursor)?
-            || /* legacy */ kw::anyfunc::peek(cursor)?
             || kw::externref::peek(cursor)?
             || kw::exnref::peek(cursor)?
             || kw::anyref::peek(cursor)?

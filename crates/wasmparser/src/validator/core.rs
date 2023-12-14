@@ -593,10 +593,10 @@ impl Module {
             debug_assert!(supertype_index.is_canonical());
             let sup_id = self.at_packed_index(types, rec_group, supertype_index, offset)?;
             if types[sup_id].is_final {
-                bail!(offset, "supertype must not be final");
+                bail!(offset, "sub type cannot have a final super type");
             }
             if !types.matches(id, sup_id) {
-                bail!(offset, "subtype must match supertype");
+                bail!(offset, "sub type must match super type");
             }
         }
 
@@ -1216,6 +1216,10 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.module.check_heap_type(t, offset)
     }
 
+    fn top_type(&self, heap_type: &HeapType) -> HeapType {
+        self.types.top_type(heap_type)
+    }
+
     fn element_type_at(&self, at: u32) -> Option<RefType> {
         self.module.element_types.get(at as usize).cloned()
     }
@@ -1314,6 +1318,10 @@ impl WasmModuleResources for ValidatorResources {
 
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<()> {
         self.0.check_heap_type(t, offset)
+    }
+
+    fn top_type(&self, heap_type: &HeapType) -> HeapType {
+        self.0.snapshot.as_ref().unwrap().top_type(heap_type)
     }
 
     fn element_type_at(&self, at: u32) -> Option<RefType> {
