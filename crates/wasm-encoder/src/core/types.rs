@@ -76,6 +76,7 @@ impl TryFrom<wasmparser::CompositeType> for CompositeType {
             wasmparser::CompositeType::Func(f) => CompositeType::Func(f.try_into()?),
             wasmparser::CompositeType::Array(a) => CompositeType::Array(a.try_into()?),
             wasmparser::CompositeType::Struct(s) => CompositeType::Struct(s.try_into()?),
+            wasmparser::CompositeType::Cont(_c) => todo!(), // TODO(dhil): This shouldn't be too hard to add.
         })
     }
 }
@@ -434,6 +435,8 @@ impl TryFrom<wasmparser::HeapType> for HeapType {
             wasmparser::HeapType::Struct => HeapType::Struct,
             wasmparser::HeapType::Array => HeapType::Array,
             wasmparser::HeapType::I31 => HeapType::I31,
+            wasmparser::HeapType::Cont => todo!(),
+            wasmparser::HeapType::NoCont => todo!(), // TODO(dhil): Shouldn't be too hard.
         })
     }
 }
