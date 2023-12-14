@@ -48,23 +48,23 @@
     call $init
     call $new-mb
     local.set $mine
-    loop $l ;; label = @1
+    loop $l
       local.get $nextk
       ref.is_null
       if ;; label = @2
         return
       end
-      block $on_self (result (ref 3)) ;; label = @2
-        block $on_spawn (type 14) (result (ref 1) (ref 3)) ;; label = @3
-          block $on_send (type 15) (result i32 i32 (ref 1)) ;; label = @4
-            block $on_recv (result (ref 3)) ;; label = @5
+      block $on_self (result (ref 3))
+        block $on_spawn (type 14) (result (ref 1) (ref 3))
+          block $on_send (type 15) (result i32 i32 (ref 1))
+            block $on_recv (result (ref 3))
               local.get $nextk
-              resume $cont (tag 0 3 (;@2;))(tag 1 2 (;@3;))(tag 2 1 (;@4;))(tag 3 0 (;@5;))
+              resume $cont (tag 0 $on_self)(tag 1 $on_spawn)(tag 2 $on_send)(tag 3 $on_recv)
               call $dequeue-mb
               local.set $mine
               call $dequeue-k
               local.set $nextk
-              br 4 (;@1;)
+              br $l
             end
             local.set $ik
             local.get $mine
@@ -79,20 +79,20 @@
               local.set $mine
               call $dequeue-k
               local.set $nextk
-              br 4 (;@1;)
+              br $l
             end
             local.get $mine
             call $recv-from-mb
             local.get $ik
             cont.bind $i-cont $cont
             local.set $nextk
-            br 3 (;@1;)
+            br $l
           end
           local.set $k
           call $send-to-mb
           local.get $k
           local.set $nextk
-          br 2 (;@1;)
+          br $l
         end
         local.set $ik
         local.set $you
@@ -106,14 +106,14 @@
         local.get $ik
         cont.bind $i-cont $cont
         local.set $nextk
-        br 1 (;@1;)
+        br $l
       end
       local.set $ik
       local.get $mine
       local.get $ik
       cont.bind $i-cont $cont
       local.set $nextk
-      br 0 (;@1;)
+      br $l
     end
   )
   (export "run" (func $run))

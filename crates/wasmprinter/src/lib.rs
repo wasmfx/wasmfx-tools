@@ -62,7 +62,6 @@ struct CoreState {
     tags: u32,
     globals: u32,
     tables: u32,
-    labels: u32,
     modules: u32,
     instances: u32,
     func_names: HashMap<u32, Naming>,
@@ -1170,7 +1169,6 @@ impl Printer {
         }
         locals.finish(&mut self.result);
 
-        state.core.labels = 0;
         let nesting_start = self.nesting;
         body.allow_memarg64(true);
 

@@ -12,10 +12,10 @@
   (func (;2;) (type 3) (result i32)
     i32.const 1
     call $print
-    block $on_h (result (ref 1)) ;; label = @1
+    block $on_h (result (ref 1))
       ref.func $f
       cont.new $ct
-      resume $ct (tag 0 0 (;@1;))
+      resume $ct (tag 0 $on_h)
       unreachable
     end
     drop

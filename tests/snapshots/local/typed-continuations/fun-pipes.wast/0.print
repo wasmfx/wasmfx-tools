@@ -9,10 +9,10 @@
   (type (;7;) (func (result i32 (ref 2))))
   (type (;8;) (func (param (ref 2) (ref 3))))
   (func $piper (;0;) (type 5) (param $n i32) (param $p (ref 2)) (param $c (ref 3))
-    block $on-receive (result (ref 3)) ;; label = @1
+    block $on-receive (result (ref 3))
       local.get $n
       local.get $c
-      resume $consumer (tag 1 0 (;@1;))
+      resume $consumer (tag 1 $on-receive)
       return
     end
     local.set $c
@@ -22,9 +22,9 @@
   )
   (func $copiper (;1;) (type 6) (param $c (ref 3)) (param $p (ref 2))
     (local $n i32)
-    block $on-send (type 7) (result i32 (ref 2)) ;; label = @1
+    block $on-send (type 7) (result i32 (ref 2))
       local.get $p
-      resume $producer (tag 0 0 (;@1;))
+      resume $producer (tag 0 $on-send)
       return
     end
     local.set $p

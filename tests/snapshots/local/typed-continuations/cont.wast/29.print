@@ -20,13 +20,13 @@
   (func $bg-thread (;4;) (type $proc)
     i64.const -10
     call $log
-    loop $l ;; label = @1
+    loop $l
       i64.const -11
       call $log
       suspend 0
       global.get $done
       i32.eqz
-      br_if 0 (;@1;)
+      br_if $l
     end
     i64.const -12
     call $log

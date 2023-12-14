@@ -5,20 +5,20 @@
   (type (;3;) (func (param i32 (ref 1)) (result i32)))
   (type (;4;) (func (result i32 (ref 1))))
   (func $runner (;0;) (type 3) (param $s i32) (param $k (ref 1)) (result i32)
-    loop $loop ;; label = @1
-      block $on_get (result (ref 1)) ;; label = @2
-        block $on_set (type 4) (result i32 (ref 1)) ;; label = @3
+    loop $loop
+      block $on_get (result (ref 1))
+        block $on_set (type 4) (result i32 (ref 1))
           local.get $s
           local.get $k
-          resume $k (tag 0 1 (;@2;))(tag 1 0 (;@3;))
+          resume $k (tag 0 $on_get)(tag 1 $on_set)
           return
         end
         local.set $k
         local.set $s
-        br 1 (;@1;)
+        br $loop
       end
       local.set $k
-      br 0 (;@1;)
+      br $loop
     end
     unreachable
   )

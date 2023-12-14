@@ -25,7 +25,7 @@
     (local $s i32) (local $p i32)
     suspend 0
     local.set $p
-    loop $l ;; label = @1
+    loop $l
       local.get $n
       i32.eqz
       if ;; label = @2
@@ -43,7 +43,7 @@
         i32.const 1
         i32.sub
         local.set $n
-        br 1 (;@1;)
+        br $l
       end
     end
     suspend 3

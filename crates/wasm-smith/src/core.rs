@@ -619,12 +619,12 @@ impl Module {
                         params: func_type
                             .params()
                             .iter()
-                            .map(|t| convert_type(*t))
+                            .map(|t| (*t).try_into().unwrap())
                             .collect(),
                         results: func_type
                             .results()
                             .iter()
-                            .map(|t| convert_type(*t))
+                            .map(|t| (*t).try_into().unwrap())
                             .collect(),
                     });
                     index_store.replace(new_index as u32);
@@ -676,11 +676,7 @@ impl Module {
                 }
 
                 wasmparser::TypeRef::Table(table_ty) => {
-                    let table_ty = TableType {
-                        element_type: convert_reftype(table_ty.element_type),
-                        minimum: table_ty.initial,
-                        maximum: table_ty.maximum,
-                    };
+                    let table_ty = TableType::try_from(*table_ty).unwrap();
                     let entity = EntityType::Table(table_ty);
                     let type_size = entity.size();
                     if type_size_budget < type_size || !self.can_add_local_or_import_table() {
@@ -692,12 +688,7 @@ impl Module {
                 }
 
                 wasmparser::TypeRef::Memory(memory_ty) => {
-                    let memory_ty = MemoryType {
-                        minimum: memory_ty.initial,
-                        maximum: memory_ty.maximum,
-                        memory64: memory_ty.memory64,
-                        shared: memory_ty.shared,
-                    };
+                    let memory_ty = MemoryType::try_from(*memory_ty).unwrap();
                     let entity = EntityType::Memory(memory_ty);
                     let type_size = entity.size();
                     if type_size_budget < type_size || !self.can_add_local_or_import_memory() {
@@ -709,10 +700,7 @@ impl Module {
                 }
 
                 wasmparser::TypeRef::Global(global_ty) => {
-                    let global_ty = GlobalType {
-                        val_type: convert_type(global_ty.content_type),
-                        mutable: global_ty.mutable,
-                    };
+                    let global_ty = (*global_ty).try_into().unwrap();
                     let entity = EntityType::Global(global_ty);
                     let type_size = entity.size();
                     if type_size_budget < type_size || !self.can_add_local_or_import_global() {
@@ -735,42 +723,7 @@ impl Module {
         self.types.extend(new_types);
         self.imports.extend(new_imports);
 
-        return Ok(());
-
-        /// Convert a wasmparser's `ValType` to a `wasm_encoder::ValType`.
-        fn convert_type(parsed_type: wasmparser::ValType) -> ValType {
-            use wasmparser::ValType::*;
-            match parsed_type {
-                I32 => ValType::I32,
-                I64 => ValType::I64,
-                F32 => ValType::F32,
-                F64 => ValType::F64,
-                V128 => ValType::V128,
-                Ref(ty) => ValType::Ref(convert_reftype(ty)),
-            }
-        }
-
-        fn convert_reftype(ty: wasmparser::RefType) -> RefType {
-            wasm_encoder::RefType {
-                nullable: ty.is_nullable(),
-                heap_type: match ty.heap_type() {
-                    wasmparser::HeapType::Func => HeapType::Func,
-                    wasmparser::HeapType::Extern => HeapType::Extern,
-                    wasmparser::HeapType::Any => HeapType::Any,
-                    wasmparser::HeapType::None => HeapType::None,
-                    wasmparser::HeapType::NoExtern => HeapType::NoExtern,
-                    wasmparser::HeapType::NoFunc => HeapType::NoFunc,
-                    wasmparser::HeapType::Eq => HeapType::Eq,
-                    wasmparser::HeapType::Struct => HeapType::Struct,
-                    wasmparser::HeapType::Array => HeapType::Array,
-                    wasmparser::HeapType::I31 => HeapType::I31,
-                    wasmparser::HeapType::Concrete(i) => {
-                        HeapType::Concrete(i.as_module_index().unwrap())
-                    }
-                    wasmparser::HeapType::Cont | wasmparser::HeapType::NoCont => todo!(), // TODO(dhil): Some other day.
-                },
-            }
-        }
+        Ok(())
     }
 
     fn type_of(&self, kind: ExportKind, index: u32) -> EntityType {
@@ -1148,13 +1101,15 @@ impl Module {
             }
         }
 
-        // Reference types allows us to create passive and declared element
-        // segments.
-        if self.config.reference_types_enabled() {
+        // Bulk memory enables passive/declared segments for funcrefs, and
+        // reference types additionally enables the segments for externrefs.
+        if self.config.bulk_memory_enabled() {
             funcrefs.push(Box::new(|_| Ok((ElementKind::Passive, None))));
-            externrefs.push(Box::new(|_| Ok((ElementKind::Passive, None))));
             funcrefs.push(Box::new(|_| Ok((ElementKind::Declared, None))));
-            externrefs.push(Box::new(|_| Ok((ElementKind::Declared, None))));
+            if self.config.reference_types_enabled() {
+                externrefs.push(Box::new(|_| Ok((ElementKind::Passive, None))));
+                externrefs.push(Box::new(|_| Ok((ElementKind::Declared, None))));
+            }
         }
 
         let mut choices = Vec::new();
