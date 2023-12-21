@@ -233,11 +233,40 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
         self.printer.print_idx(&self.state.core.type_names, idx)
     }
 
+    fn array_type_index(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.type_names, idx)
+    }
+
+    fn array_type_index_dst(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.type_names, idx)
+    }
+
+    fn array_type_index_src(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.type_names, idx)
+    }
+
+    fn array_size(&mut self, array_size: u32) -> Result<()> {
+        write!(&mut self.printer.result, "{array_size}")?;
+        Ok(())
+    }
+
+    fn struct_type_index(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.type_names, idx)
+    }
+
     fn data_index(&mut self, idx: u32) -> Result<()> {
         self.printer.print_idx(&self.state.core.data_names, idx)
     }
 
+    fn array_data_index(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.data_names, idx)
+    }
+
     fn elem_index(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.element_names, idx)
+    }
+
+    fn array_elem_index(&mut self, idx: u32) -> Result<()> {
         self.printer.print_idx(&self.state.core.element_names, idx)
     }
 
@@ -1041,6 +1070,23 @@ macro_rules! define_visit {
     (name Suspend) => ("suspend");
     (name Barrier) => ("barrier");
 
+    (name StructNewDefault) => ("struct.new_default");
+    (name ArrayNew) => ("array.new");
+    (name ArrayNewDefault) => ("array.new_default");
+    (name ArrayNewFixed) => ("array.new_fixed");
+    (name ArrayNewData) => ("array.new_data");
+    (name ArrayNewElem) => ("array.new_elem");
+    (name ArrayGet) => ("array.get");
+    (name ArrayGetS) => ("array.get_s");
+    (name ArrayGetU) => ("array.get_u");
+    (name ArraySet) => ("array.set");
+    (name ArrayLen) => ("array.len");
+    (name ArrayFill) => ("array.fill");
+    (name ArrayCopy) => ("array.copy");
+    (name ArrayInitData) => ("array.init_data");
+    (name ArrayInitElem) => ("array.init_elem");
+    (name AnyConvertExtern) => ("any.convert_extern");
+    (name ExternConvertAny) => ("extern.convert_any");
     (name RefTestNonNull) => ("ref.test");
     (name RefTestNullable) => ("ref.test");
     (name RefCastNonNull) => ("ref.cast");
