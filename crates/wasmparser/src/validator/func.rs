@@ -312,7 +312,7 @@ mod tests {
         fn cont_type_at(&self, _at: CoreTypeId) -> Option<crate::ContType> {
             todo!()
         }
-        fn func_type_at_id(&self, _id: CoreTypeId) -> Option<&Self::FuncType> {
+        fn func_type_at_id(&self, _id: CoreTypeId) -> Option<&crate::FuncType> {
             todo!()
         }
     }
