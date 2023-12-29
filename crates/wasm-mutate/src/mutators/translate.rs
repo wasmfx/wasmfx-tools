@@ -340,12 +340,18 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         (map $arg:ident dst_table) => (t.remap(Item::Table, *$arg)?);
         (map $arg:ident src_table) => (t.remap(Item::Table, *$arg)?);
         (map $arg:ident type_index) => (t.remap(Item::Type, *$arg)?);
+        (map $arg:ident array_type_index) => (t.remap(Item::Type, *$arg)?);
+        (map $arg:ident array_type_index_dst) => (t.remap(Item::Type, *$arg)?);
+        (map $arg:ident array_type_index_src) => (t.remap(Item::Type, *$arg)?);
+        (map $arg:ident struct_type_index) => (t.remap(Item::Type, *$arg)?);
         (map $arg:ident global_index) => (t.remap(Item::Global, *$arg)?);
         (map $arg:ident mem) => (t.remap(Item::Memory, *$arg)?);
         (map $arg:ident src_mem) => (t.remap(Item::Memory, *$arg)?);
         (map $arg:ident dst_mem) => (t.remap(Item::Memory, *$arg)?);
         (map $arg:ident data_index) => (t.remap(Item::Data, *$arg)?);
         (map $arg:ident elem_index) => (t.remap(Item::Element, *$arg)?);
+        (map $arg:ident array_data_index) => (t.remap(Item::Data, *$arg)?);
+        (map $arg:ident array_elem_index) => (t.remap(Item::Element, *$arg)?);
         (map $arg:ident blockty) => (t.translate_block_type($arg)?);
         (map $arg:ident relative_depth) => (*$arg);
         (map $arg:ident targets) => ((
@@ -371,6 +377,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
                 .collect::<Result<Vec<_>, wasmparser::BinaryReaderError>>()?
                 .into()
         );
+        (map $arg:ident array_size) => (*$arg);
 
         // This case takes the arguments of a wasmparser instruction and creates
         // a wasm-encoder instruction. There are a few special cases for where
@@ -397,6 +404,11 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         });
         (build MemoryGrow $mem:ident $_:ident) => (I::MemoryGrow($mem));
         (build MemorySize $mem:ident $_:ident) => (I::MemorySize($mem));
+        (build ArrayGet $type_index:ident) => (I::ArrayGet($type_index));
+        (build ArrayGetS $type_index:ident) => (I::ArrayGetS($type_index));
+        (build ArrayGetU $type_index:ident) => (I::ArrayGetU($type_index));
+        (build ArraySet $type_index:ident) => (I::ArraySet($type_index));
+        (build ArrayFill $type_index:ident) => (I::ArrayFill($type_index));
         (build $op:ident $($arg:ident)*) => (I::$op { $($arg),* });
     }
 

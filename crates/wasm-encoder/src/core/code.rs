@@ -545,18 +545,36 @@ pub enum Instruction<'a> {
 
     ArrayNew(u32),
     ArrayNewDefault(u32),
-    ArrayNewFixed(u32, u32),
-    ArrayNewData(u32, u32),
-    ArrayNewElem(u32, u32),
+    ArrayNewFixed {
+        array_type_index: u32,
+        array_size: u32,
+    },
+    ArrayNewData {
+        array_type_index: u32,
+        array_data_index: u32,
+    },
+    ArrayNewElem {
+        array_type_index: u32,
+        array_elem_index: u32,
+    },
     ArrayGet(u32),
     ArrayGetS(u32),
     ArrayGetU(u32),
     ArraySet(u32),
     ArrayLen,
     ArrayFill(u32),
-    ArrayCopy(u32, u32),
-    ArrayInitData(u32, u32),
-    ArrayInitElem(u32, u32),
+    ArrayCopy {
+        array_type_index_dst: u32,
+        array_type_index_src: u32,
+    },
+    ArrayInitData {
+        array_type_index: u32,
+        array_data_index: u32,
+    },
+    ArrayInitElem {
+        array_type_index: u32,
+        array_elem_index: u32,
+    },
 
     RefTestNonNull(HeapType),
     RefTestNullable(HeapType),
@@ -1456,23 +1474,32 @@ impl Encode for Instruction<'_> {
                 sink.push(0x07);
                 type_index.encode(sink);
             }
-            Instruction::ArrayNewFixed(type_index, size) => {
+            Instruction::ArrayNewFixed {
+                array_type_index,
+                array_size,
+            } => {
                 sink.push(0xfb);
                 sink.push(0x08);
-                type_index.encode(sink);
-                size.encode(sink);
+                array_type_index.encode(sink);
+                array_size.encode(sink);
             }
-            Instruction::ArrayNewData(type_index, data_index) => {
+            Instruction::ArrayNewData {
+                array_type_index,
+                array_data_index,
+            } => {
                 sink.push(0xfb);
                 sink.push(0x09);
-                type_index.encode(sink);
-                data_index.encode(sink);
+                array_type_index.encode(sink);
+                array_data_index.encode(sink);
             }
-            Instruction::ArrayNewElem(type_index, elem_index) => {
+            Instruction::ArrayNewElem {
+                array_type_index,
+                array_elem_index,
+            } => {
                 sink.push(0xfb);
                 sink.push(0x0a);
-                type_index.encode(sink);
-                elem_index.encode(sink);
+                array_type_index.encode(sink);
+                array_elem_index.encode(sink);
             }
             Instruction::ArrayGet(type_index) => {
                 sink.push(0xfb);
@@ -1503,23 +1530,32 @@ impl Encode for Instruction<'_> {
                 sink.push(0x10);
                 type_index.encode(sink);
             }
-            Instruction::ArrayCopy(dst_type_index, src_type_index) => {
+            Instruction::ArrayCopy {
+                array_type_index_dst,
+                array_type_index_src,
+            } => {
                 sink.push(0xfb);
                 sink.push(0x11);
-                dst_type_index.encode(sink);
-                src_type_index.encode(sink);
+                array_type_index_dst.encode(sink);
+                array_type_index_src.encode(sink);
             }
-            Instruction::ArrayInitData(type_index, data_index) => {
+            Instruction::ArrayInitData {
+                array_type_index,
+                array_data_index,
+            } => {
                 sink.push(0xfb);
                 sink.push(0x12);
-                type_index.encode(sink);
-                data_index.encode(sink);
+                array_type_index.encode(sink);
+                array_data_index.encode(sink);
             }
-            Instruction::ArrayInitElem(type_index, elem_index) => {
+            Instruction::ArrayInitElem {
+                array_type_index,
+                array_elem_index,
+            } => {
                 sink.push(0xfb);
                 sink.push(0x13);
-                type_index.encode(sink);
-                elem_index.encode(sink);
+                array_type_index.encode(sink);
+                array_elem_index.encode(sink);
             }
             Instruction::RefTestNonNull(heap_type) => {
                 sink.push(0xfb);

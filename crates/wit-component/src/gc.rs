@@ -1002,6 +1002,10 @@ macro_rules! define_visit {
     };
 
     (mark_live $self:ident $arg:ident type_index) => {$self.ty($arg);};
+    (mark_live $self:ident $arg:ident array_type_index) => {$self.ty($arg);};
+    (mark_live $self:ident $arg:ident array_type_index_dst) => {$self.ty($arg);};
+    (mark_live $self:ident $arg:ident array_type_index_src) => {$self.ty($arg);};
+    (mark_live $self:ident $arg:ident struct_type_index) => {$self.ty($arg);};
     (mark_live $self:ident $arg:ident src_table) => {$self.table($arg);};
     (mark_live $self:ident $arg:ident dst_table) => {$self.table($arg);};
     (mark_live $self:ident $arg:ident table_index) => {$self.table($arg);};
@@ -1027,11 +1031,15 @@ macro_rules! define_visit {
     (mark_live $self:ident $arg:ident tag_index) => {};
     (mark_live $self:ident $arg:ident targets) => {};
     (mark_live $self:ident $arg:ident data_index) => {};
+    (mark_live $self:ident $arg:ident array_data_index) => {};
     (mark_live $self:ident $arg:ident elem_index) => {};
     // TODO(dhil): I don't understand what's going on here. I'll revisit later.
     (mark_live $self:ident $type_index:ident resumetable) => {};
     (mark_live $self:ident $type_index:ident $tag_index:ident resumetable) => {};
     (mark_live $self:ident $src_index:ident $dst_index:ident) => {};
+
+    (mark_live $self:ident $arg:ident array_elem_index) => {};
+    (mark_live $self:ident $arg:ident array_size) => {};
 }
 
 impl<'a> VisitOperator<'a> for Module<'a> {
@@ -1217,15 +1225,22 @@ macro_rules! define_encode {
     (map $self:ident $arg:ident src_table) => {$self.tables.remap($arg)};
     (map $self:ident $arg:ident dst_table) => {$self.tables.remap($arg)};
     (map $self:ident $arg:ident type_index) => {$self.types.remap($arg)};
+    (map $self:ident $arg:ident array_type_index) => {$self.types.remap($arg)};
+    (map $self:ident $arg:ident array_type_index_dst) => {$self.types.remap($arg)};
+    (map $self:ident $arg:ident array_type_index_src) => {$self.types.remap($arg)};
+    (map $self:ident $arg:ident struct_type_index) => {$self.types.remap($arg)};
     (map $self:ident $arg:ident ty) => {$self.valty($arg)};
     (map $self:ident $arg:ident local_index) => {$arg};
     (map $self:ident $arg:ident lane) => {$arg};
     (map $self:ident $arg:ident lanes) => {$arg};
     (map $self:ident $arg:ident elem_index) => {$arg};
     (map $self:ident $arg:ident data_index) => {$arg};
+    (map $self:ident $arg:ident array_elem_index) => {$arg};
+    (map $self:ident $arg:ident array_data_index) => {$arg};
     (map $self:ident $arg:ident table_byte) => {$arg};
     (map $self:ident $arg:ident mem_byte) => {$arg};
     (map $self:ident $arg:ident value) => {$arg};
+    (map $self:ident $arg:ident array_size) => {$arg};
     (map $self:ident $arg:ident targets) => ((
         $arg.targets().map(|i| i.unwrap()).collect::<Vec<_>>().into(),
         $arg.default(),

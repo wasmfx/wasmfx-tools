@@ -1027,10 +1027,77 @@ impl<'a> BinaryReader<'a> {
     {
         let code = self.read_var_u32()?;
         Ok(match code {
+            0x01 => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_struct_new_default(type_index)
+            }
+
+            0x06 => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_array_new(type_index)
+            }
+            0x07 => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_array_new_default(type_index)
+            }
+            0x08 => {
+                let type_index = self.read_var_u32()?;
+                let n = self.read_var_u32()?;
+                visitor.visit_array_new_fixed(type_index, n)
+            }
+            0x09 => {
+                let type_index = self.read_var_u32()?;
+                let data_index = self.read_var_u32()?;
+                visitor.visit_array_new_data(type_index, data_index)
+            }
+            0x0a => {
+                let type_index = self.read_var_u32()?;
+                let elem_index = self.read_var_u32()?;
+                visitor.visit_array_new_elem(type_index, elem_index)
+            }
+            0x0b => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_array_get(type_index)
+            }
+            0x0c => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_array_get_s(type_index)
+            }
+            0x0d => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_array_get_u(type_index)
+            }
+            0x0e => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_array_set(type_index)
+            }
+            0x0f => visitor.visit_array_len(),
+            0x10 => {
+                let type_index = self.read_var_u32()?;
+                visitor.visit_array_fill(type_index)
+            }
+            0x11 => {
+                let type_index_dst = self.read_var_u32()?;
+                let type_index_src = self.read_var_u32()?;
+                visitor.visit_array_copy(type_index_dst, type_index_src)
+            }
+            0x12 => {
+                let type_index = self.read_var_u32()?;
+                let data_index = self.read_var_u32()?;
+                visitor.visit_array_init_data(type_index, data_index)
+            }
+            0x13 => {
+                let type_index = self.read_var_u32()?;
+                let elem_index = self.read_var_u32()?;
+                visitor.visit_array_init_elem(type_index, elem_index)
+            }
             0x14 => visitor.visit_ref_test_non_null(self.read()?),
             0x15 => visitor.visit_ref_test_nullable(self.read()?),
             0x16 => visitor.visit_ref_cast_non_null(self.read()?),
             0x17 => visitor.visit_ref_cast_nullable(self.read()?),
+
+            0x1a => visitor.visit_any_convert_extern(),
+            0x1b => visitor.visit_extern_convert_any(),
 
             0x1c => visitor.visit_ref_i31(),
             0x1d => visitor.visit_i31_get_s(),

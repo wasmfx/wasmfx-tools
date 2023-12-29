@@ -279,6 +279,8 @@ fn make_env_module<'a>(
     let mut import_map = IndexMap::new();
     let mut function_count = 0;
     let mut global_offset = 0;
+    let mut wasi_start = None;
+
     for metadata in metadata {
         for import in &metadata.imports {
             if let Entry::Vacant(entry) = import_map.entry(import) {
@@ -306,10 +308,26 @@ fn make_env_module<'a>(
                 );
             }
         }
+
+        if metadata.has_wasi_start {
+            if wasi_start.is_some() {
+                panic!("multiple libraries export _start");
+            }
+            let index = get_and_increment(&mut function_count);
+
+            types.function(vec![], vec![]);
+            imports.import(metadata.name, "_start", EntityType::Function(index));
+
+            wasi_start = Some(index);
+        }
     }
 
     let mut memory_offset = stack_size_bytes;
-    let mut table_offset = 0;
+
+    // Table offset 0 is reserved for the null function pointer.
+    // This convention follows wasm-ld's table layout:
+    // https://github.com/llvm/llvm-project/blob/913622d012f72edb5ac3a501cef8639d0ebe471b/lld/wasm/Driver.cpp#L581-L584
+    let mut table_offset = 1;
     let mut globals = GlobalSection::new();
     let mut exports = ExportSection::new();
 
@@ -424,6 +442,9 @@ fn make_env_module<'a>(
             ExportKind::from(&import.ty),
             offset,
         );
+    }
+    if let Some(index) = wasi_start {
+        exports.export("_start", ExportKind::Func, index);
     }
 
     let mut module = Module::new();
@@ -1135,7 +1156,7 @@ fn find_reachable<'a>(
         .iter()
         .enumerate()
         .filter_map(|(index, metadata)| {
-            if metadata.has_component_exports || metadata.dl_openable {
+            if metadata.has_component_exports || metadata.dl_openable || metadata.has_wasi_start {
                 Some(index)
             } else {
                 None

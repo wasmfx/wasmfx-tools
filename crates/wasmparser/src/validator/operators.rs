@@ -23,9 +23,10 @@
 // the various methods here.
 
 use crate::{
-    limits::MAX_WASM_FUNCTION_LOCALS, BinaryReaderError, BlockType, BrTable, ContType, HeapType,
-    Ieee32, Ieee64, MemArg, RefType, Result, ResumeTable, UnpackedIndex, ValType, VisitOperator,
-    WasmFeatures, WasmFuncType, WasmModuleResources, V128,
+    limits::MAX_WASM_FUNCTION_LOCALS, ArrayType, BinaryReaderError, BlockType, BrTable,
+    CompositeType, ContType, FuncType, HeapType, Ieee32, Ieee64, MemArg, RefType, Result,
+    ResumeTable, StorageType, StructType, SubType, UnpackedIndex, ValType, VisitOperator,
+    WasmFeatures, WasmModuleResources, V128,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -186,6 +187,15 @@ impl From<RefType> for MaybeType {
     }
 }
 
+impl MaybeType {
+    fn as_type(&self) -> Option<ValType> {
+        match *self {
+            Self::Type(ty) => Some(ty),
+            Self::Bot | Self::HeapBot => None,
+        }
+    }
+}
+
 impl OperatorValidator {
     fn new(features: &WasmFeatures, allocs: OperatorValidatorAllocations) -> Self {
         let OperatorValidatorAllocations {
@@ -250,9 +260,9 @@ impl OperatorValidator {
             resources,
         }
         .func_type_at(ty)?
-        .inputs();
+        .params();
         for ty in params {
-            ret.locals.define(1, ty);
+            ret.locals.define(1, *ty);
             ret.local_inits.push(true);
         }
         Ok(ret)
@@ -432,6 +442,34 @@ where
 
         self.operands.push(maybe_ty);
         Ok(())
+    }
+
+    fn push_concrete_ref(&mut self, nullable: bool, type_index: u32) -> Result<()> {
+        let mut heap_ty = HeapType::Concrete(UnpackedIndex::Module(type_index));
+
+        // Canonicalize the module index into an id.
+        self.resources.check_heap_type(&mut heap_ty, self.offset)?;
+        debug_assert!(matches!(heap_ty, HeapType::Concrete(UnpackedIndex::Id(_))));
+
+        let ref_ty = RefType::new(nullable, heap_ty).ok_or_else(|| {
+            format_err!(self.offset, "implementation limit: type index too large")
+        })?;
+
+        self.push_operand(ref_ty)
+    }
+
+    fn pop_concrete_ref(&mut self, nullable: bool, type_index: u32) -> Result<MaybeType> {
+        let mut heap_ty = HeapType::Concrete(UnpackedIndex::Module(type_index));
+
+        // Canonicalize the module index into an id.
+        self.resources.check_heap_type(&mut heap_ty, self.offset)?;
+        debug_assert!(matches!(heap_ty, HeapType::Concrete(UnpackedIndex::Id(_))));
+
+        let ref_ty = RefType::new(nullable, heap_ty).ok_or_else(|| {
+            format_err!(self.offset, "implementation limit: type index too large")
+        })?;
+
+        self.pop_operand(Some(ref_ty.into()))
     }
 
     /// Attempts to pop a type from the operand stack.
@@ -751,24 +789,16 @@ where
     }
 
     fn check_call_type_index(&mut self, type_index: u32) -> Result<()> {
-        let ty = match self.resources.func_type_at(type_index) {
-            Some(i) => i,
-            None => {
-                bail!(
-                    self.offset,
-                    "unknown type {type_index}: type index out of bounds",
-                );
-            }
-        };
+        let ty = self.func_type_at(type_index)?;
         self.check_call_ty(ty)
     }
 
-    fn check_call_ty(&mut self, ty: &R::FuncType) -> Result<()> {
-        for ty in ty.inputs().rev() {
+    fn check_call_ty(&mut self, ty: &FuncType) -> Result<()> {
+        for &ty in ty.params().iter().rev() {
             debug_assert_type_indices_are_ids(ty);
             self.pop_operand(Some(ty))?;
         }
-        for ty in ty.outputs() {
+        for &ty in ty.results() {
             debug_assert_type_indices_are_ids(ty);
             self.push_operand(ty)?;
         }
@@ -795,11 +825,11 @@ where
         }
         let ty = self.func_type_at(index)?;
         self.pop_operand(Some(ValType::I32))?;
-        for ty in ty.clone().inputs().rev() {
-            self.pop_operand(Some(ty))?;
+        for ty in ty.clone().params().iter().rev() {
+            self.pop_operand(Some(*ty))?;
         }
-        for ty in ty.outputs() {
-            self.push_operand(ty)?;
+        for ty in ty.results() {
+            self.push_operand(*ty)?;
         }
         Ok(())
     }
@@ -994,7 +1024,7 @@ where
         }
     }
 
-    fn func_repr_cont_type_of_heap_type(&self, hty: HeapType) -> Result<&'resources R::FuncType> {
+    fn func_repr_cont_type_of_heap_type(&self, hty: HeapType) -> Result<&'resources FuncType> {
         match hty {
             HeapType::Concrete(unpacked_index) => self.func_repr_cont_type_at(unpacked_index),
             _ => Err(format_err!(
@@ -1017,7 +1047,7 @@ where
 
     /// Retrieves the function type representation of the continuation
     /// type stored at the given type index.
-    fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<&'resources R::FuncType> {
+    fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<&'resources FuncType> {
         match at {
             UnpackedIndex::Id(id) => {
                 let ct = self.cont_type_at(id)?;
@@ -1092,13 +1122,60 @@ where
         self.push_operand(sub_ty)
     }
 
-    fn func_type_at(&self, at: u32) -> Result<&'resources R::FuncType> {
+    fn element_type_at(&self, elem_index: u32) -> Result<RefType> {
+        match self.resources.element_type_at(elem_index) {
+            Some(ty) => Ok(ty),
+            None => bail!(
+                self.offset,
+                "unknown elem segment {}: segment index out of bounds",
+                elem_index
+            ),
+        }
+    }
+
+    fn sub_type_at(&self, at: u32) -> Result<&'resources SubType> {
         self.resources
-            .func_type_at(at)
+            .sub_type_at(at)
             .ok_or_else(|| format_err!(self.offset, "unknown type: type index out of bounds"))
     }
 
-    fn tag_at(&self, at: u32) -> Result<&'resources R::FuncType> {
+    fn struct_type_at(&self, at: u32) -> Result<&'resources StructType> {
+        let sub_ty = self.sub_type_at(at)?;
+        if let CompositeType::Struct(struct_ty) = &sub_ty.composite_type {
+            Ok(struct_ty)
+        } else {
+            bail!(
+                self.offset,
+                "expected struct type at index {at}, found {sub_ty}"
+            )
+        }
+    }
+
+    fn array_type_at(&self, at: u32) -> Result<&'resources ArrayType> {
+        let sub_ty = self.sub_type_at(at)?;
+        if let CompositeType::Array(array_ty) = &sub_ty.composite_type {
+            Ok(array_ty)
+        } else {
+            bail!(
+                self.offset,
+                "expected array type at index {at}, found {sub_ty}"
+            )
+        }
+    }
+
+    fn func_type_at(&self, at: u32) -> Result<&'resources FuncType> {
+        let sub_ty = self.sub_type_at(at)?;
+        if let CompositeType::Func(func_ty) = &sub_ty.composite_type {
+            Ok(func_ty)
+        } else {
+            bail!(
+                self.offset,
+                "expected func type at index {at}, found {sub_ty}"
+            )
+        }
+    }
+
+    fn tag_at(&self, at: u32) -> Result<&'resources FuncType> {
         self.resources
             .tag_at(at)
             .ok_or_else(|| format_err!(self.offset, "unknown tag {}: tag index out of bounds", at))
@@ -1107,7 +1184,7 @@ where
     fn params(&self, ty: BlockType) -> Result<impl PreciseIterator<Item = ValType> + 'resources> {
         Ok(match ty {
             BlockType::Empty | BlockType::Type(_) => Either::B(None.into_iter()),
-            BlockType::FuncType(t) => Either::A(self.func_type_at(t)?.inputs()),
+            BlockType::FuncType(t) => Either::A(self.func_type_at(t)?.params().iter().copied()),
         })
     }
 
@@ -1115,7 +1192,7 @@ where
         Ok(match ty {
             BlockType::Empty => Either::B(None.into_iter()),
             BlockType::Type(t) => Either::B(Some(t).into_iter()),
-            BlockType::FuncType(t) => Either::A(self.func_type_at(t)?.outputs()),
+            BlockType::FuncType(t) => Either::A(self.func_type_at(t)?.results().iter().copied()),
         })
     }
 
@@ -1134,7 +1211,7 @@ where
     fn check_resume_table(
         &mut self,
         table: ResumeTable, // The table to validate.
-        ctft: &R::FuncType, // The type of the continuation applied to the resume, which `table` is attached to.
+        ctft: &FuncType, // The type of the continuation applied to the resume, which `table` is attached to.
     ) -> Result<()> {
         // Resume table validation is somewhat involved as we have to
         // check that the domain of each tag matches up with the
@@ -1163,11 +1240,11 @@ where
         for pair in table.targets() {
             let (tag, relative_depth) = pair?;
             // tagtype := ts1' -> ts2'
-            let tagtype = &self.tag_at(tag)?;
+            let tagtype = self.tag_at(tag)?;
             let block = self.jump(relative_depth)?;
 
             // label_types(offset, block.0, block.1) := ts1''* (ref null? (cont $ft))
-            if tagtype.inputs().len() != self.label_types(block.0, block.1)?.len() - 1 {
+            if tagtype.params().len() != self.label_types(block.0, block.1)?.len() - 1 {
                 bail!(
                     self.offset,
                     "type mismatch between label type and tag type length"
@@ -1175,10 +1252,10 @@ where
             }
             let labeltys = self
                 .label_types(block.0, block.1)?
-                .take(tagtype.inputs().len());
+                .take(tagtype.params().len());
 
             // Next check that ts1' <: ts1''.
-            for (tagty, lblty) in labeltys.zip(tagtype.inputs()) {
+            for (tagty, &lblty) in labeltys.zip(tagtype.params()) {
                 if !self.resources.is_subtype(tagty, lblty) {
                     bail!(self.offset, "type mismatch between tag type and label type")
                     // TODO(dhil): tidy up
@@ -1192,13 +1269,13 @@ where
                     let ctft2 = self.func_repr_cont_type_at(z)?;
                     // Now we must check that (ts2' -> ts2) <: $ft
                     // This method should be exposed by resources to make this correct
-                    for (tagty, ct2ty) in tagtype.outputs().zip(ctft2.inputs()) {
+                    for (&tagty, &ct2ty) in tagtype.results().iter().zip(ctft2.params()) {
                         // Note: according to spec we should check for equality here
                         if !self.resources.is_subtype(ct2ty, tagty) {
                             bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
                         }
                     }
-                    for (ctty, ct2ty) in ctft.outputs().zip(ctft2.outputs()) {
+                    for (&ctty, &ct2ty) in ctft.results().iter().zip(ctft2.results()) {
                         // Note: according to spec we should check for equality here
                         if !self.resources.is_subtype(ctty, ct2ty) {
                             bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
@@ -1373,18 +1450,18 @@ where
         });
         // Push exception argument types.
         let ty = self.tag_at(index)?;
-        for ty in ty.inputs() {
-            self.push_operand(ty)?;
+        for ty in ty.params() {
+            self.push_operand(*ty)?;
         }
         Ok(())
     }
     fn visit_throw(&mut self, index: u32) -> Self::Output {
         // Check values associated with the exception.
         let ty = self.tag_at(index)?;
-        for ty in ty.clone().inputs().rev() {
-            self.pop_operand(Some(ty))?;
+        for ty in ty.clone().params().iter().rev() {
+            self.pop_operand(Some(*ty))?;
         }
-        if ty.outputs().len() > 0 {
+        if ty.results().len() > 0 {
             bail!(
                 self.offset,
                 "result type expected to be empty for exception"
@@ -3496,14 +3573,7 @@ where
                 table
             ),
         };
-        let segment_ty = match self.resources.element_type_at(segment) {
-            Some(ty) => ty,
-            None => bail!(
-                self.offset,
-                "unknown elem segment {}: segment index out of bounds",
-                segment
-            ),
-        };
+        let segment_ty = self.element_type_at(segment)?;
         if !self
             .resources
             .is_subtype(ValType::Ref(segment_ty), ValType::Ref(table.element_type))
@@ -3623,25 +3693,29 @@ where
 
         // Verify that the source domain is at least as large as the
         // target domain.
-        if src_cont.len_inputs() < dst_cont.len_inputs() {
+        if src_cont.params().len() < dst_cont.params().len() {
             bail!(self.offset, "type mismatch in continuation arguments");
         }
 
         // Next check that the source and target agrees modulo the
         // prefix.
         let src_prefix = src_cont
-            .inputs()
-            .take(src_cont.len_inputs() - dst_cont.len_inputs());
-        let src_suffix = src_cont
-            .inputs()
-            .skip(src_cont.len_inputs() - dst_cont.len_inputs());
+            .params()
+            .iter()
+            .take(src_cont.params().len() - dst_cont.params().len());
+        let src_suffix: Vec<_> = src_cont
+            .params()
+            .iter()
+            .skip(src_cont.params().len() - dst_cont.params().len())
+            .map(|i| *i)
+            .collect();
         // TODO(dhil): `is_func_subtype` is a kind of convenience hack
         // that implements the subtyping relation for function
         // types. Ideally, we would use the upstream implementation of
         // function subtyping.
         if !self.resources.is_func_subtype(
-            crate::FuncType::new(src_suffix, src_cont.outputs()),
-            crate::FuncType::new(dst_cont.inputs(), dst_cont.outputs()),
+            crate::FuncType::new(src_suffix, src_cont.results().to_vec()),
+            crate::FuncType::new(dst_cont.params().to_vec(), dst_cont.results().to_vec()),
         ) {
             bail!(self.offset, "type mismatch in continuation types");
         }
@@ -3663,7 +3737,7 @@ where
                 }
 
                 // Check that the prefix is available on the stack.
-                for ty in src_prefix.rev() {
+                for &ty in src_prefix.rev() {
                     self.pop_operand(Some(ty))?;
                 }
             }
@@ -3680,10 +3754,10 @@ where
     }
     fn visit_suspend(&mut self, tag_index: u32) -> Self::Output {
         let ft = &self.tag_at(tag_index)?;
-        for ty in ft.inputs().rev() {
+        for &ty in ft.params().iter().rev() {
             self.pop_operand(Some(ty))?;
         }
-        for ty in ft.outputs() {
+        for &ty in ft.results() {
             self.push_operand(ty)?;
         }
         Ok(())
@@ -3706,12 +3780,12 @@ where
                 self.check_resume_table(resumetable, ctft)?;
 
                 // Check that ts1 are available on the stack.
-                for ty in ctft.inputs().rev() {
+                for &ty in ctft.params().iter().rev() {
                     self.pop_operand(Some(ty))?;
                 }
 
                 // Make ts2 available on the stack.
-                for ty in ctft.outputs() {
+                for &ty in ctft.results() {
                     self.push_operand(ty)?;
                 }
             }
@@ -3748,12 +3822,12 @@ where
                 let tagtype = &self.tag_at(tag_index)?;
 
                 // Check that ts1' are available on the stack.
-                for tagty in tagtype.inputs().rev() {
+                for &tagty in tagtype.params().iter().rev() {
                     self.pop_operand(Some(tagty))?;
                 }
 
                 // Make ts2 available on the stack.
-                for ty in ctft.outputs() {
+                for &ty in ctft.results() {
                     self.push_operand(ty)?;
                 }
             }
@@ -3778,6 +3852,276 @@ where
         Ok(())
     }
 
+    fn visit_struct_new_default(&mut self, type_index: u32) -> Self::Output {
+        let ty = self.struct_type_at(type_index)?;
+        for field in ty.fields.iter() {
+            let val_ty = field.element_type.unpack();
+            if !val_ty.is_defaultable() {
+                bail!(
+                    self.offset,
+                    "invalid `struct.new_default`: {val_ty} field is not defaultable"
+                );
+            }
+        }
+
+        let mut heap_ty = HeapType::Concrete(UnpackedIndex::Module(type_index));
+        // Call `check_heap_type` to canonicalize the module index into an id.
+        self.resources.check_heap_type(&mut heap_ty, self.offset)?;
+
+        let ref_ty = RefType::new(false, heap_ty).ok_or_else(|| {
+            format_err!(self.offset, "implementation limit: type index too large")
+        })?;
+
+        self.push_operand(ref_ty)
+    }
+    fn visit_array_new(&mut self, type_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(array_ty.0.element_type.unpack()))?;
+        self.push_concrete_ref(false, type_index)
+    }
+    fn visit_array_new_default(&mut self, type_index: u32) -> Self::Output {
+        let ty = self.array_type_at(type_index)?;
+        let val_ty = ty.0.element_type.unpack();
+        if !val_ty.is_defaultable() {
+            bail!(
+                self.offset,
+                "invalid `array.new_default`: {val_ty} field is not defaultable"
+            );
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.push_concrete_ref(false, type_index)
+    }
+    fn visit_array_new_fixed(&mut self, type_index: u32, n: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        let elem_ty = array_ty.0.element_type.unpack();
+        for _ in 0..n {
+            self.pop_operand(Some(elem_ty))?;
+        }
+        self.push_concrete_ref(false, type_index)
+    }
+    fn visit_array_new_data(&mut self, type_index: u32, data_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        let elem_ty = array_ty.0.element_type.unpack();
+        match elem_ty {
+            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => {}
+            ValType::Ref(_) => bail!(
+                self.offset,
+                "type mismatch: array.new_data can only create arrays with numeric and vector elements"
+            ),
+        }
+        match self.resources.data_count() {
+            None => bail!(self.offset, "data count section required"),
+            Some(count) if data_index < count => {}
+            Some(_) => bail!(self.offset, "unknown data segment {}", data_index),
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.push_concrete_ref(false, type_index)
+    }
+    fn visit_array_new_elem(&mut self, type_index: u32, elem_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        let array_ref_ty = match array_ty.0.element_type.unpack() {
+            ValType::Ref(rt) => rt,
+            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => bail!(
+                self.offset,
+                "type mismatch: array.new_elem can only create arrays with reference elements"
+            ),
+        };
+        let elem_ref_ty = self.element_type_at(elem_index)?;
+        if !self
+            .resources
+            .is_subtype(elem_ref_ty.into(), array_ref_ty.into())
+        {
+            bail!(
+                self.offset,
+                "invalid array.new_elem instruction: element segment {elem_index} type mismatch: \
+                 expected {array_ref_ty}, found {elem_ref_ty}"
+            )
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.push_concrete_ref(false, type_index)
+    }
+    fn visit_array_get(&mut self, type_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        let elem_ty = array_ty.0.element_type;
+        if elem_ty.is_packed() {
+            bail!(
+                self.offset,
+                "cannot use array.get with packed storage types"
+            )
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, type_index)?;
+        self.push_operand(elem_ty.unpack())
+    }
+    fn visit_array_get_s(&mut self, type_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        let elem_ty = array_ty.0.element_type;
+        if !elem_ty.is_packed() {
+            bail!(
+                self.offset,
+                "cannot use array.get_s with non-packed storage types"
+            )
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, type_index)?;
+        self.push_operand(elem_ty.unpack())
+    }
+    fn visit_array_get_u(&mut self, type_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        let elem_ty = array_ty.0.element_type;
+        if !elem_ty.is_packed() {
+            bail!(
+                self.offset,
+                "cannot use array.get_u with non-packed storage types"
+            )
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, type_index)?;
+        self.push_operand(elem_ty.unpack())
+    }
+    fn visit_array_set(&mut self, type_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        if !array_ty.0.mutable {
+            bail!(self.offset, "invalid array.set: array is immutable")
+        }
+        self.pop_operand(Some(array_ty.0.element_type.unpack()))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, type_index)?;
+        Ok(())
+    }
+    fn visit_array_len(&mut self) -> Self::Output {
+        self.pop_operand(Some(RefType::ARRAY.nullable().into()))?;
+        self.push_operand(ValType::I32)
+    }
+    fn visit_array_fill(&mut self, array_type_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(array_type_index)?;
+        if !array_ty.0.mutable {
+            bail!(self.offset, "invalid array.fill: array is immutable");
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(array_ty.0.element_type.unpack()))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, array_type_index)?;
+        Ok(())
+    }
+    fn visit_array_copy(&mut self, type_index_dst: u32, type_index_src: u32) -> Self::Output {
+        let array_ty_dst = self.array_type_at(type_index_dst)?;
+        if !array_ty_dst.0.mutable {
+            bail!(
+                self.offset,
+                "invalid array.copy: destination array is immutable"
+            );
+        }
+        let array_ty_src = self.array_type_at(type_index_src)?;
+        match (array_ty_dst.0.element_type, array_ty_src.0.element_type) {
+            (StorageType::I8, StorageType::I8) => {}
+            (StorageType::I8, ty) => bail!(
+                self.offset,
+                "array types do not match: expected i8, found {ty}"
+            ),
+            (StorageType::I16, StorageType::I16) => {}
+            (StorageType::I16, ty) => bail!(
+                self.offset,
+                "array types do not match: expected i16, found {ty}"
+            ),
+            (StorageType::Val(dst), StorageType::Val(src)) => {
+                if !self.resources.is_subtype(src, dst) {
+                    bail!(
+                        self.offset,
+                        "array types do not match: expected {dst}, found {src}"
+                    )
+                }
+            }
+            (StorageType::Val(dst), src) => {
+                bail!(
+                    self.offset,
+                    "array types do not match: expected {dst}, found {src}"
+                )
+            }
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, type_index_src)?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, type_index_dst)?;
+        Ok(())
+    }
+    fn visit_array_init_data(
+        &mut self,
+        array_type_index: u32,
+        array_data_index: u32,
+    ) -> Self::Output {
+        let array_ty = self.array_type_at(array_type_index)?;
+        if !array_ty.0.mutable {
+            bail!(self.offset, "invalid array.init_data: array is immutable");
+        }
+        let val_ty = array_ty.0.element_type.unpack();
+        match val_ty {
+            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => {}
+            ValType::Ref(_) => bail!(
+                self.offset,
+                "invalid array.init_data: array type is not numeric or vector"
+            ),
+        }
+        match self.resources.data_count() {
+            None => bail!(self.offset, "data count section required"),
+            Some(count) if array_data_index < count => {}
+            Some(_) => bail!(self.offset, "unknown data segment {}", array_data_index),
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, array_type_index)?;
+        Ok(())
+    }
+    fn visit_array_init_elem(&mut self, type_index: u32, elem_index: u32) -> Self::Output {
+        let array_ty = self.array_type_at(type_index)?;
+        if !array_ty.0.mutable {
+            bail!(self.offset, "invalid array.init_data: array is immutable");
+        }
+        let array_ref_ty = match array_ty.0.element_type.unpack() {
+            ValType::Ref(rt) => rt,
+            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => bail!(
+                self.offset,
+                "type mismatch: array.init_elem can only create arrays with reference elements"
+            ),
+        };
+        let elem_ref_ty = self.element_type_at(elem_index)?;
+        if !self
+            .resources
+            .is_subtype(elem_ref_ty.into(), array_ref_ty.into())
+        {
+            bail!(
+                self.offset,
+                "invalid array.init_elem instruction: element segment {elem_index} type mismatch: \
+                 expected {array_ref_ty}, found {elem_ref_ty}"
+            )
+        }
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_operand(Some(ValType::I32))?;
+        self.pop_concrete_ref(true, type_index)?;
+        Ok(())
+    }
+    fn visit_any_convert_extern(&mut self) -> Self::Output {
+        let extern_ref = self.pop_operand(Some(RefType::EXTERNREF.into()))?;
+        let is_nullable = extern_ref
+            .as_type()
+            .map_or(false, |ty| ty.as_reference_type().unwrap().is_nullable());
+        let any_ref = RefType::new(is_nullable, HeapType::Any).unwrap();
+        self.push_operand(any_ref)
+    }
+    fn visit_extern_convert_any(&mut self) -> Self::Output {
+        let any_ref = self.pop_operand(Some(RefType::ANY.nullable().into()))?;
+        let is_nullable = any_ref
+            .as_type()
+            .map_or(false, |ty| ty.as_reference_type().unwrap().is_nullable());
+        let extern_ref = RefType::new(is_nullable, HeapType::Extern).unwrap();
+        self.push_operand(extern_ref)
+    }
     fn visit_ref_test_non_null(&mut self, heap_type: HeapType) -> Self::Output {
         self.check_ref_test(false, heap_type)
     }

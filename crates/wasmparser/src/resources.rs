@@ -13,175 +13,10 @@
  * limitations under the License.
  */
 
-use crate::types::CoreTypeId;
 use crate::{
-    BinaryReaderError, ContType, FuncType, GlobalType, HeapType, MemoryType, RefType, TableType,
-    ValType, WasmFeatures,
+    types::CoreTypeId, BinaryReaderError, ContType, FuncType, GlobalType, HeapType, MemoryType,
+    RefType, SubType, TableType, ValType, WasmFeatures,
 };
-use std::ops::Range;
-
-/// Types that qualify as Wasm function types for validation purposes.
-pub trait WasmFuncType: Clone {
-    /// Returns the number of input types.
-    fn len_inputs(&self) -> usize;
-
-    /// Returns the number of output types.
-    fn len_outputs(&self) -> usize;
-
-    /// Returns the type at given index if any.
-    ///
-    /// The type must be canonicalized.
-    ///
-    /// # Note
-    ///
-    /// The returned type may be wrapped by the user crate and thus
-    /// the actually returned type only has to be comparable to a Wasm type.
-    fn input_at(&self, at: u32) -> Option<ValType>;
-
-    /// Returns the type at given index if any.
-    ///
-    /// The type must be canonicalized.
-    ///
-    /// # Note
-    ///
-    /// The returned type may be wrapped by the user crate and thus
-    /// the actually returned type only has to be comparable to a Wasm type.
-    fn output_at(&self, at: u32) -> Option<ValType>;
-
-    /// Returns the list of inputs as an iterator.
-    fn inputs(&self) -> WasmFuncTypeInputs<'_, Self>
-    where
-        Self: Sized,
-    {
-        let range = 0..self.len_inputs() as u32;
-        WasmFuncTypeInputs {
-            func_type: self,
-            range,
-        }
-    }
-
-    /// Returns the list of outputs as an iterator.
-    fn outputs(&self) -> WasmFuncTypeOutputs<'_, Self>
-    where
-        Self: Sized,
-    {
-        let range = 0..self.len_outputs() as u32;
-        WasmFuncTypeOutputs {
-            func_type: self,
-            range,
-        }
-    }
-}
-
-impl<T> WasmFuncType for &'_ T
-where
-    T: ?Sized + WasmFuncType,
-{
-    fn len_inputs(&self) -> usize {
-        T::len_inputs(self)
-    }
-    fn len_outputs(&self) -> usize {
-        T::len_outputs(self)
-    }
-    fn input_at(&self, at: u32) -> Option<ValType> {
-        T::input_at(self, at)
-    }
-    fn output_at(&self, at: u32) -> Option<ValType> {
-        T::output_at(self, at)
-    }
-}
-
-/// Iterator over the inputs of a Wasm function type.
-#[derive(Clone)]
-pub struct WasmFuncTypeInputs<'a, T> {
-    /// The iterated-over function type.
-    func_type: &'a T,
-    /// The range we're iterating over.
-    range: Range<u32>,
-}
-
-impl<T> Iterator for WasmFuncTypeInputs<'_, T>
-where
-    T: WasmFuncType,
-{
-    type Item = crate::ValType;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.range
-            .next()
-            .map(|i| self.func_type.input_at(i).unwrap())
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.range.size_hint()
-    }
-}
-
-impl<T> DoubleEndedIterator for WasmFuncTypeInputs<'_, T>
-where
-    T: WasmFuncType,
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.range
-            .next_back()
-            .map(|i| self.func_type.input_at(i).unwrap())
-    }
-}
-
-impl<T> ExactSizeIterator for WasmFuncTypeInputs<'_, T>
-where
-    T: WasmFuncType,
-{
-    fn len(&self) -> usize {
-        self.range.len()
-    }
-}
-
-/// Iterator over the outputs of a Wasm function type.
-#[derive(Clone)]
-pub struct WasmFuncTypeOutputs<'a, T> {
-    /// The iterated-over function type.
-    func_type: &'a T,
-    /// The range we're iterating over.
-    range: Range<u32>,
-}
-
-impl<T> Iterator for WasmFuncTypeOutputs<'_, T>
-where
-    T: WasmFuncType,
-{
-    type Item = crate::ValType;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.range
-            .next()
-            .map(|i| self.func_type.output_at(i).unwrap())
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.range.size_hint()
-    }
-}
-
-impl<T> DoubleEndedIterator for WasmFuncTypeOutputs<'_, T>
-where
-    T: WasmFuncType,
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.range
-            .next_back()
-            .map(|i| self.func_type.output_at(i).unwrap())
-    }
-}
-
-impl<T> ExactSizeIterator for WasmFuncTypeOutputs<'_, T>
-where
-    T: WasmFuncType,
-{
-    fn len(&self) -> usize {
-        self.range.len()
-    }
-}
 
 /// Types that qualify as Wasm validation database.
 ///
@@ -192,9 +27,6 @@ where
 /// structure while parsing and also validate at the same time without
 /// the need of an additional parsing or validation step or copying data around.
 pub trait WasmModuleResources {
-    /// The function type used for validation.
-    type FuncType: WasmFuncType;
-
     /// Returns the table at given index if any.
     ///
     /// The table element type must be canonicalized.
@@ -206,17 +38,17 @@ pub trait WasmModuleResources {
     /// Returns the tag at given index.
     ///
     /// The tag's function type must be canonicalized.
-    fn tag_at(&self, at: u32) -> Option<&Self::FuncType>;
+    fn tag_at(&self, at: u32) -> Option<&FuncType>;
 
     /// Returns the global variable at given index.
     ///
     /// The global's value type must be canonicalized.
     fn global_at(&self, at: u32) -> Option<GlobalType>;
 
-    /// Returns the `FuncType` associated with the given type index.
+    /// Returns the `SubType` associated with the given type index.
     ///
-    /// The function type must be canonicalized.
-    fn func_type_at(&self, type_idx: u32) -> Option<&Self::FuncType>;
+    /// The sub type must be canonicalized.
+    fn sub_type_at(&self, type_index: u32) -> Option<&SubType>;
 
     /// Returns the type id associated with the given function
     /// index.
@@ -225,13 +57,13 @@ pub trait WasmModuleResources {
     /// Returns the `FuncType` associated with the given function index.
     ///
     /// The function type must be canonicalized.
-    fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType>;
+    fn type_of_function(&self, func_idx: u32) -> Option<&FuncType>;
 
     /// Return the `ContType` associated with the given id.
     fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType>;
 
     /// Return the `FuncType` associated with the given id.
-    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType>;
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType>;
 
     /// Returns the element type at the given index.
     ///
@@ -298,33 +130,31 @@ impl<T> WasmModuleResources for &'_ T
 where
     T: ?Sized + WasmModuleResources,
 {
-    type FuncType = T::FuncType;
-
     fn table_at(&self, at: u32) -> Option<TableType> {
         T::table_at(self, at)
     }
     fn memory_at(&self, at: u32) -> Option<MemoryType> {
         T::memory_at(self, at)
     }
-    fn tag_at(&self, at: u32) -> Option<&Self::FuncType> {
+    fn tag_at(&self, at: u32) -> Option<&FuncType> {
         T::tag_at(self, at)
     }
     fn global_at(&self, at: u32) -> Option<GlobalType> {
         T::global_at(self, at)
     }
-    fn func_type_at(&self, at: u32) -> Option<&Self::FuncType> {
-        T::func_type_at(self, at)
+    fn sub_type_at(&self, at: u32) -> Option<&SubType> {
+        T::sub_type_at(self, at)
     }
     fn type_id_of_function(&self, func_idx: u32) -> Option<CoreTypeId> {
         T::type_id_of_function(self, func_idx)
     }
-    fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType> {
+    fn type_of_function(&self, func_idx: u32) -> Option<&FuncType> {
         T::type_of_function(self, func_idx)
     }
     fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
         T::cont_type_at(self, id)
     }
-    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType> {
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
         T::func_type_at_id(self, id)
     }
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<(), BinaryReaderError> {
@@ -358,8 +188,6 @@ impl<T> WasmModuleResources for std::sync::Arc<T>
 where
     T: WasmModuleResources,
 {
-    type FuncType = T::FuncType;
-
     fn table_at(&self, at: u32) -> Option<TableType> {
         T::table_at(self, at)
     }
@@ -368,7 +196,7 @@ where
         T::memory_at(self, at)
     }
 
-    fn tag_at(&self, at: u32) -> Option<&Self::FuncType> {
+    fn tag_at(&self, at: u32) -> Option<&FuncType> {
         T::tag_at(self, at)
     }
 
@@ -376,15 +204,15 @@ where
         T::global_at(self, at)
     }
 
-    fn func_type_at(&self, type_idx: u32) -> Option<&Self::FuncType> {
-        T::func_type_at(self, type_idx)
+    fn sub_type_at(&self, type_idx: u32) -> Option<&SubType> {
+        T::sub_type_at(self, type_idx)
     }
 
     fn type_id_of_function(&self, func_idx: u32) -> Option<CoreTypeId> {
         T::type_id_of_function(self, func_idx)
     }
 
-    fn type_of_function(&self, func_idx: u32) -> Option<&Self::FuncType> {
+    fn type_of_function(&self, func_idx: u32) -> Option<&FuncType> {
         T::type_of_function(self, func_idx)
     }
 
@@ -392,7 +220,7 @@ where
         T::cont_type_at(self, id)
     }
 
-    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&Self::FuncType> {
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
         T::func_type_at_id(self, id)
     }
 
@@ -426,23 +254,5 @@ where
 
     fn is_function_referenced(&self, idx: u32) -> bool {
         T::is_function_referenced(self, idx)
-    }
-}
-
-impl WasmFuncType for FuncType {
-    fn len_inputs(&self) -> usize {
-        self.params().len()
-    }
-
-    fn len_outputs(&self) -> usize {
-        self.results().len()
-    }
-
-    fn input_at(&self, at: u32) -> Option<ValType> {
-        self.params().get(at as usize).copied()
-    }
-
-    fn output_at(&self, at: u32) -> Option<ValType> {
-        self.results().get(at as usize).copied()
     }
 }
