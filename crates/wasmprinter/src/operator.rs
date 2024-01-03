@@ -254,6 +254,19 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
         self.printer.print_idx(&self.state.core.type_names, idx)
     }
 
+    fn field_index(&mut self, idx: u32) -> Result<()> {
+        write!(&mut self.printer.result, "{idx}")?;
+        Ok(())
+    }
+
+    fn from_ref_type(&mut self, ref_ty: RefType) -> Result<()> {
+        self.printer.print_reftype(ref_ty)
+    }
+
+    fn to_ref_type(&mut self, ref_ty: RefType) -> Result<()> {
+        self.printer.print_reftype(ref_ty)
+    }
+
     fn data_index(&mut self, idx: u32) -> Result<()> {
         self.printer.print_idx(&self.state.core.data_names, idx)
     }
@@ -590,6 +603,7 @@ macro_rules! define_visit {
     (name TableGrow) => ("table.grow");
     (name RefAsNonNull) => ("ref.as_non_null");
     (name RefNull) => ("ref.null");
+    (name RefEq) => ("ref.eq");
     (name RefIsNull) => ("ref.is_null");
     (name RefFunc) => ("ref.func");
     (name I32Const) => ("i32.const");
@@ -1070,7 +1084,12 @@ macro_rules! define_visit {
     (name Suspend) => ("suspend");
     (name Barrier) => ("barrier");
 
+    (name StructNew) => ("struct.new");
     (name StructNewDefault) => ("struct.new_default");
+    (name StructGet) => ("struct.get");
+    (name StructGetS) => ("struct.get_s");
+    (name StructGetU) => ("struct.get_u");
+    (name StructSet) => ("struct.set");
     (name ArrayNew) => ("array.new");
     (name ArrayNewDefault) => ("array.new_default");
     (name ArrayNewFixed) => ("array.new_fixed");
@@ -1091,6 +1110,8 @@ macro_rules! define_visit {
     (name RefTestNullable) => ("ref.test");
     (name RefCastNonNull) => ("ref.cast");
     (name RefCastNullable) => ("ref.cast");
+    (name BrOnCast) => ("br_on_cast");
+    (name BrOnCastFail) => ("br_on_cast_fail");
     (name RefI31) => ("ref.i31");
     (name I31GetS) => ("i31.get_s");
     (name I31GetU) => ("i31.get_u");
