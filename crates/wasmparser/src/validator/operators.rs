@@ -24,9 +24,9 @@
 
 use crate::{
     limits::MAX_WASM_FUNCTION_LOCALS, ArrayType, BinaryReaderError, BlockType, BrTable,
-    CompositeType, ContType, FieldType, FuncType, HeapType, Ieee32, Ieee64, MemArg, RefType, Result,
-    ResumeTable, StorageType, StructType, SubType, UnpackedIndex, ValType, VisitOperator, WasmFeatures,
-    WasmModuleResources, V128,
+    CompositeType, ContType, FieldType, FuncType, HeapType, Ieee32, Ieee64, MemArg, RefType,
+    Result, ResumeTable, StorageType, StructType, SubType, UnpackedIndex, ValType, VisitOperator,
+    WasmFeatures, WasmModuleResources, V128,
 };
 use std::ops::{Deref, DerefMut};
 
