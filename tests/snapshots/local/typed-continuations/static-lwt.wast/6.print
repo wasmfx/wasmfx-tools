@@ -4,7 +4,7 @@
   (type (;2;) (func (result i32)))
   (type (;3;) (func (result (ref null 1))))
   (type (;4;) (func (param (ref 1))))
-  (import "lwt" "yield" (tag (;0;) (type $func)))
+  (import "lwt" "yield" (tag $yield (;0;) (type $func)))
   (import "queue" "queue-empty" (func $queue-empty (;0;) (type 2)))
   (import "queue" "dequeue" (func $dequeue (;1;) (type 3)))
   (import "queue" "enqueue" (func $enqueue (;2;) (type 4)))
@@ -16,7 +16,7 @@
       end
       block $on_yield (result (ref 1))
         call $dequeue
-        resume $cont (tag 0 $on_yield)
+        resume $cont (tag $yield $on_yield)
         br $l
       end
       call $enqueue

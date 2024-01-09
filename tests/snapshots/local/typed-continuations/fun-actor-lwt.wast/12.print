@@ -14,17 +14,17 @@
   (type (;12;) (func (result (ref 1) (ref 3))))
   (type (;13;) (func (result i32 i32 (ref 1))))
   (import "spectest" "print_i32" (func $log (;0;) (type $i-func)))
-  (import "lwt" "yield" (tag (;0;) (type $func)))
-  (import "lwt" "fork" (tag (;1;) (type 6) (param (ref 1))))
+  (import "lwt" "yield" (tag $yield (;0;) (type $func)))
+  (import "lwt" "fork" (tag $fork (;1;) (type 6) (param (ref 1))))
   (import "mailboxes" "init" (func $init (;1;) (type $func)))
   (import "mailboxes" "empty-mb" (func $empty-mb (;2;) (type 7)))
   (import "mailboxes" "new-mb" (func $new-mb (;3;) (type 8)))
   (import "mailboxes" "send-to-mb" (func $send-to-mb (;4;) (type 9)))
   (import "mailboxes" "recv-from-mb" (func $recv-from-mb (;5;) (type 7)))
-  (import "actor" "self" (tag (;2;) (type 8) (result i32)))
-  (import "actor" "spawn" (tag (;3;) (type 10) (param (ref 1)) (result i32)))
-  (import "actor" "send" (tag (;4;) (type 9) (param i32 i32)))
-  (import "actor" "recv" (tag (;5;) (type 8) (result i32)))
+  (import "actor" "self" (tag $self (;2;) (type 8) (result i32)))
+  (import "actor" "spawn" (tag $spawn (;3;) (type 10) (param (ref 1)) (result i32)))
+  (import "actor" "send" (tag $send (;4;) (type 9) (param i32 i32)))
+  (import "actor" "recv" (tag $recv (;5;) (type 8) (result i32)))
   (func $act-res (;6;) (type 11) (param $mine i32) (param $res i32) (param $ik (ref 3))
     (local $yours i32) (local $k (ref 1)) (local $you (ref 1))
     block $on_self (result (ref 3))
@@ -33,7 +33,7 @@
           block $on_recv (result (ref 3))
             local.get $res
             local.get $ik
-            resume $i-cont (tag 2 $on_self)(tag 3 $on_spawn)(tag 4 $on_send)(tag 5 $on_recv)
+            resume $i-cont (tag $self $on_self)(tag $spawn $on_spawn)(tag $send $on_send)(tag $recv $on_recv)
             return
           end
           local.set $ik
@@ -41,7 +41,7 @@
             local.get $mine
             call $empty-mb
             if ;; label = @5
-              suspend 0
+              suspend $yield
               br $l
             end
           end
@@ -68,7 +68,7 @@
       ref.func $act-nullary
       cont.new $icont-cont
       cont.bind $icont-cont $cont
-      suspend 1
+      suspend $fork
       local.get $mine
       local.get $yours
       local.get $ik
@@ -87,7 +87,7 @@
         block $on_send (type 13) (result i32 i32 (ref 1))
           block $on_recv (result (ref 3))
             local.get $k
-            resume $cont (tag 2 $on_self)(tag 3 $on_spawn)(tag 4 $on_send)(tag 5 $on_recv)
+            resume $cont (tag $self $on_self)(tag $spawn $on_spawn)(tag $send $on_send)(tag $recv $on_recv)
             return
           end
           local.set $ik
@@ -95,7 +95,7 @@
             local.get $mine
             call $empty-mb
             if ;; label = @5
-              suspend 0
+              suspend $yield
               br $l
             end
           end
@@ -122,7 +122,7 @@
       ref.func $act-nullary
       cont.new $icont-cont
       cont.bind $icont-cont $cont
-      suspend 1
+      suspend $fork
       local.get $mine
       local.get $yours
       local.get $ik

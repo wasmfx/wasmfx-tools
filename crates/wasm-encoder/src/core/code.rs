@@ -310,10 +310,6 @@ pub enum Instruction<'a> {
     Loop(BlockType),
     If(BlockType),
     Else,
-    Try(BlockType),
-    Delegate(u32),
-    Catch(u32),
-    CatchAll,
     End,
     Br(u32),
     BrIf(u32),
@@ -333,7 +329,15 @@ pub enum Instruction<'a> {
         ty: u32,
         table: u32,
     },
+    TryTable(BlockType, Cow<'a, [Catch]>),
     Throw(u32),
+    ThrowRef,
+
+    // Deprecated exception-handling instructions
+    Try(BlockType),
+    Delegate(u32),
+    Catch(u32),
+    CatchAll,
     Rethrow(u32),
 
     // Parametric instructions.
@@ -1031,6 +1035,9 @@ impl Encode for Instruction<'_> {
                 sink.push(0x09);
                 l.encode(sink);
             }
+            Instruction::ThrowRef => {
+                sink.push(0x0A);
+            }
             Instruction::End => sink.push(0x0B),
             Instruction::Br(l) => {
                 sink.push(0x0C);
@@ -1095,6 +1102,12 @@ impl Encode for Instruction<'_> {
             Instruction::TypedSelect(ty) => {
                 sink.push(0x1c);
                 [ty].encode(sink);
+            }
+
+            Instruction::TryTable(ty, ref catches) => {
+                sink.push(0x1f);
+                ty.encode(sink);
+                catches.encode(sink);
             }
 
             // Variable instructions.
@@ -3155,6 +3168,40 @@ impl Encode for Instruction<'_> {
             }
             Instruction::Barrier(_blockty) => {
                 todo!()
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[allow(missing_docs)]
+pub enum Catch {
+    One { tag: u32, label: u32 },
+    OneRef { tag: u32, label: u32 },
+    All { label: u32 },
+    AllRef { label: u32 },
+}
+
+impl Encode for Catch {
+    fn encode(&self, sink: &mut Vec<u8>) {
+        match self {
+            Catch::One { tag, label } => {
+                sink.push(0x00);
+                tag.encode(sink);
+                label.encode(sink);
+            }
+            Catch::OneRef { tag, label } => {
+                sink.push(0x01);
+                tag.encode(sink);
+                label.encode(sink);
+            }
+            Catch::All { label } => {
+                sink.push(0x02);
+                label.encode(sink);
+            }
+            Catch::AllRef { label } => {
+                sink.push(0x03);
+                label.encode(sink);
             }
         }
     }

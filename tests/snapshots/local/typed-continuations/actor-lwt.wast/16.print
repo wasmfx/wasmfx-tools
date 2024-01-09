@@ -28,7 +28,7 @@
     global.get $mmax
     i32.ge_u
     if ;; label = @1
-      throw 0
+      throw $too-many-mailboxes
     end
     global.get $msize
     local.set $mb
@@ -52,7 +52,7 @@
       local.get $v
       i32.store
     else
-      throw 1
+      throw $too-many-messages
     end
   )
   (func $recv-from-mb (;4;) (type 1) (param $mb i32) (result i32)
@@ -70,8 +70,8 @@
     local.get $v
   )
   (memory (;0;) 1)
-  (tag (;0;) (type 0))
-  (tag (;1;) (type 0))
+  (tag $too-many-mailboxes (;0;) (type 0))
+  (tag $too-many-messages (;1;) (type 0))
   (global $msize (;0;) (mut i32) i32.const 0)
   (global $mmax (;1;) i32 i32.const 1024)
   (export "init" (func $init))

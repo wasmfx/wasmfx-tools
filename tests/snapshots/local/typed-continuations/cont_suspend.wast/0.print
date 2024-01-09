@@ -5,7 +5,7 @@
   (type (;3;) (func (result i32)))
   (import "spectest" "print_i32" (func $print (;0;) (type 2)))
   (func $f (;1;) (type $ft)
-    suspend 0
+    suspend $h
     i32.const 2
     call $print
   )
@@ -15,7 +15,7 @@
     block $on_h (result (ref 1))
       ref.func $f
       cont.new $ct
-      resume $ct (tag 0 $on_h)
+      resume $ct (tag $h $on_h)
       unreachable
     end
     drop
@@ -24,7 +24,7 @@
     i32.const 42
     return
   )
-  (tag (;0;) (type $ft))
+  (tag $h (;0;) (type $ft))
   (export "f" (func $f))
   (export "run" (func 2))
 )

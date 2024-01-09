@@ -100,7 +100,7 @@
       global.get $qdelta
       i32.lt_u
       if ;; label = @2
-        throw 0
+        throw $too-many-mailboxes
       else
         global.get $qback-mb
         global.get $qfront-mb
@@ -138,7 +138,7 @@
   )
   (table $queue (;0;) 0 (ref null 1))
   (memory (;0;) 1)
-  (tag (;0;) (type $func))
+  (tag $too-many-mailboxes (;0;) (type $func))
   (global $qdelta (;0;) i32 i32.const 10)
   (global $qback-k (;1;) (mut i32) i32.const 0)
   (global $qfront-k (;2;) (mut i32) i32.const 0)

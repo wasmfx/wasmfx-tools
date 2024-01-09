@@ -75,7 +75,7 @@
       block $on_yield (result (ref 1))
         block $on_spawn (type 5) (result (ref 1) (ref 1))
           call $dequeue
-          resume $cont (tag 0 $on_yield)(tag 1 $on_spawn)
+          resume $cont (tag $yield $on_yield)(tag $spawn $on_spawn)
           br $l
         end
         call $enqueue
@@ -87,8 +87,8 @@
     end
   )
   (table $queue (;0;) 0 (ref null 1))
-  (tag (;0;) (type $proc))
-  (tag (;1;) (type 2) (param (ref 1)))
+  (tag $yield (;0;) (type $proc))
+  (tag $spawn (;1;) (type 2) (param (ref 1)))
   (global $qdelta (;0;) i32 i32.const 10)
   (global $qback (;1;) (mut i32) i32.const 0)
   (global $qfront (;2;) (mut i32) i32.const 0)

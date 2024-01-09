@@ -7,15 +7,15 @@
   (type (;5;) (func (param (ref 3))))
   (type (;6;) (func (param i64 i64) (result i64)))
   (import "spectest" "print_i64" (func $log (;0;) (type $ghook)))
-  (import "scheduler" "yield" (tag (;0;) (type $proc)))
-  (import "scheduler" "spawn" (tag (;1;) (type 5) (param (ref 3))))
+  (import "scheduler" "yield" (tag $syield (;0;) (type $proc)))
+  (import "scheduler" "spawn" (tag $spawn (;1;) (type 5) (param (ref 3))))
   (import "scheduler" "scheduler" (func $scheduler (;1;) (type 5)))
   (import "generator" "sum" (func $gsum (;2;) (type 6)))
   (import "generator" "hook" (global $ghook (;0;) (mut (ref 0))))
   (func $syield (;3;) (type $ghook) (param $i i64)
     local.get $i
     call $log
-    suspend 0
+    suspend $syield
   )
   (func $bg-thread (;4;) (type $proc)
     i64.const -10
@@ -23,7 +23,7 @@
     loop $l
       i64.const -11
       call $log
-      suspend 0
+      suspend $syield
       global.get $done
       i32.eqz
       br_if $l
@@ -34,7 +34,7 @@
   (func $main (;5;) (type $pproc) (param $i i64) (param $j i64)
     ref.func $bg-thread
     cont.new $cont
-    suspend 1
+    suspend $spawn
     ref.func $syield
     global.set $ghook
     local.get $i

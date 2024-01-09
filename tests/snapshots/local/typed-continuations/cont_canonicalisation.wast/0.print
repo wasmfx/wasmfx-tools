@@ -10,11 +10,11 @@
     block $on_e3 (type 6) (result i32 (ref 2))
       i32.const 49
       ref.null 4
-      resume $f3_ct (tag 0 $on_e3)
+      resume $f3_ct (tag $e3_int_to_int $on_e3)
       unreachable
     end
     unreachable
   )
-  (tag (;0;) (type $int_to_int) (param i32) (result i32))
+  (tag $e3_int_to_int (;0;) (type $int_to_int) (param i32) (result i32))
   (export "test_case_4" (func $test_case_4))
 )

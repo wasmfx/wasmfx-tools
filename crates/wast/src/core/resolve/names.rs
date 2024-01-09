@@ -528,10 +528,6 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_block_type(bt)?;
             }
             TryTable(try_table) => {
-                self.blocks.push(ExprBlock {
-                    label: try_table.block.label,
-                    pushed_scope: false,
-                });
                 self.resolve_block_type(&mut try_table.block)?;
                 for catch in &mut try_table.catches {
                     if let Some(tag) = catch.kind.tag_index_mut() {
@@ -539,6 +535,10 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                     }
                     self.resolve_label(&mut catch.label)?;
                 }
+                self.blocks.push(ExprBlock {
+                    label: try_table.block.label,
+                    pushed_scope: false,
+                });
             }
 
             // On `End` instructions we pop a label from the stack, and for both
@@ -586,12 +586,14 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_label(&mut i.default)?;
             }
 
-            Rethrow(i) => {
-                self.resolve_label(i)?;
-            }
             Throw(i) | Catch(i) | Suspend(i) => {
                 self.resolver.resolve(i, Ns::Tag)?;
             }
+
+            Rethrow(i) => {
+                self.resolve_label(i)?;
+            }
+
             Delegate(i) => {
                 // Since a delegate starts counting one layer out from the
                 // current try-delegate block, we pop before we resolve labels.

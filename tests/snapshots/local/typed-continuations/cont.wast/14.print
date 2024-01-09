@@ -11,7 +11,7 @@
   (func $gen (;1;) (type $gen) (param $i i64)
     loop $l
       local.get $i
-      suspend 0
+      suspend $yield
       br_if 1 (;@0;)
       local.get $i
       global.get $hook
@@ -29,7 +29,7 @@
     ref.func $gen
     cont.new $cont0
     block $on_first_yield (type 6) (param i64 (ref 2)) (result i64 (ref 3))
-      resume $cont0 (tag 0 $on_first_yield)
+      resume $cont0 (tag $yield $on_first_yield)
       unreachable
     end
     loop $on_yield (type 7) (param i64 (ref 3))
@@ -43,12 +43,12 @@
       local.get $j
       i64.eq
       local.get $k
-      resume $cont (tag 0 $on_yield)
+      resume $cont (tag $yield $on_yield)
     end
     local.get $sum
     return
   )
-  (tag (;0;) (type 4) (param i64) (result i32))
+  (tag $yield (;0;) (type 4) (param i64) (result i32))
   (global $hook (;0;) (mut (ref 0)) ref.func $dummy)
   (export "hook" (global $hook))
   (export "start" (func $gen))
