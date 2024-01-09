@@ -12,7 +12,7 @@
       block $on_set (type 6) (result i32 (ref 3))
         local.get $s
         local.get $k
-        resume $gk (tag 0 $on_get)(tag 1 $on_set)
+        resume $gk (tag $get $on_get)(tag $set $on_set)
         return
       end
       return_call $setting
@@ -24,7 +24,7 @@
     block $on_get (result (ref 2))
       block $on_set (type 6) (result i32 (ref 3))
         local.get $k
-        resume $sk (tag 0 $on_get)(tag 1 $on_set)
+        resume $sk (tag $get $on_get)(tag $set $on_set)
         return
       end
       return_call $setting
@@ -34,13 +34,13 @@
   )
   (func $f (;2;) (type $sf) (result i32)
     i32.const 7
-    suspend 1
-    suspend 0
+    suspend $set
+    suspend $get
     i32.const 2
     i32.const 3
-    suspend 1
+    suspend $set
     i32.const 3
-    suspend 0
+    suspend $get
     i32.add
     i32.mul
     i32.add
@@ -51,8 +51,8 @@
     cont.new $sk
     call $setting
   )
-  (tag (;0;) (type $sf) (result i32))
-  (tag (;1;) (type 4) (param i32))
+  (tag $get (;0;) (type $sf) (result i32))
+  (tag $set (;1;) (type 4) (param i32))
   (export "run" (func 3))
   (elem (;0;) declare func $f)
 )

@@ -13,7 +13,7 @@
     global.get $max-promises
     i32.eq
     if ;; label = @1
-      throw 0
+      throw $too-many-promises
     end
     global.get $num-promises
     local.set $p
@@ -63,7 +63,7 @@
       local.get $k
       table.set $observers
     else
-      throw 1
+      throw $too-many-observers
     end
   )
   (func $fulfill (;4;) (type 7) (param $p i32) (param $v i32) (result (ref null 1))
@@ -91,8 +91,8 @@
   )
   (table $observers (;0;) 1000 (ref null 3))
   (memory (;0;) 1)
-  (tag (;0;) (type $func))
-  (tag (;1;) (type $func))
+  (tag $too-many-promises (;0;) (type $func))
+  (tag $too-many-observers (;1;) (type $func))
   (global $num-promises (;0;) (mut i32) i32.const 0)
   (global $max-promises (;1;) i32 i32.const 1000)
   (export "new" (func $new))

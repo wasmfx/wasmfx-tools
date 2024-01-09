@@ -5,8 +5,8 @@
   (type $consumer (;3;) (cont $cfun))
   (type (;4;) (func (param i32)))
   (type (;5;) (func (param (ref 2) (ref 3))))
-  (import "pipes" "send" (tag (;0;) (type 4) (param i32)))
-  (import "pipes" "receive" (tag (;1;) (type $pfun) (result i32)))
+  (import "pipes" "send" (tag $send (;0;) (type 4) (param i32)))
+  (import "pipes" "receive" (tag $receive (;1;) (type $pfun) (result i32)))
   (import "pipes" "pipe" (func $pipe (;0;) (type 5)))
   (import "spectest" "print_i32" (func $log (;1;) (type 4)))
   (func $nats (;2;) (type $cfun) (param $n i32) (result i32)
@@ -16,7 +16,7 @@
       local.get $n
       call $log
       local.get $n
-      suspend 0
+      suspend $send
       local.get $n
       i32.const 1
       i32.add
@@ -33,7 +33,7 @@
     local.set $a
     loop $l
       local.get $a
-      suspend 1
+      suspend $receive
       i32.add
       local.set $a
       i32.const -2

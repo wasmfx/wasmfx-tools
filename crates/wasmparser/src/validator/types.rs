@@ -2727,6 +2727,10 @@ impl TypeList {
             | (HT::Cont, _)
             | (HT::NoCont, _)
             | (HT::I31, _) => false,
+
+            // TODO: this probably isn't right, this is probably related to some
+            // gc type.
+            (HT::Exn, _) => false,
         }
     }
 
@@ -2766,6 +2770,7 @@ impl TypeList {
             | HeapType::I31
             | HeapType::None => HeapType::Any,
             HeapType::Cont | HeapType::NoCont => HeapType::Cont,
+            HeapType::Exn => HeapType::Exn,
         }
     }
 

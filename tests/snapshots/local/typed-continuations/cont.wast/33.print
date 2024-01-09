@@ -10,14 +10,14 @@
   (type (;8;) (func (result i32 i32 i32 i32 i32 i32)))
   (func $f (;0;) (type $f0) (result i32 i32 i32 i32 i32 i32 i32)
     i32.const 0
-    suspend 0
+    suspend $e
   )
   (func (;1;) (type $f0) (result i32 i32 i32 i32 i32 i32 i32)
     (local $k6 (ref null 7)) (local $k4 (ref null 6)) (local $k2 (ref null 5))
     block $l (result (ref 7))
       ref.func $f
       cont.new $k0
-      resume $k0 (tag 0 $l)
+      resume $k0 (tag $e $l)
       unreachable
     end
     local.set $k6
@@ -36,7 +36,7 @@
     local.get $k2
     resume $k2
   )
-  (tag (;0;) (type 8) (result i32 i32 i32 i32 i32 i32))
+  (tag $e (;0;) (type 8) (result i32 i32 i32 i32 i32 i32))
   (export "run" (func 1))
   (elem (;0;) declare func $f)
 )
