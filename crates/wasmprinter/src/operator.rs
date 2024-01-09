@@ -1,7 +1,9 @@
 use super::{Printer, State};
 use anyhow::{anyhow, bail, Result};
 use std::fmt::Write;
-use wasmparser::{BlockType, BrTable, Catch, MemArg, RefType, ResumeTable, TryTable, VisitOperator};
+use wasmparser::{
+    BlockType, BrTable, Catch, MemArg, RefType, ResumeTable, TryTable, VisitOperator,
+};
 
 pub struct PrintOperator<'a, 'b> {
     pub(super) printer: &'a mut Printer,
