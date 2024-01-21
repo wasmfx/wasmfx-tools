@@ -612,10 +612,7 @@ impl TestState {
                 "simd" => features.simd = true,
                 "exception-handling" => features.exceptions = true,
                 "tail-call" => features.tail_call = true,
-                "memory64" => {
-                    features.memory64 = true;
-                    features.reference_types = false;
-                }
+                "memory64" => features.memory64 = true,
                 "component-model" => features.component_model = true,
                 "multi-memory" => features.multi_memory = true,
                 "extended-const" => features.extended_const = true,
@@ -719,7 +716,9 @@ fn error_matches(error: &str, message: &str) -> bool {
             // the spec interpreter will read past section boundaries when
             // decoding, wasmparser won't, producing different errors.
             || error.contains("unexpected end-of-file")
-            || error.contains("malformed section id");
+            || error.contains("malformed section id")
+            // FIXME(WebAssembly/memory64#45)
+            || error.contains("trailing bytes at end of section");
     }
 
     if message == "integer too large" {
@@ -734,7 +733,9 @@ fn error_matches(error: &str, message: &str) -> bool {
             // were inflated to a larger size while not updating the binary
             // encoding of the size of the section.
             || error.contains("invalid var_u32: integer representation too long")
-            || error.contains("malformed section id");
+            || error.contains("malformed section id")
+            // FIXME(WebAssembly/memory64#45)
+            || error.contains("trailing bytes at end of section");
     }
 
     // wasmparser blames a truncated file here, the spec interpreter blames the
@@ -752,7 +753,7 @@ fn error_matches(error: &str, message: &str) -> bool {
     // a missing End before failing to validate the botched instruction.  However
     // wasmparser fails to validate the botched instruction first
     if message == "unexpected end" {
-        return error.contains("type index out of bounds");
+        return error.contains("type index out of bounds") || error.contains("END opcode expected");
     }
 
     if message == "unexpected content after last section" {
@@ -760,7 +761,8 @@ fn error_matches(error: &str, message: &str) -> bool {
     }
 
     if message == "malformed limits flags" {
-        return error.contains("invalid memory limits flags");
+        return error.contains("invalid memory limits flags")
+            || error.contains("invalid table resizable limits flags");
     }
 
     if message == "zero flag expected" {
