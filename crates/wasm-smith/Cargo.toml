@@ -8,7 +8,7 @@ license = "Apache-2.0 WITH LLVM-exception"
 name = "wasm-smith"
 readme = "./README.md"
 repository = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasm-smith"
-version = "0.14.0"
+version = "0.15.0"
 exclude = ["/benches/corpus"]
 
 [[bench]]
@@ -24,7 +24,7 @@ indexmap = { workspace = true }
 leb128 = { workspace = true }
 serde = { workspace = true, optional = true }
 serde_derive = { workspace = true, optional = true }
-wasm-encoder = { workspace = true, features = ['wasmparser'] }
+wasm-encoder = { workspace = true }
 wasmparser = { workspace = true, optional = true }
 wat = { workspace = true, optional = true }
 
@@ -40,3 +40,4 @@ libfuzzer-sys = { workspace = true }
 
 [features]
 _internal_cli = ["anyhow", "clap", "flagset/serde", "serde", "serde_derive", "wasmparser", "wat"]
+wasmparser = ['dep:wasmparser', 'wasm-encoder/wasmparser']
