@@ -544,4 +544,5 @@ pub mod annotation {
     annotation!(name);
     annotation!(producers);
     annotation!(dylink_0 = "dylink.0");
+    annotation!(metadata_code_branch_hint = "metadata.code.branch_hint");
 }
