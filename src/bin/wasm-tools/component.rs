@@ -8,9 +8,9 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 
 use wasm_tools::Output;
+use wat::Detect;
 use wit_component::{
-    embed_component_metadata, is_wasm_binary_or_wat, parse_wit_from_path, ComponentEncoder,
-    DecodedWasm, Linker, StringEncoding, WitPrinter,
+    embed_component_metadata, ComponentEncoder, DecodedWasm, Linker, StringEncoding, WitPrinter,
 };
 use wit_parser::{Resolve, UnresolvedPackage};
 
@@ -22,6 +22,7 @@ pub enum Opts {
     Embed(EmbedOpts),
     Targets(TargetsOpts),
     Link(LinkOpts),
+    SemverCheck(SemverCheckOpts),
 }
 
 impl Opts {
@@ -32,6 +33,7 @@ impl Opts {
             Opts::Embed(embed) => embed.run(),
             Opts::Targets(targets) => targets.run(),
             Opts::Link(link) => link.run(),
+            Opts::SemverCheck(s) => s.run(),
         }
     }
 
@@ -42,6 +44,7 @@ impl Opts {
             Opts::Embed(embed) => embed.general_opts(),
             Opts::Targets(targets) => targets.general_opts(),
             Opts::Link(link) => link.general_opts(),
+            Opts::SemverCheck(s) => s.general_opts(),
         }
     }
 }
@@ -238,7 +241,8 @@ impl EmbedOpts {
         } else {
             Some(self.io.parse_input_wasm()?)
         };
-        let (resolve, id) = parse_wit_from_path(self.wit)?;
+        let mut resolve = Resolve::default();
+        let id = resolve.push_path(&self.wit)?.0;
         let world = resolve.select_world(id, self.world.as_deref())?;
 
         let mut wasm = wasm.unwrap_or_else(|| wit_component::dummy_module(&resolve, world));
@@ -481,7 +485,8 @@ impl WitOpts {
         // `parse_wit_from_path`.
         if let Some(input) = &self.input {
             if input.is_dir() {
-                let (resolve, id) = parse_wit_from_path(input)?;
+                let mut resolve = Resolve::default();
+                let id = resolve.push_dir(&input)?.0;
                 return Ok(DecodedWasm::WitPackage(resolve, id));
             }
         }
@@ -505,31 +510,34 @@ impl WitOpts {
             }
         };
 
-        if is_wasm_binary_or_wat(&input) {
-            // Use `wat` to possible translate the text format, and then
-            // afterwards use either `decode` or `metadata::decode` depending on
-            // if the input is a component or a core wasm mdoule.
-            let input = wat::parse_bytes(&input).map_err(|mut e| {
-                e.set_path(path);
-                e
-            })?;
-            if wasmparser::Parser::is_component(&input) {
-                wit_component::decode(&input)
-            } else {
-                let (_wasm, bindgen) = wit_component::metadata::decode(&input)?;
-                Ok(DecodedWasm::Component(bindgen.resolve, bindgen.world))
+        match Detect::from_bytes(&input) {
+            Detect::WasmBinary | Detect::WasmText => {
+                // Use `wat` to possible translate the text format, and then
+                // afterwards use either `decode` or `metadata::decode` depending on
+                // if the input is a component or a core wasm module.
+                let input = wat::parse_bytes(&input).map_err(|mut e| {
+                    e.set_path(path);
+                    e
+                })?;
+                if wasmparser::Parser::is_component(&input) {
+                    wit_component::decode(&input)
+                } else {
+                    let (_wasm, bindgen) = wit_component::metadata::decode(&input)?;
+                    Ok(DecodedWasm::Component(bindgen.resolve, bindgen.world))
+                }
             }
-        } else {
-            // This is a single WIT file, so create the single-file package and
-            // return it.
-            let input = match std::str::from_utf8(&input) {
-                Ok(s) => s,
-                Err(_) => bail!("input was not valid utf-8"),
-            };
-            let mut resolve = Resolve::default();
-            let pkg = UnresolvedPackage::parse(path, input)?;
-            let id = resolve.push(pkg)?;
-            Ok(DecodedWasm::WitPackage(resolve, id))
+            Detect::Unknown => {
+                // This is a single WIT file, so create the single-file package and
+                // return it.
+                let input = match std::str::from_utf8(&input) {
+                    Ok(s) => s,
+                    Err(_) => bail!("input was not valid utf-8"),
+                };
+                let mut resolve = Resolve::default();
+                let pkg = UnresolvedPackage::parse(path, input)?;
+                let id = resolve.push(pkg)?;
+                Ok(DecodedWasm::WitPackage(resolve, id))
+            }
         }
     }
 
@@ -652,12 +660,56 @@ impl TargetsOpts {
 
     /// Executes the application.
     fn run(self) -> Result<()> {
-        let (resolve, package_id) = parse_wit_from_path(&self.wit)?;
+        let mut resolve = Resolve::default();
+        let package_id = resolve.push_path(&self.wit)?.0;
         let world = resolve.select_world(package_id, self.world.as_deref())?;
         let component_to_test = self.input.parse_wasm()?;
 
         wit_component::targets(&resolve, world, &component_to_test)?;
 
+        Ok(())
+    }
+}
+
+/// Tool for verifying whether one world is a semver compatible evolution of
+/// another.
+#[derive(Parser)]
+pub struct SemverCheckOpts {
+    #[clap(flatten)]
+    general: wasm_tools::GeneralOpts,
+
+    /// The WIT package containing the `prev` and `new` worlds used in
+    /// arguments.
+    ///
+    /// This can either be a directory, a path to a single `*.wit` file, or a
+    /// path to a wasm-encoded WIT package.
+    wit: PathBuf,
+
+    /// The "previous" world, or older version, of what's being tested.
+    ///
+    /// This is considered the baseline for the semver compatibility check.
+    #[clap(long)]
+    prev: String,
+
+    /// The "new" world which is the "prev" world but modified.
+    ///
+    /// This is what's being tested to see whether it is a backwards-compatible
+    /// evolution of the "prev" world specified.
+    #[clap(long)]
+    new: String,
+}
+
+impl SemverCheckOpts {
+    fn general_opts(&self) -> &wasm_tools::GeneralOpts {
+        &self.general
+    }
+
+    fn run(self) -> Result<()> {
+        let mut resolve = Resolve::default();
+        let package_id = resolve.push_path(&self.wit)?.0;
+        let prev = resolve.select_world(package_id, Some(&self.prev))?;
+        let new = resolve.select_world(package_id, Some(&self.new))?;
+        wit_component::semver_check(resolve, prev, new)?;
         Ok(())
     }
 }
