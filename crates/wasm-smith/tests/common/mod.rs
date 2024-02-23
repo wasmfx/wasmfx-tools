@@ -16,6 +16,7 @@ pub fn parser_features_from_config(config: &Config) -> WasmFeatures {
         memory64: config.memory64_enabled,
         tail_call: config.tail_call_enabled,
         function_references: config.gc_enabled,
+        typed_continuations: config.typed_continuations_enabled,
         gc: config.gc_enabled,
 
         threads: false,
