@@ -4,14 +4,14 @@
   (type $pproc (;2;) (func (param i64 i64)))
   (type $cont (;3;) (cont $proc))
   (type $pcont (;4;) (cont $pproc))
-  (type (;5;) (func (param (ref 3))))
+  (type (;5;) (func (param (ref $cont))))
   (type (;6;) (func (param i64 i64) (result i64)))
   (import "spectest" "print_i64" (func $log (;0;) (type $ghook)))
   (import "scheduler" "yield" (tag $syield (;0;) (type $proc)))
-  (import "scheduler" "spawn" (tag $spawn (;1;) (type 5) (param (ref 3))))
+  (import "scheduler" "spawn" (tag $spawn (;1;) (type 5) (param (ref $cont))))
   (import "scheduler" "scheduler" (func $scheduler (;1;) (type 5)))
   (import "generator" "sum" (func $gsum (;2;) (type 6)))
-  (import "generator" "hook" (global $ghook (;0;) (mut (ref 0))))
+  (import "generator" "hook" (global $ghook (;0;) (mut (ref $ghook))))
   (func $syield (;3;) (type $ghook) (param $i i64)
     local.get $i
     call $log

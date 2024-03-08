@@ -1,10 +1,10 @@
 (module $example
   (type $func (;0;) (func))
   (type $cont (;1;) (cont $func))
-  (type (;2;) (func (param (ref 1))))
+  (type (;2;) (func (param (ref $cont))))
   (type (;3;) (func (param i32)))
   (import "lwt" "yield" (tag $yield (;0;) (type $func)))
-  (import "lwt" "fork" (tag $fork (;1;) (type 2) (param (ref 1))))
+  (import "lwt" "fork" (tag $fork (;1;) (type 2) (param (ref $cont))))
   (import "spectest" "print_i32" (func $log (;0;) (type 3)))
   (func $main (;1;) (type $func)
     i32.const 0

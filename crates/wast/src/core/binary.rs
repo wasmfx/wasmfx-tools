@@ -761,19 +761,6 @@ impl Encode for BlockType<'_> {
     }
 }
 
-impl Encode for FuncBindType<'_> {
-    fn encode(&self, e: &mut Vec<u8>) {
-        self.ty.encode(e);
-    }
-}
-
-impl Encode for LetType<'_> {
-    fn encode(&self, e: &mut Vec<u8>) {
-        self.block.encode(e);
-        self.locals.encode(e);
-    }
-}
-
 impl Encode for LaneArg {
     fn encode(&self, e: &mut Vec<u8>) {
         self.lane.encode(e);
@@ -1035,8 +1022,7 @@ fn find_names<'a>(
                         | Instruction::Loop(block)
                         | Instruction::Try(block)
                         | Instruction::Barrier(block)
-                        | Instruction::TryTable(TryTable { block, .. })
-                        | Instruction::Let(LetType { block, .. }) => {
+                        | Instruction::TryTable(TryTable { block, .. }) => {
                             if let Some(name) = get_name(&block.label, &block.label_name) {
                                 label_names.push((label_idx, name));
                             }

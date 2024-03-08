@@ -15,7 +15,7 @@
     local.get 5
   )
   (func (;1;) (type 6) (result i32 i32 i32 i32 i32 i32)
-    (local $k6 (ref null 5)) (local $k4 (ref null 4)) (local $k2 (ref null 3))
+    (local $k6 (ref null $k6)) (local $k4 (ref null $k4)) (local $k2 (ref null $k2))
     ref.func $f
     cont.new $k6
     local.set $k6
