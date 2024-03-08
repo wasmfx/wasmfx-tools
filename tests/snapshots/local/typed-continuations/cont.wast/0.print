@@ -1,7 +1,7 @@
 (module
   (type $f1 (;0;) (func))
   (type $k1 (;1;) (cont $f1))
-  (type (;2;) (func (param (ref 1))))
+  (type (;2;) (func (param (ref $k1))))
   (func $f1 (;0;) (type $f1)
     suspend $e1
   )
@@ -11,7 +11,7 @@
     resume $k1
   )
   (func (;2;) (type $f1)
-    block $h (result (ref 1))
+    block $h (result (ref $k1))
       ref.func $f1
       cont.new $k1
       resume $k1 (tag $e2 $h)
@@ -20,7 +20,7 @@
     drop
   )
   (func (;3;) (type $f1)
-    block $h (result (ref 1))
+    block $h (result (ref $k1))
       ref.func $f1
       cont.new $k1
       resume $k1 (tag $e1 $h)
@@ -32,7 +32,7 @@
     throw $exn
   )
   (func (;5;) (type $f1)
-    block $h (result (ref 1))
+    block $h (result (ref $k1))
       ref.func $f2
       cont.new $k1
       resume $k1 (tag $e1 $h)
@@ -41,7 +41,7 @@
     drop
   )
   (func (;6;) (type $f1)
-    block $h (result (ref 1))
+    block $h (result (ref $k1))
       ref.func $f1
       cont.new $k1
       resume $k1 (tag $e1 $h)
@@ -58,7 +58,7 @@
     suspend $e1
   )
   (func (;9;) (type $f1)
-    block $h (result (ref 1))
+    block $h (result (ref $k1))
       ref.func $f3
       cont.new $k1
       resume $k1 (tag $e1 $h)
@@ -71,14 +71,14 @@
     suspend $e1
     suspend $e1
   )
-  (func $nl1 (;12;) (type 2) (param $k (ref 1))
+  (func $nl1 (;12;) (type 2) (param $k (ref $k1))
     local.get $k
     resume $k1
     local.get $k
     resume $k1
   )
-  (func $nl2 (;13;) (type 2) (param $k (ref 1))
-    block $h (result (ref 1))
+  (func $nl2 (;13;) (type 2) (param $k (ref $k1))
+    block $h (result (ref $k1))
       local.get $k
       resume $k1 (tag $e1 $h)
       unreachable
@@ -87,15 +87,15 @@
     resume $k1
     unreachable
   )
-  (func $nl3 (;14;) (type 2) (param $k (ref 1))
-    (local $k' (ref null 1))
-    block $h1 (result (ref 1))
+  (func $nl3 (;14;) (type 2) (param $k (ref $k1))
+    (local $k' (ref null $k1))
+    block $h1 (result (ref $k1))
       local.get $k
       resume $k1 (tag $e1 $h1)
       unreachable
     end
     local.set $k'
-    block $h2 (result (ref 1))
+    block $h2 (result (ref $k1))
       local.get $k'
       resume $k1 (tag $e1 $h2)
       unreachable
@@ -104,7 +104,7 @@
     resume $k1
     unreachable
   )
-  (func $nl4 (;15;) (type 2) (param $k (ref 1))
+  (func $nl4 (;15;) (type 2) (param $k (ref $k1))
     local.get $k
     cont.bind $k1 $k1
     drop

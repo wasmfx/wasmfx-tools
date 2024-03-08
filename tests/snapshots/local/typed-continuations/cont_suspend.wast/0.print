@@ -12,7 +12,7 @@
   (func (;2;) (type 3) (result i32)
     i32.const 1
     call $print
-    block $on_h (result (ref 1))
+    block $on_h (result (ref $ct))
       ref.func $f
       cont.new $ct
       resume $ct (tag $h $on_h)

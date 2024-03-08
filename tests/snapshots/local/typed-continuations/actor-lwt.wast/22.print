@@ -3,7 +3,7 @@
   (type $cont (;1;) (cont $func))
   (type $i-func (;2;) (func (param i32)))
   (type $i-cont (;3;) (cont $i-func))
-  (type (;4;) (func (param (ref 1))))
+  (type (;4;) (func (param (ref $cont))))
   (import "actor-scheduler" "run-actor" (func $run-actor (;0;) (type 4)))
   (import "chain" "chain" (func $chain (;1;) (type $i-func)))
   (func $run-chain (;2;) (type $i-func) (param $n i32)

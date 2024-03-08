@@ -3,19 +3,19 @@
   (type $cont (;1;) (cont $func))
   (type (;2;) (func (param i32)))
   (type (;3;) (func (result i32)))
-  (type (;4;) (func (result (ref null 1))))
-  (type (;5;) (func (param (ref 1))))
+  (type (;4;) (func (result (ref null $cont))))
+  (type (;5;) (func (param (ref $cont))))
   (import "spectest" "print_i32" (func $log (;0;) (type 2)))
   (func $queue-empty-k (;1;) (type 3) (result i32)
     global.get $qfront-k
     global.get $qback-k
     i32.eq
   )
-  (func $dequeue-k (;2;) (type 4) (result (ref null 1))
+  (func $dequeue-k (;2;) (type 4) (result (ref null $cont))
     (local $i i32)
     call $queue-empty-k
     if ;; label = @1
-      ref.null 1
+      ref.null $cont
       return
     end
     global.get $qfront-k
@@ -27,7 +27,7 @@
     local.get $i
     table.get $queue
   )
-  (func $enqueue-k (;3;) (type 5) (param $k (ref 1))
+  (func $enqueue-k (;3;) (type 5) (param $k (ref $cont))
     global.get $qback-k
     table.size $queue
     i32.eq
@@ -36,7 +36,7 @@
       global.get $qdelta
       i32.lt_u
       if ;; label = @2
-        ref.null 1
+        ref.null $cont
         global.get $qdelta
         table.grow $queue
         drop
@@ -50,7 +50,7 @@
         global.get $qback-k
         table.copy
         global.get $qback-k
-        ref.null 1
+        ref.null $cont
         global.get $qfront-k
         table.fill $queue
         i32.const 0
@@ -136,7 +136,7 @@
     i32.add
     global.set $qback-mb
   )
-  (table $queue (;0;) 0 (ref null 1))
+  (table $queue (;0;) 0 (ref null $cont))
   (memory (;0;) 1)
   (tag $too-many-mailboxes (;0;) (type $func))
   (global $qdelta (;0;) i32 i32.const 10)

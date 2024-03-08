@@ -5,8 +5,8 @@
   (type $cont (;3;) (cont $geny))
   (type (;4;) (func (param i64) (result i32)))
   (type (;5;) (func (param i64 i64) (result i64)))
-  (type (;6;) (func (param i64 (ref 2)) (result i64 (ref 3))))
-  (type (;7;) (func (param i64 (ref 3))))
+  (type (;6;) (func (param i64 (ref $cont0)) (result i64 (ref $cont))))
+  (type (;7;) (func (param i64 (ref $cont))))
   (func $dummy (;0;) (type $gen) (param i64))
   (func $gen (;1;) (type $gen) (param $i i64)
     loop $l
@@ -24,15 +24,15 @@
     end
   )
   (func (;2;) (type 5) (param $i i64) (param $j i64) (result i64)
-    (local $sum i64) (local $n i64) (local $k (ref null 3))
+    (local $sum i64) (local $n i64) (local $k (ref null $cont))
     local.get $i
     ref.func $gen
     cont.new $cont0
-    block $on_first_yield (type 6) (param i64 (ref 2)) (result i64 (ref 3))
+    block $on_first_yield (type 6) (param i64 (ref $cont0)) (result i64 (ref $cont))
       resume $cont0 (tag $yield $on_first_yield)
       unreachable
     end
-    loop $on_yield (type 7) (param i64 (ref 3))
+    loop $on_yield (type 7) (param i64 (ref $cont))
       local.set $k
       local.set $n
       local.get $sum
@@ -49,7 +49,7 @@
     return
   )
   (tag $yield (;0;) (type 4) (param i64) (result i32))
-  (global $hook (;0;) (mut (ref 0)) ref.func $dummy)
+  (global $hook (;0;) (mut (ref $gen)) ref.func $dummy)
   (export "hook" (global $hook))
   (export "start" (func $gen))
   (export "sum" (func 2))
