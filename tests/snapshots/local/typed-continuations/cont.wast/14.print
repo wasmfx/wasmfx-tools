@@ -12,7 +12,7 @@
     loop $l
       local.get $i
       suspend $yield
-      br_if 1 (;@0;)
+      br_if 1
       local.get $i
       global.get $hook
       call_ref $gen
