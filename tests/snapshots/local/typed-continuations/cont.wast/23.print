@@ -51,7 +51,7 @@
     call $log
     local.get $d
     i32.eqz
-    br_if 0 (;@0;)
+    br_if 0
     i32.const 21
     call $log
     loop $l
