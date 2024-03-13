@@ -1844,7 +1844,7 @@ impl<'a> Parse<'a> for BrOnCastFail<'a> {
 }
 
 /// Different ways to specify a `v128.const` instruction
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[allow(missing_docs)]
 pub enum V128Const {
     I8x16([i8; 16]),
