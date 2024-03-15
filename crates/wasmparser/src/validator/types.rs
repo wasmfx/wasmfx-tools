@@ -3103,7 +3103,7 @@ impl TypeAlloc {
             self.free_variables_component_entity(ty, set);
         }
         for (id, _path) in i.imported_resources.iter().chain(&i.defined_resources) {
-            set.remove(id);
+            set.swap_remove(id);
         }
     }
 
@@ -3120,7 +3120,7 @@ impl TypeAlloc {
             self.free_variables_component_entity(ty, set);
         }
         for id in i.defined_resources.iter() {
-            set.remove(id);
+            set.swap_remove(id);
         }
     }
 
