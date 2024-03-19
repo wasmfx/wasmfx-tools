@@ -53,6 +53,10 @@ pub(crate) struct OperatorValidator {
     /// Offset of the `end` instruction which emptied the `control` stack, which
     /// must be the end of the function.
     end_which_emptied_control: Option<usize>,
+
+    // This flag is used to track whether the function contains any
+    // resume instructions.
+    resumes_continuation: bool,
 }
 
 // No science was performed in the creation of this number, feel free to change
@@ -226,6 +230,7 @@ impl OperatorValidator {
             operands,
             control,
             end_which_emptied_control: None,
+            resumes_continuation: false,
         }
     }
 
@@ -392,6 +397,10 @@ impl OperatorValidator {
             locals_first: clear(self.locals.first),
             locals_all: clear(self.locals.all),
         }
+    }
+
+    pub fn resumes_continuation(&self) -> bool {
+        self.resumes_continuation
     }
 }
 
@@ -3798,6 +3807,7 @@ where
         Ok(())
     }
     fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
+        self.resumes_continuation = true;
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
@@ -3841,6 +3851,7 @@ where
         tag_index: u32,
         resumetable: ResumeTable,
     ) -> Self::Output {
+        self.resumes_continuation = true;
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;

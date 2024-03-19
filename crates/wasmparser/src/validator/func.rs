@@ -243,6 +243,12 @@ impl<T: WasmModuleResources> FuncValidator<T> {
     pub fn into_allocations(self) -> FuncValidatorAllocations {
         FuncValidatorAllocations(self.validator.into_allocations())
     }
+
+    /// Returns whether the function body contains resume instructions
+    /// (resume and resume_throw).
+    pub fn resumes_continuation(&self) -> bool {
+        self.validator.resumes_continuation()
+    }
 }
 
 #[cfg(test)]
