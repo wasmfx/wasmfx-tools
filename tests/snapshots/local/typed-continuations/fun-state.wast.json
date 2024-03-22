@@ -1,0 +1,26 @@
+{
+  "source_filename": "tests/local/typed-continuations/fun-state.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 2,
+      "name": "state",
+      "filename": "fun-state.0.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 61,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": []
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "19"
+        }
+      ]
+    }
+  ]
+}

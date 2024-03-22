@@ -1,0 +1,25 @@
+{
+  "source_filename": "tests/local/typed-continuations/cont_new.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 1,
+      "filename": "cont_new.0.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 16,
+      "action": {
+        "type": "invoke",
+        "field": "f",
+        "args": []
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ]
+    }
+  ]
+}

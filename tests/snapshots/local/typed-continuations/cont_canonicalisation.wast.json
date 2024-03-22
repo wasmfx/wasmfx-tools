@@ -1,0 +1,10 @@
+{
+  "source_filename": "tests/local/typed-continuations/cont_canonicalisation.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 1,
+      "filename": "cont_canonicalisation.0.wasm"
+    }
+  ]
+}
