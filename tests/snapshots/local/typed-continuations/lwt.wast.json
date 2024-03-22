@@ -1,0 +1,63 @@
+{
+  "source_filename": "tests/local/typed-continuations/lwt.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 4,
+      "name": "lwt",
+      "filename": "lwt.0.wasm"
+    },
+    {
+      "type": "register",
+      "line": 11,
+      "as": "lwt"
+    },
+    {
+      "type": "module",
+      "line": 13,
+      "name": "example",
+      "filename": "lwt.1.wasm"
+    },
+    {
+      "type": "register",
+      "line": 58,
+      "as": "example"
+    },
+    {
+      "type": "module",
+      "line": 61,
+      "name": "queue",
+      "filename": "lwt.2.wasm"
+    },
+    {
+      "type": "register",
+      "line": 117,
+      "as": "queue"
+    },
+    {
+      "type": "module",
+      "line": 119,
+      "name": "scheduler",
+      "filename": "lwt.3.wasm"
+    },
+    {
+      "type": "register",
+      "line": 261,
+      "as": "scheduler"
+    },
+    {
+      "type": "module",
+      "line": 263,
+      "filename": "lwt.4.wasm"
+    },
+    {
+      "type": "action",
+      "line": 294,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": []
+      }
+    }
+  ]
+}

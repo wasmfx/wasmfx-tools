@@ -1,0 +1,495 @@
+{
+  "source_filename": "tests/local/typed-continuations/cont.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 3,
+      "filename": "cont.0.wasm"
+    },
+    {
+      "type": "assert_suspension",
+      "line": 121,
+      "action": {
+        "type": "invoke",
+        "field": "unhandled-1",
+        "args": []
+      },
+      "text": "unhandled"
+    },
+    {
+      "type": "assert_suspension",
+      "line": 122,
+      "action": {
+        "type": "invoke",
+        "field": "unhandled-2",
+        "args": []
+      },
+      "text": "unhandled"
+    },
+    {
+      "type": "assert_suspension",
+      "line": 123,
+      "action": {
+        "type": "invoke",
+        "field": "unhandled-3",
+        "args": []
+      },
+      "text": "unhandled"
+    },
+    {
+      "type": "assert_return",
+      "line": 124,
+      "action": {
+        "type": "invoke",
+        "field": "handled",
+        "args": []
+      },
+      "expected": []
+    },
+    {
+      "type": "assert_exception",
+      "line": 130,
+      "action": {
+        "type": "invoke",
+        "field": "uncaught-1",
+        "args": []
+      }
+    },
+    {
+      "type": "assert_exception",
+      "line": 131,
+      "action": {
+        "type": "invoke",
+        "field": "uncaught-2",
+        "args": []
+      }
+    },
+    {
+      "type": "assert_trap",
+      "line": 133,
+      "action": {
+        "type": "invoke",
+        "field": "barrier",
+        "args": []
+      },
+      "text": "barrier"
+    },
+    {
+      "type": "assert_trap",
+      "line": 135,
+      "action": {
+        "type": "invoke",
+        "field": "non-linear-1",
+        "args": []
+      },
+      "text": "continuation already consumed"
+    },
+    {
+      "type": "assert_trap",
+      "line": 136,
+      "action": {
+        "type": "invoke",
+        "field": "non-linear-2",
+        "args": []
+      },
+      "text": "continuation already consumed"
+    },
+    {
+      "type": "assert_trap",
+      "line": 137,
+      "action": {
+        "type": "invoke",
+        "field": "non-linear-3",
+        "args": []
+      },
+      "text": "continuation already consumed"
+    },
+    {
+      "type": "assert_trap",
+      "line": 138,
+      "action": {
+        "type": "invoke",
+        "field": "non-linear-4",
+        "args": []
+      },
+      "text": "continuation already consumed"
+    },
+    {
+      "type": "module",
+      "line": 143,
+      "name": "state",
+      "filename": "cont.1.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 191,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": []
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "19"
+        }
+      ]
+    },
+    {
+      "type": "module",
+      "line": 196,
+      "name": "generator",
+      "filename": "cont.2.wasm"
+    },
+    {
+      "type": "register",
+      "line": 240,
+      "as": "generator"
+    },
+    {
+      "type": "assert_return",
+      "line": 242,
+      "action": {
+        "type": "invoke",
+        "field": "sum",
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "0"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "type": "assert_return",
+      "line": 243,
+      "action": {
+        "type": "invoke",
+        "field": "sum",
+        "args": [
+          {
+            "type": "i64",
+            "value": "2"
+          },
+          {
+            "type": "i64",
+            "value": "2"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "2"
+        }
+      ]
+    },
+    {
+      "type": "assert_return",
+      "line": 244,
+      "action": {
+        "type": "invoke",
+        "field": "sum",
+        "args": [
+          {
+            "type": "i64",
+            "value": "0"
+          },
+          {
+            "type": "i64",
+            "value": "3"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "6"
+        }
+      ]
+    },
+    {
+      "type": "assert_return",
+      "line": 245,
+      "action": {
+        "type": "invoke",
+        "field": "sum",
+        "args": [
+          {
+            "type": "i64",
+            "value": "1"
+          },
+          {
+            "type": "i64",
+            "value": "10"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "55"
+        }
+      ]
+    },
+    {
+      "type": "assert_return",
+      "line": 246,
+      "action": {
+        "type": "invoke",
+        "field": "sum",
+        "args": [
+          {
+            "type": "i64",
+            "value": "100"
+          },
+          {
+            "type": "i64",
+            "value": "2000"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "1996050"
+        }
+      ]
+    },
+    {
+      "type": "module",
+      "line": 251,
+      "name": "scheduler",
+      "filename": "cont.3.wasm"
+    },
+    {
+      "type": "register",
+      "line": 333,
+      "as": "scheduler"
+    },
+    {
+      "type": "module",
+      "line": 335,
+      "filename": "cont.4.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 415,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "type": "assert_return",
+      "line": 416,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "type": "assert_return",
+      "line": 417,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "type": "assert_return",
+      "line": 418,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": [
+          {
+            "type": "i32",
+            "value": "1"
+          },
+          {
+            "type": "i32",
+            "value": "1"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "type": "assert_return",
+      "line": 419,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": [
+          {
+            "type": "i32",
+            "value": "3"
+          },
+          {
+            "type": "i32",
+            "value": "4"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "type": "module",
+      "line": 424,
+      "name": "concurrent-generator",
+      "filename": "cont.5.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 476,
+      "action": {
+        "type": "invoke",
+        "field": "sum",
+        "args": [
+          {
+            "type": "i64",
+            "value": "10"
+          },
+          {
+            "type": "i64",
+            "value": "20"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "165"
+        }
+      ]
+    },
+    {
+      "type": "module",
+      "line": 481,
+      "filename": "cont.6.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 507,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": []
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        },
+        {
+          "type": "i32",
+          "value": "2"
+        },
+        {
+          "type": "i32",
+          "value": "3"
+        },
+        {
+          "type": "i32",
+          "value": "4"
+        },
+        {
+          "type": "i32",
+          "value": "5"
+        },
+        {
+          "type": "i32",
+          "value": "6"
+        }
+      ]
+    },
+    {
+      "type": "module",
+      "line": 513,
+      "filename": "cont.7.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 546,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": []
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        },
+        {
+          "type": "i32",
+          "value": "1"
+        },
+        {
+          "type": "i32",
+          "value": "2"
+        },
+        {
+          "type": "i32",
+          "value": "3"
+        },
+        {
+          "type": "i32",
+          "value": "4"
+        },
+        {
+          "type": "i32",
+          "value": "5"
+        },
+        {
+          "type": "i32",
+          "value": "6"
+        }
+      ]
+    }
+  ]
+}

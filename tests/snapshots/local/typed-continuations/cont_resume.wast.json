@@ -1,0 +1,10 @@
+{
+  "source_filename": "tests/local/typed-continuations/cont_resume.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 1,
+      "filename": "cont_resume.0.wasm"
+    }
+  ]
+}
