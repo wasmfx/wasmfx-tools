@@ -872,13 +872,13 @@ impl Encode for ResumeThrow<'_> {
     }
 }
 
-impl Encode for Float32 {
+impl Encode for F32 {
     fn encode(&self, e: &mut Vec<u8>) {
         e.extend_from_slice(&self.bits.to_le_bytes());
     }
 }
 
-impl Encode for Float64 {
+impl Encode for F64 {
     fn encode(&self, e: &mut Vec<u8>) {
         e.extend_from_slice(&self.bits.to_le_bytes());
     }
