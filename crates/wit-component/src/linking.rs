@@ -57,9 +57,7 @@ enum Address<'a> {
 /// Represents a `dlopen`/`dlsym` lookup table enabling runtime symbol resolution
 ///
 /// The top level of this table is a sorted list of library names and offsets, each pointing to a sorted list of
-/// symbol names and offsets.  See
-/// https://github.com/dicej/wasi-libc/blob/76c7e1e1cfdad577ecd7f61c67ead7a38d62a7c4/libc-top-half/musl/src/misc/dl.c
-/// for how this is used.
+/// symbol names and offsets.  See ../dl/src/lib.rs for how this is used at runtime.
 struct DlOpenables<'a> {
     /// Offset into the main module's table where function references will be stored
     table_base: u32,
@@ -302,6 +300,7 @@ fn make_env_module<'a>(
                             EntityType::Global(wasm_encoder::GlobalType {
                                 val_type: ty.ty.into(),
                                 mutable: ty.mutable,
+                                shared: ty.shared,
                             })
                         }
                     },
@@ -350,6 +349,7 @@ fn make_env_module<'a>(
                 wasm_encoder::GlobalType {
                     val_type: ValType::I32,
                     mutable,
+                    shared: false,
                 },
                 &const_u32(value),
             );
@@ -577,6 +577,7 @@ fn make_init_module(
                     wasm_encoder::GlobalType {
                         val_type: ValType::I32,
                         mutable,
+                        shared: false,
                     },
                 );
                 get_and_increment(&mut global_count)
@@ -790,6 +791,7 @@ fn find_offset_exporter<'a>(
         ty: Type::Global(GlobalType {
             ty: ValueType::I32,
             mutable: false,
+            shared: false,
         }),
     };
 
@@ -898,6 +900,7 @@ fn resolve_symbols<'a>(
                         ty: Type::Global(GlobalType {
                             ty: ValueType::I32,
                             mutable: false,
+                            shared: false,
                         }),
                     },
                     flags: SymbolFlags::empty(),
@@ -1202,6 +1205,9 @@ pub struct Linker {
     /// Whether to generate trapping stubs for any unresolved imports
     stub_missing_functions: bool,
 
+    /// Whether to use a built-in implementation of `dlopen`/`dlsym`.
+    use_built_in_libdl: bool,
+
     /// Size of stack (in bytes) to allocate in the synthesized main module
     ///
     /// If `None`, use `DEFAULT_STACK_SIZE_BYTES`.
@@ -1247,8 +1253,19 @@ impl Linker {
         self
     }
 
+    /// Specify whether to use a built-in implementation of `dlopen`/`dlsym`.
+    pub fn use_built_in_libdl(mut self, use_built_in_libdl: bool) -> Self {
+        self.use_built_in_libdl = use_built_in_libdl;
+        self
+    }
+
     /// Encode the component and return the bytes
     pub fn encode(mut self) -> Result<Vec<u8>> {
+        if self.use_built_in_libdl {
+            self.use_built_in_libdl = false;
+            self = self.library("libdl.so", include_bytes!("../libdl.so"), false)?;
+        }
+
         let adapter_names = self
             .adapters
             .iter()
