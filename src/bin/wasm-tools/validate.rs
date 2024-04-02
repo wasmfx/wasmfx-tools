@@ -104,6 +104,9 @@ fn parse_features(arg: &str) -> Result<WasmFeatures> {
         ("typed-continuations", |f| &mut f.typed_continuations),
         ("simd", |f| &mut f.simd),
         ("threads", |f| &mut f.threads),
+        ("shared-everything-threads", |f| {
+            &mut f.shared_everything_threads
+        }),
         ("bulk-memory", |f| &mut f.bulk_memory),
         ("multi-value", |f| &mut f.multi_value),
         ("tail-call", |f| &mut f.tail_call),

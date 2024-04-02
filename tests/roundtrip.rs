@@ -581,6 +581,7 @@ impl TestState {
     fn wasmparser_validator_for(&self, test: &Path) -> Validator {
         let mut features = WasmFeatures {
             threads: true,
+            shared_everything_threads: false,
             reference_types: true,
             simd: true,
             relaxed_simd: true,
@@ -629,6 +630,7 @@ impl TestState {
                     features.gc = false;
                     features.component_model = false;
                     features.component_model_values = false;
+                    features.shared_everything_threads = false;
                 }
                 "floats-disabled.wast" => features.floats = false,
                 "threads" => {
@@ -641,6 +643,10 @@ impl TestState {
                 "tail-call" => features.tail_call = true,
                 "memory64" => features.memory64 = true,
                 "component-model" => features.component_model = true,
+                "shared-everything-threads" => {
+                    features.component_model = true;
+                    features.shared_everything_threads = true;
+                }
                 "multi-memory" => features.multi_memory = true,
                 "extended-const" => features.extended_const = true,
                 "function-references" => features.function_references = true,
@@ -839,6 +845,16 @@ fn error_matches(error: &str, message: &str) -> bool {
 
     if message.starts_with("type mismatch") {
         return error.starts_with("type mismatch");
+    }
+
+    if message == "malformed mutability" {
+        // When parsing a global `shared` type (e.g., `global (mut shared i32)
+        // ...`), many spec tests expect a `malformed mutability` error.
+        // Previously, `0x2` was an invalid flag but it now means `shared`. We
+        // accept either (a) a new, more accurate error message or (b) a
+        // validation error instead.
+        return error.contains("malformed global flags")
+            || error.contains("require the shared-everything-threads proposal");
     }
 
     return false;
