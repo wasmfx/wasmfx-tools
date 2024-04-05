@@ -451,8 +451,11 @@ pub enum HeapType {
     /// The unboxed `i31` heap type.
     I31,
 
-    /// The abstract` exception` heap type.
+    /// The abstract `exception` heap type.
     Exn,
+
+    /// The abstract `noexn` heap type.
+    NoExn,
 
     /// A concrete Wasm-defined type at the given index.
     Concrete(u32),
@@ -472,6 +475,7 @@ impl Encode for HeapType {
             HeapType::Array => sink.push(0x6A),
             HeapType::I31 => sink.push(0x6C),
             HeapType::Exn => sink.push(0x69),
+            HeapType::NoExn => sink.push(0x74),
             // Note that this is encoded as a signed type rather than unsigned
             // as it's decoded as an s33
             HeapType::Concrete(i) => i64::from(*i).encode(sink),
@@ -499,6 +503,7 @@ impl TryFrom<wasmparser::HeapType> for HeapType {
             wasmparser::HeapType::Cont => todo!(),
             wasmparser::HeapType::NoCont => todo!(), // TODO(dhil): Shouldn't be too hard.
             wasmparser::HeapType::Exn => HeapType::Exn,
+            wasmparser::HeapType::NoExn => HeapType::NoExn,
         })
     }
 }

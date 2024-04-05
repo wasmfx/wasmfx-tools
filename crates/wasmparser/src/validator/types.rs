@@ -2712,6 +2712,8 @@ impl TypeList {
                 matches!(subtype(b_group, b).composite_type, CompositeType::Cont(_))
             }
 
+            (HT::NoExn, HT::Exn) => true,
+
             // Nothing else matches. (Avoid full wildcard matches so that
             // adding/modifying variants is easier in the future.)
             (HT::Concrete(_), _)
@@ -2726,11 +2728,9 @@ impl TypeList {
             | (HT::Array, _)
             | (HT::Cont, _)
             | (HT::NoCont, _)
-            | (HT::I31, _) => false,
-
-            // TODO: this probably isn't right, this is probably related to some
-            // gc type.
-            (HT::Exn, _) => false,
+            | (HT::I31, _)
+            | (HT::Exn, _)
+            | (HT::NoExn, _) => false,
         }
     }
 
@@ -2770,7 +2770,7 @@ impl TypeList {
             | HeapType::I31
             | HeapType::None => HeapType::Any,
             HeapType::Cont | HeapType::NoCont => HeapType::Cont,
-            HeapType::Exn => HeapType::Exn,
+            HeapType::Exn | HeapType::NoExn => HeapType::Exn,
         }
     }
 

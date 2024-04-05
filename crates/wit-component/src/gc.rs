@@ -498,7 +498,8 @@ impl<'a> Module<'a> {
             | HeapType::I31
             | HeapType::Cont
             | HeapType::NoCont
-            | HeapType::Exn => {}
+            | HeapType::Exn
+            | HeapType::NoExn => {}
             HeapType::Concrete(i) => self.ty(i.as_module_index().unwrap()),
         }
     }
@@ -1142,6 +1143,7 @@ impl Encoder {
             HeapType::I31 => wasm_encoder::HeapType::I31,
             HeapType::Cont | HeapType::NoCont => todo!(), // TODO(dhil): Some day.
             HeapType::Exn => wasm_encoder::HeapType::Exn,
+            HeapType::NoExn => wasm_encoder::HeapType::NoExn,
             HeapType::Concrete(idx) => {
                 wasm_encoder::HeapType::Concrete(self.types.remap(idx.as_module_index().unwrap()))
             }

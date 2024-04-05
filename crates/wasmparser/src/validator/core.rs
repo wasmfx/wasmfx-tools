@@ -1002,7 +1002,8 @@ impl Module {
             | HeapType::I31
             | HeapType::Cont
             | HeapType::NoCont
-            | HeapType::Exn => return Ok(()),
+            | HeapType::Exn
+            | HeapType::NoExn => return Ok(()),
             HeapType::Concrete(type_index) => type_index,
         };
         match type_index {

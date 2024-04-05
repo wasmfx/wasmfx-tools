@@ -213,6 +213,7 @@ pub fn heapty(t: &mut dyn Translator, ty: &wasmparser::HeapType) -> Result<HeapT
         wasmparser::HeapType::I31 => Ok(HeapType::I31),
         wasmparser::HeapType::Cont | wasmparser::HeapType::NoCont => todo!(), // TODO(dhil): Some day.
         wasmparser::HeapType::Exn => Ok(HeapType::Exn),
+        wasmparser::HeapType::NoExn => Ok(HeapType::NoExn),
         wasmparser::HeapType::Concrete(i) => Ok(HeapType::Concrete(
             t.remap(Item::Type, i.as_module_index().unwrap())?,
         )),

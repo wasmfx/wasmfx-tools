@@ -91,6 +91,8 @@ pub enum HeapType<'a> {
     NoExtern,
     /// The bottom type of the anyref hierarchy. Part of the GC proposal.
     None,
+    /// The bottom type of the exnref hierarchy. Part of the exceptions proposal.
+    NoExn,
     /// A reference to a concrete function, struct, or array type defined by
     /// Wasm: `ref T`. This is part of the function references and GC proposals.
     Concrete(Index<'a>),
@@ -135,6 +137,9 @@ impl<'a> Parse<'a> for HeapType<'a> {
         } else if l.peek::<kw::noextern>()? {
             parser.parse::<kw::noextern>()?;
             Ok(HeapType::NoExtern)
+        } else if l.peek::<kw::noexn>()? {
+            parser.parse::<kw::noexn>()?;
+            Ok(HeapType::NoExn)
         } else if l.peek::<kw::none>()? {
             parser.parse::<kw::none>()?;
             Ok(HeapType::None)
@@ -160,6 +165,7 @@ impl<'a> Peek for HeapType<'a> {
             || kw::nocont::peek(cursor)?
             || kw::nofunc::peek(cursor)?
             || kw::noextern::peek(cursor)?
+            || kw::noexn::peek(cursor)?
             || kw::none::peek(cursor)?
             || (LParen::peek(cursor)? && kw::r#type::peek2(cursor)?))
     }
@@ -280,6 +286,14 @@ impl<'a> RefType<'a> {
             heap: HeapType::NoCont,
         }
     }
+
+    /// A `nullexnref` as an abbreviation for `(ref null noexn)`.
+    pub fn nullexnref() -> Self {
+        RefType {
+            nullable: true,
+            heap: HeapType::NoExn,
+        }
+    }
 }
 
 impl<'a> Parse<'a> for RefType<'a> {
@@ -321,6 +335,9 @@ impl<'a> Parse<'a> for RefType<'a> {
         } else if l.peek::<kw::nullexternref>()? {
             parser.parse::<kw::nullexternref>()?;
             Ok(RefType::nullexternref())
+        } else if l.peek::<kw::nullexnref>()? {
+            parser.parse::<kw::nullexnref>()?;
+            Ok(RefType::nullexnref())
         } else if l.peek::<kw::nullref>()? {
             parser.parse::<kw::nullref>()?;
             Ok(RefType::nullref())
@@ -363,6 +380,7 @@ impl<'a> Peek for RefType<'a> {
             || kw::i31ref::peek(cursor)?
             || kw::nullfuncref::peek(cursor)?
             || kw::nullexternref::peek(cursor)?
+            || kw::nullexnref::peek(cursor)?
             || kw::nullref::peek(cursor)?
             || (LParen::peek(cursor)? && kw::r#ref::peek2(cursor)?))
     }
