@@ -984,6 +984,7 @@ impl Printer {
                 RefType::STRUCT => self.result.push_str("structref"),
                 RefType::ARRAY => self.result.push_str("arrayref"),
                 RefType::EXN => self.result.push_str("exnref"),
+                RefType::NOEXN => self.result.push_str("nullexnref"),
                 _ => {
                     self.result.push_str("(ref null ");
                     self.print_heaptype(state, ty.heap_type())?;
@@ -1013,6 +1014,7 @@ impl Printer {
             HeapType::Cont => self.result.push_str("cont"),
             HeapType::NoCont => self.result.push_str("nocont"),
             HeapType::Exn => self.result.push_str("exn"),
+            HeapType::NoExn => self.result.push_str("noexn"),
             HeapType::Concrete(i) => {
                 self.print_idx(&state.core.type_names, i.as_module_index().unwrap())?;
             }

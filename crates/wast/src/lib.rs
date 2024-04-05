@@ -451,11 +451,13 @@ pub mod kw {
     custom_keyword!(nocont);
     custom_keyword!(nofunc);
     custom_keyword!(noextern);
+    custom_keyword!(noexn);
     custom_keyword!(none);
     custom_keyword!(null);
     custom_keyword!(nullcontref);
     custom_keyword!(nullfuncref);
     custom_keyword!(nullexternref);
+    custom_keyword!(nullexnref);
     custom_keyword!(nullref);
     custom_keyword!(offset);
     custom_keyword!(outer);

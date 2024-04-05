@@ -371,7 +371,7 @@ impl WasmFeatures {
             }
 
             // These types were added in the exception-handling proposal.
-            (HeapType::Exn, _) => {
+            (HeapType::Exn | HeapType::NoExn, _) => {
                 if self.exceptions {
                     Ok(())
                 } else {
