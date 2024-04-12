@@ -462,6 +462,7 @@ pub mod kw {
     custom_keyword!(offset);
     custom_keyword!(outer);
     custom_keyword!(own);
+    custom_keyword!(pagesize);
     custom_keyword!(param);
     custom_keyword!(parent);
     custom_keyword!(passive);

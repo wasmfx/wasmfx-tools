@@ -252,6 +252,9 @@ pub struct WasmFeatures {
     pub memory_control: bool,
     /// The WebAssembly gc proposal
     pub gc: bool,
+    /// The WebAssembly [custom-page-sizes
+    /// proposal](https://github.com/WebAssembly/custom-page-sizes).
+    pub custom_page_sizes: bool,
     /// Support for the `value` type in the component model proposal.
     pub component_model_values: bool,
     /// Support for the nested namespaces and projects in component model names.
@@ -282,6 +285,7 @@ impl WasmFeatures {
             function_references: true,
             memory_control: true,
             gc: true,
+            custom_page_sizes: true,
             component_model_values: true,
             typed_continuations: true,
             component_model_nested_names: true,
@@ -393,6 +397,7 @@ impl Default for WasmFeatures {
             typed_continuations: false,
             memory_control: false,
             gc: false,
+            custom_page_sizes: false,
             component_model_values: false,
             component_model_nested_names: false,
             shared_everything_threads: false,
@@ -565,13 +570,21 @@ impl Validator {
             DataSection(s) => self.data_section(s)?,
 
             // Component sections
-            ModuleSection { parser, range, .. } => {
+            ModuleSection {
+                parser,
+                unchecked_range: range,
+                ..
+            } => {
                 self.module_section(range)?;
                 return Ok(ValidPayload::Parser(parser.clone()));
             }
             InstanceSection(s) => self.instance_section(s)?,
             CoreTypeSection(s) => self.core_type_section(s)?,
-            ComponentSection { parser, range, .. } => {
+            ComponentSection {
+                parser,
+                unchecked_range: range,
+                ..
+            } => {
                 self.component_section(range)?;
                 return Ok(ValidPayload::Parser(parser.clone()));
             }
@@ -1530,7 +1543,8 @@ mod tests {
                 memory64: false,
                 shared: false,
                 initial: 1,
-                maximum: Some(5)
+                maximum: Some(5),
+                page_size_log2: None,
             }
         );
 

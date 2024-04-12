@@ -8,7 +8,7 @@
 
 #![deny(missing_docs)]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Write};
 use std::marker;
@@ -267,7 +267,14 @@ impl Printer {
                 Payload::CodeSectionEntry(f) => {
                     code.push(f);
                 }
-                Payload::ModuleSection { range, .. } | Payload::ComponentSection { range, .. } => {
+                Payload::ModuleSection {
+                    unchecked_range: range,
+                    ..
+                }
+                | Payload::ComponentSection {
+                    unchecked_range: range,
+                    ..
+                } => {
                     let offset = range.end - range.start;
                     if offset > bytes.len() {
                         bail!("invalid module or component section range");
@@ -514,7 +521,7 @@ impl Printer {
 
                 Payload::ModuleSection {
                     parser: inner,
-                    range,
+                    unchecked_range: range,
                 } => {
                     Self::ensure_component(&states)?;
                     expected = Some(Encoding::Module);
@@ -529,7 +536,7 @@ impl Printer {
                 Payload::CoreTypeSection(s) => self.print_core_types(&mut states, s)?,
                 Payload::ComponentSection {
                     parser: inner,
-                    range,
+                    unchecked_range: range,
                 } => {
                     Self::ensure_component(&states)?;
                     expected = Some(Encoding::Component);
@@ -1092,6 +1099,12 @@ impl Printer {
         self.print_limits(ty.initial, ty.maximum)?;
         if ty.shared {
             self.result.push_str(" shared");
+        }
+        if let Some(p) = ty.page_size_log2 {
+            let p = 1_u64
+                .checked_shl(p)
+                .ok_or_else(|| anyhow!("left shift overflow").context("invalid page size"))?;
+            write!(self.result, "(pagesize {p:#x})")?;
         }
         Ok(())
     }
