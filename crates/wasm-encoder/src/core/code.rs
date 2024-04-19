@@ -274,6 +274,34 @@ impl Encode for MemArg {
     }
 }
 
+/// The memory ordering for atomic instructions.
+///
+/// For an in-depth explanation of memory orderings, see the C++ documentation
+/// for [`memory_order`] or the Rust documentation for [`atomic::Ordering`].
+///
+/// [`memory_order`]: https://en.cppreference.com/w/cpp/atomic/memory_order
+/// [`atomic::Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
+#[derive(Clone, Copy, Debug)]
+pub enum Ordering {
+    /// For a load, it acquires; this orders all operations before the last
+    /// "releasing" store. For a store, it releases; this orders all operations
+    /// before it at the next "acquiring" load.
+    AcqRel,
+    /// Like `AcqRel` but all threads see all sequentially consistent operations
+    /// in the same order.
+    SeqCst,
+}
+
+impl Encode for Ordering {
+    fn encode(&self, sink: &mut Vec<u8>) {
+        let flag: u8 = match self {
+            Ordering::SeqCst => 0,
+            Ordering::AcqRel => 1,
+        };
+        sink.push(flag);
+    }
+}
+
 /// Describe an unchecked SIMD lane index.
 pub type Lane = u8;
 
@@ -998,6 +1026,16 @@ pub enum Instruction<'a> {
         resumetable: Cow<'a, [(u32, u32)]>,
     },
     Barrier(BlockType),
+
+    // More atomic instructions (the shared-everything-threads proposal)
+    GlobalAtomicGet {
+        ordering: Ordering,
+        global_index: u32,
+    },
+    GlobalAtomicSet {
+        ordering: Ordering,
+        global_index: u32,
+    },
 }
 
 impl Encode for Instruction<'_> {
@@ -2805,7 +2843,7 @@ impl Encode for Instruction<'_> {
                 0x113u32.encode(sink);
             }
 
-            // Atmoic instructions from the thread proposal
+            // Atomic instructions from the thread proposal
             Instruction::MemoryAtomicNotify(memarg) => {
                 sink.push(0xFE);
                 sink.push(0x00);
@@ -3168,6 +3206,26 @@ impl Encode for Instruction<'_> {
             }
             Instruction::Barrier(_blockty) => {
                 todo!()
+            }
+
+            // Atomic instructions from the shared-everything-threads proposal
+            Instruction::GlobalAtomicGet {
+                ordering,
+                global_index,
+            } => {
+                sink.push(0xFE);
+                sink.push(0x4F);
+                ordering.encode(sink);
+                global_index.encode(sink);
+            }
+            Instruction::GlobalAtomicSet {
+                ordering,
+                global_index,
+            } => {
+                sink.push(0xFE);
+                sink.push(0x50);
+                ordering.encode(sink);
+                global_index.encode(sink);
             }
         }
     }

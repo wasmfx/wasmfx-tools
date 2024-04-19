@@ -2,7 +2,7 @@ use super::{Printer, State};
 use anyhow::{anyhow, bail, Result};
 use std::fmt::Write;
 use wasmparser::{
-    BlockType, BrTable, Catch, MemArg, RefType, ResumeTable, TryTable, VisitOperator,
+    BlockType, BrTable, Catch, MemArg, Ordering, RefType, ResumeTable, TryTable, VisitOperator,
 };
 
 pub struct PrintOperator<'a, 'b> {
@@ -337,6 +337,18 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
             let align = 1 << memarg.align;
             write!(self.result(), " align={}", align)?;
         }
+        Ok(())
+    }
+
+    fn ordering(&mut self, ordering: Ordering) -> Result<()> {
+        write!(
+            self.result(),
+            "{}",
+            match ordering {
+                Ordering::SeqCst => "seq_cst",
+                Ordering::AcqRel => "acq_rel",
+            }
+        )?;
         Ok(())
     }
 
@@ -1178,6 +1190,8 @@ macro_rules! define_visit {
     (name Catch) => ("catch");
     (name CatchAll) => ("catch_all");
     (name Delegate) => ("delegate");
+    (name GlobalAtomicGet) => ("global.atomic.get");
+    (name GlobalAtomicSet) => ("global.atomic.set");
 }
 
 impl<'a> VisitOperator<'a> for PrintOperator<'_, '_> {
