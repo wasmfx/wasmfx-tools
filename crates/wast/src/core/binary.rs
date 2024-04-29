@@ -1091,7 +1091,7 @@ fn find_names<'a>(
         if let ModuleField::Type(ty) = field {
             let mut field_names = vec![];
             match &ty.def {
-                TypeDef::Func(_) | TypeDef::Array(_) | TypeDef::Cont(_)=> {}
+                TypeDef::Func(_) | TypeDef::Array(_) | TypeDef::Cont(_) => {}
                 TypeDef::Struct(ty_struct) => {
                     for (idx, field) in ty_struct.fields.iter().enumerate() {
                         if let Some(name) = get_name(&field.id, &None) {
