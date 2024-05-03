@@ -3765,7 +3765,7 @@ where
         self.resources.check_heap_type(&mut c_hty, self.offset)?;
         let f_idx = self.cont_type_of_heap_type(c_hty)?.0;
         let f_hty = f_idx.pack().expect("hty should be previously validated");
-        let expected_rt = RefType::concrete(false, f_hty);
+        let expected_rt = RefType::concrete(true, f_hty);
         self.pop_operand(Some(ValType::Ref(expected_rt)))?;
         let result =
             ValType::Ref(RefType::new(false, c_hty).expect("hty should be previously validated"));
