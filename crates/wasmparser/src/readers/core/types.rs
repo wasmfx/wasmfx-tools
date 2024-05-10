@@ -1544,11 +1544,11 @@ impl<'a> FromReader<'a> for HeapType {
                 Ok(HeapType::NoFunc)
             }
             0x75 => {
-                reader.position += 1;
+                reader.read_u8()?;
                 Ok(HeapType::NoCont)
             }
             0x68 => {
-                reader.position += 1;
+                reader.read_u8()?;
                 Ok(HeapType::Cont)
             }
             0x6D => {
