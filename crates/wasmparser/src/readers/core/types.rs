@@ -773,6 +773,7 @@ pub struct ContType(pub UnpackedIndex);
 
 impl ContType {
     /// Maps any `UnpackedIndex` via the specified closure.
+    #[cfg(feature = "validate")]
     pub(crate) fn remap_indices(
         &mut self,
         map: &mut dyn FnMut(&mut PackedIndex) -> Result<()>,
