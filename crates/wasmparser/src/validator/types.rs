@@ -4,6 +4,7 @@ use super::{
     component::{ComponentState, ExternKind},
     core::Module,
 };
+use crate::collections::map::Entry;
 use crate::prelude::*;
 use crate::{validator::names::KebabString, HeapType, ValidatorId};
 use crate::{
@@ -19,7 +20,6 @@ use core::{
     hash::{Hash, Hasher},
     mem,
 };
-use hashbrown::hash_map::Entry;
 
 /// The maximum number of parameters in the canonical ABI that can be passed by value.
 ///
@@ -201,7 +201,7 @@ macro_rules! define_type_id {
         #[doc = "Represents a unique identifier for a "]
         #[doc = $type_str]
         #[doc = " type known to a [`crate::Validator`]."]
-        #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         #[repr(C)] // Use fixed field layout to ensure minimal size.
         pub struct $name {
             /// The index into the associated list of types.
@@ -258,7 +258,7 @@ pub enum CoreType {
 
 /// Represents a unique identifier for a core type type known to a
 /// [`crate::Validator`]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(C)]
 pub struct CoreTypeId {
     index: u32,
@@ -435,7 +435,7 @@ macro_rules! define_transitive_conversions {
 
 define_wrapper_id! {
     /// An identifier pointing to any kind of type, component or core.
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
     pub enum AnyTypeId {
         #[unwrap = unwrap_component_core_type]
         /// A core type.
@@ -470,7 +470,7 @@ impl AnyTypeId {
 
 define_wrapper_id! {
     /// An identifier for a core type or a core module's type.
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
     pub enum ComponentCoreTypeId {
         #[unwrap = unwrap_sub]
         /// A core type.
@@ -494,7 +494,7 @@ impl ComponentCoreTypeId {
 }
 
 /// An aliasable resource identifier.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct AliasableResourceId {
     id: ResourceId,
     alias_id: u32,
@@ -532,7 +532,7 @@ impl AliasableResourceId {
 
 define_wrapper_id! {
     /// An identifier for any kind of component type.
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
     pub enum ComponentAnyTypeId {
         #[unwrap = unwrap_resource]
         /// The type is a resource with the specified id.
@@ -655,7 +655,7 @@ define_type_id!(
 
 /// Represents a unique identifier for a component type type known to a
 /// [`crate::Validator`].
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(C)]
 pub struct ComponentDefinedTypeId {
     index: u32,
@@ -721,7 +721,7 @@ impl Aliasable for ComponentDefinedTypeId {
 /// information, and then one more bit is used for whether or not a borrow is
 /// used. Currently this uses the low 24 bits for the type size and the MSB for
 /// the borrow bit.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 // Only public because it shows up in a public trait's `doc(hidden)` method.
 #[doc(hidden)]
 pub struct TypeInfo(u32);
@@ -879,6 +879,22 @@ impl PartialEq for (dyn ModuleImportKey + '_) {
 }
 
 impl Eq for (dyn ModuleImportKey + '_) {}
+
+impl Ord for (dyn ModuleImportKey + '_) {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        match self.module().cmp(other.module()) {
+            core::cmp::Ordering::Equal => (),
+            order => return order,
+        };
+        self.name().cmp(other.name())
+    }
+}
+
+impl PartialOrd for (dyn ModuleImportKey + '_) {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl ModuleImportKey for (String, String) {
     fn module(&self) -> &str {
@@ -2435,7 +2451,7 @@ impl<T> Default for SnapshotList<T> {
 #[doc(hidden)]
 pub struct TypeList {
     // Keeps track of which `alias_id` is an alias of which other `alias_id`.
-    alias_mappings: HashMap<u32, u32>,
+    alias_mappings: Map<u32, u32>,
     // Counter for generating new `alias_id`s.
     alias_counter: u32,
     // Snapshots of previously committed `TypeList`s' aliases.
@@ -2460,7 +2476,7 @@ pub struct TypeList {
     //
     // This is `None` when a list is "committed" meaning that no more insertions
     // can happen.
-    canonical_rec_groups: Option<HashMap<RecGroup, RecGroupId>>,
+    canonical_rec_groups: Option<Map<RecGroup, RecGroupId>>,
 
     // Component model types.
     components: SnapshotList<ComponentType>,
@@ -2478,7 +2494,7 @@ struct TypeListAliasSnapshot {
     alias_counter: u32,
 
     // The alias mappings in this snapshot.
-    alias_mappings: HashMap<u32, u32>,
+    alias_mappings: Map<u32, u32>,
 }
 
 struct TypeListCheckpoint {
@@ -2906,7 +2922,7 @@ impl TypeList {
         });
 
         TypeList {
-            alias_mappings: HashMap::default(),
+            alias_mappings: Map::default(),
             alias_counter: self.alias_counter,
             alias_snapshots: self.alias_snapshots.clone(),
             core_types: self.core_types.commit(),
@@ -3218,7 +3234,7 @@ impl TypeAlloc {
     pub(crate) fn type_named_type_id(
         &self,
         id: ComponentDefinedTypeId,
-        set: &HashSet<ComponentAnyTypeId>,
+        set: &Set<ComponentAnyTypeId>,
     ) -> bool {
         let ty = &self[id];
         match ty {
@@ -3261,7 +3277,7 @@ impl TypeAlloc {
     pub(crate) fn type_named_valtype(
         &self,
         ty: &ComponentValType,
-        set: &HashSet<ComponentAnyTypeId>,
+        set: &Set<ComponentAnyTypeId>,
     ) -> bool {
         match ty {
             ComponentValType::Primitive(_) => true,
@@ -3537,12 +3553,12 @@ where
 #[derive(Debug, Default)]
 pub struct Remapping {
     /// A mapping from old resource ID to new resource ID.
-    pub(crate) resources: HashMap<ResourceId, ResourceId>,
+    pub(crate) resources: Map<ResourceId, ResourceId>,
 
     /// A mapping filled in during the remapping process which records how a
     /// type was remapped, if applicable. This avoids remapping multiple
     /// references to the same type and instead only processing it once.
-    types: HashMap<ComponentAnyTypeId, ComponentAnyTypeId>,
+    types: Map<ComponentAnyTypeId, ComponentAnyTypeId>,
 }
 
 impl Remap for TypeAlloc {
@@ -4107,7 +4123,7 @@ impl<'a> SubtypeCx<'a> {
                 None => bail!(offset, "missing {} named `{name}`", kind.desc()),
             }
         }
-        let mut type_map = HashMap::default();
+        let mut type_map = Map::default();
         for (i, (actual, expected)) in to_typecheck.into_iter().enumerate() {
             let result = self.with_checkpoint(|this| {
                 let mut expected = expected;
@@ -4402,7 +4418,7 @@ impl<'a> SubtypeCx<'a> {
         &self,
         actual: ComponentEntityType,
         expected: ComponentEntityType,
-        type_map: &mut HashMap<ComponentAnyTypeId, ComponentAnyTypeId>,
+        type_map: &mut Map<ComponentAnyTypeId, ComponentAnyTypeId>,
     ) {
         match (expected, actual) {
             (

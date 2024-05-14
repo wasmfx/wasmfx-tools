@@ -21,6 +21,7 @@ use crate::prelude::*;
 #[cfg(feature = "validate")]
 use crate::types::CoreTypeId;
 use crate::{BinaryReader, BinaryReaderError, FromReader, Result, SectionLimited};
+use core::cmp::Ordering;
 use core::fmt::{self, Debug};
 use core::hash::{Hash, Hasher};
 
@@ -58,7 +59,7 @@ pub(crate) use self::matches::{Matches, WithRecGroup};
 // * `01`: The `index` is an index into the containing type's recursion group.
 //
 // * `10`: The `index` is a `CoreTypeId`.
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PackedIndex(u32);
 
 // Assert that we can fit indices up to `MAX_WASM_TYPES` inside `RefType`.
@@ -237,7 +238,7 @@ impl fmt::Display for PackedIndex {
 /// The uncompressed form of a `PackedIndex`.
 ///
 /// Can be used for `match` statements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnpackedIndex {
     /// An index into a Wasm module's types space.
     Module(u32),
@@ -428,8 +429,22 @@ impl PartialEq for RecGroup {
 
 impl Eq for RecGroup {}
 
+impl Ord for RecGroup {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let self_tys = self.types();
+        let other_tys = other.types();
+        self_tys.cmp(other_tys)
+    }
+}
+
+impl PartialOrd for RecGroup {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// Represents a subtype of possible other types in a WebAssembly module.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SubType {
     /// Is the subtype final.
     pub is_final: bool,
@@ -521,7 +536,7 @@ impl SubType {
 }
 
 /// Represents a composite type in a WebAssembly module.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CompositeType {
     /// The type is for a function.
     Func(FuncType),
@@ -579,7 +594,7 @@ impl CompositeType {
 }
 
 /// Represents a type of a function in a WebAssembly module.
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct FuncType {
     /// The combined parameters and result types.
     params_results: Box<[ValType]>,
@@ -678,11 +693,11 @@ impl FuncType {
 }
 
 /// Represents a type of an array in a WebAssembly module.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ArrayType(pub FieldType);
 
 /// Represents a field type of an array or a struct.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct FieldType {
     /// Array element type.
     pub element_type: StorageType,
@@ -705,7 +720,7 @@ impl FieldType {
 }
 
 /// Represents storage types introduced in the GC spec for array and struct fields.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StorageType {
     /// The storage type is i8.
     I8,
@@ -746,14 +761,14 @@ impl StorageType {
 }
 
 /// Represents a type of a struct in a WebAssembly module.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct StructType {
     /// Struct fields.
     pub fields: Box<[FieldType]>,
 }
 
 /// Represents a type of a continuation in a WebAssembly module.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct ContType(pub UnpackedIndex);
 
 impl ContType {
@@ -771,7 +786,7 @@ impl ContType {
 }
 
 /// Represents the types of values in a WebAssembly module.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ValType {
     /// The value type is i32.
     I32,
@@ -925,7 +940,7 @@ impl ValType {
 //
 //   0000 = none
 //   ```
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RefType([u8; 3]);
 
 impl fmt::Debug for RefType {
