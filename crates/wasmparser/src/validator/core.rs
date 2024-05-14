@@ -155,7 +155,7 @@ impl ModuleState {
                 }
             }
             TableInit::Expr(expr) => {
-                if !features.contains(WasmFeatures::FUNCTION_REFERENCES) {
+                if !features.function_references() {
                     bail!(
                         offset,
                         "tables with expression initializers require \
@@ -225,7 +225,7 @@ impl ModuleState {
                 self.check_const_expr(&offset_expr, table.index_type(), features, types)?;
             }
             ElementKind::Passive | ElementKind::Declared => {
-                if !features.contains(WasmFeatures::BULK_MEMORY) {
+                if !features.bulk_memory() {
                     return Err(BinaryReaderError::new(
                         "bulk memory must be enabled",
                         offset,
@@ -317,7 +317,7 @@ impl ModuleState {
             }
 
             fn validate_extended_const(&mut self, op: &str) -> Result<()> {
-                if self.ops.features.contains(WasmFeatures::EXTENDED_CONST) {
+                if self.ops.features.extended_const() {
                     Ok(())
                 } else {
                     Err(BinaryReaderError::new(
@@ -331,7 +331,7 @@ impl ModuleState {
             }
 
             fn validate_gc(&mut self, op: &str) -> Result<()> {
-                if self.features.contains(WasmFeatures::GC) {
+                if self.features.gc() {
                     Ok(())
                 } else {
                     Err(BinaryReaderError::new(
@@ -348,8 +348,7 @@ impl ModuleState {
                 let module = &self.resources.module;
                 let global = module.global_at(index, self.offset)?;
 
-                if index >= module.num_imported_globals && !self.features.contains(WasmFeatures::GC)
-                {
+                if index >= module.num_imported_globals && !self.features.gc() {
                     return Err(BinaryReaderError::new(
                         "constant expression required: global.get of locally defined global",
                         self.offset,
@@ -526,7 +525,7 @@ pub(crate) struct Module {
     // Stores indexes into `types`.
     pub functions: Vec<u32>,
     pub tags: Vec<CoreTypeId>,
-    pub function_references: HashSet<u32>,
+    pub function_references: Set<u32>,
     pub imports: IndexMap<(String, String), Vec<EntityType>>,
     pub exports: IndexMap<String, EntityType>,
     pub type_size: u32,
@@ -559,7 +558,7 @@ impl Module {
         check_limit: bool,
     ) -> Result<()> {
         debug_assert!(rec_group.is_explicit_rec_group() || rec_group.types().len() == 1);
-        if rec_group.is_explicit_rec_group() && !features.contains(WasmFeatures::GC) {
+        if rec_group.is_explicit_rec_group() && !features.gc() {
             bail!(
                 offset,
                 "rec group usage requires `gc` proposal to be enabled"
@@ -605,7 +604,7 @@ impl Module {
         offset: usize,
     ) -> Result<()> {
         let ty = &types[id];
-        if !features.contains(WasmFeatures::GC) && (!ty.is_final || ty.supertype_idx.is_some()) {
+        if !features.gc() && (!ty.is_final || ty.supertype_idx.is_some()) {
             bail!(offset, "gc proposal must be enabled to use subtypes");
         }
 
@@ -642,7 +641,7 @@ impl Module {
                 for ty in t.params().iter().chain(t.results()) {
                     check(ty)?;
                 }
-                if t.results().len() > 1 && !features.contains(WasmFeatures::MULTI_VALUE) {
+                if t.results().len() > 1 && !features.multi_value() {
                     return Err(BinaryReaderError::new(
                         "func type returns multiple values but the multi-value feature is not enabled",
                         offset,
@@ -667,7 +666,7 @@ impl Module {
                 }
             }
             CompositeType::Array(t) => {
-                if !features.contains(WasmFeatures::GC) {
+                if !features.gc() {
                     return Err(BinaryReaderError::new(
                         "array indexed types not supported without the gc feature",
                         offset,
@@ -679,7 +678,7 @@ impl Module {
                 };
             }
             CompositeType::Struct(t) => {
-                if !features.contains(WasmFeatures::GC) {
+                if !features.gc() {
                     return Err(BinaryReaderError::new(
                         "struct indexed types not supported without the gc feature",
                         offset,
@@ -724,7 +723,7 @@ impl Module {
                 (self.tags.len(), MAX_WASM_TAGS, "tags")
             }
             TypeRef::Global(ty) => {
-                if !features.contains(WasmFeatures::MUTABLE_GLOBAL) && ty.mutable {
+                if !features.mutable_global() && ty.mutable {
                     return Err(BinaryReaderError::new(
                         "mutable global support is not enabled",
                         offset,
@@ -757,7 +756,7 @@ impl Module {
         check_limit: bool,
         types: &TypeList,
     ) -> Result<()> {
-        if !features.contains(WasmFeatures::MUTABLE_GLOBAL) {
+        if !features.mutable_global() {
             if let EntityType::Global(global_type) = ty {
                 if global_type.mutable {
                     return Err(BinaryReaderError::new(
@@ -879,7 +878,7 @@ impl Module {
             self.check_ref_type(&mut ty.element_type, features, offset)?
         }
 
-        if ty.table64 && !features.contains(WasmFeatures::MEMORY64) {
+        if ty.table64 && !features.memory64() {
             return Err(BinaryReaderError::new(
                 "memory64 must be enabled for 64-bit tables",
                 offset,
@@ -904,7 +903,7 @@ impl Module {
     ) -> Result<()> {
         self.check_limits(ty.initial, ty.maximum, offset)?;
         let (page_size, page_size_log2) = if let Some(page_size_log2) = ty.page_size_log2 {
-            if !features.contains(WasmFeatures::CUSTOM_PAGE_SIZES) {
+            if !features.custom_page_sizes() {
                 return Err(BinaryReaderError::new(
                     "the custom page sizes proposal must be enabled to \
                      customize a memory's page size",
@@ -924,7 +923,7 @@ impl Module {
             (DEFAULT_WASM_PAGE_SIZE, page_size_log2)
         };
         let (true_maximum, err) = if ty.memory64 {
-            if !features.contains(WasmFeatures::MEMORY64) {
+            if !features.memory64() {
                 return Err(BinaryReaderError::new(
                     "memory64 must be enabled for 64-bit memories",
                     offset,
@@ -953,7 +952,7 @@ impl Module {
             }
         }
         if ty.shared {
-            if !features.contains(WasmFeatures::THREADS) {
+            if !features.threads() {
                 return Err(BinaryReaderError::new(
                     "threads must be enabled for shared memories",
                     offset,
@@ -1059,7 +1058,7 @@ impl Module {
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        if !features.contains(WasmFeatures::EXCEPTIONS) {
+        if !features.exceptions() {
             return Err(BinaryReaderError::new(
                 "exceptions proposal not enabled",
                 offset,
@@ -1083,7 +1082,7 @@ impl Module {
     ) -> Result<()> {
         self.check_value_type(&mut ty.content_type, features, offset)?;
         if ty.shared {
-            if !features.contains(WasmFeatures::SHARED_EVERYTHING_THREADS) {
+            if !features.shared_everything_threads() {
                 return Err(BinaryReaderError::new(
                     "shared globals require the shared-everything-threads proposal",
                     offset,
@@ -1115,7 +1114,7 @@ impl Module {
     }
 
     pub fn max_tables(&self, features: &WasmFeatures) -> usize {
-        if features.contains(WasmFeatures::REFERENCE_TYPES) {
+        if features.reference_types() {
             MAX_WASM_TABLES
         } else {
             1
@@ -1123,7 +1122,7 @@ impl Module {
     }
 
     pub fn max_memories(&self, features: &WasmFeatures) -> usize {
-        if features.contains(WasmFeatures::MULTI_MEMORY) {
+        if features.multi_memory() {
             MAX_WASM_MEMORIES
         } else {
             1

@@ -50,7 +50,7 @@ mod prelude {
     pub use alloc::vec::Vec;
 
     #[cfg(feature = "validate")]
-    pub use crate::map::{HashMap, HashSet, IndexMap, IndexSet};
+    pub use crate::collections::{IndexMap, IndexSet, Map, Set};
 }
 
 /// A helper macro to conveniently iterate over all opcodes recognized by this
@@ -792,10 +792,12 @@ macro_rules! bail {
 }
 
 pub use crate::binary_reader::{BinaryReader, BinaryReaderError, Result};
+pub use crate::features::*;
 pub use crate::parser::*;
 pub use crate::readers::*;
 
 mod binary_reader;
+mod features;
 mod limits;
 mod parser;
 mod readers;
@@ -810,4 +812,4 @@ pub use crate::resources::*;
 pub use crate::validator::*;
 
 #[cfg(feature = "validate")]
-pub mod map;
+pub mod collections;

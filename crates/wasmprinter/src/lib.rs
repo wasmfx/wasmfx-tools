@@ -1297,7 +1297,6 @@ impl Printer {
         locals.finish(&mut self.result);
 
         let nesting_start = self.nesting;
-        body.allow_memarg64(true);
 
         let mut buf = String::new();
         let mut op_printer = operator::PrintOperator::new(self, state);
