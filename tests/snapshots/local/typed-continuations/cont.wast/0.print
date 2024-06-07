@@ -51,7 +51,7 @@
   )
   (func $f3 (;7;) (type $f1)
     barrier ;; label = @1
-    call $f4
+      call $f4
     end
   )
   (func $f4 (;8;) (type $f1)

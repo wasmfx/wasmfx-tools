@@ -221,9 +221,8 @@ impl<'a, 'b> PrintOperator<'a, 'b> {
     fn resumetable(&mut self, targets: ResumeTable<'_>) -> Result<()> {
         for (_, item) in targets.targets().enumerate() {
             let (tag, label) = item?;
-            self.push_str("(tag ");
+            self.push_str("(tag");
             self.tag_index(tag)?;
-            self.push_str(" ");
             self.relative_depth(label)?;
             self.push_str(")");
         }
@@ -433,6 +432,7 @@ macro_rules! define_visit {
     // The catch-all for "before an op" is "print an newline"
     (before_op $self:ident Loop) => ($self.block_start(););
     (before_op $self:ident Block) => ($self.block_start(););
+    (before_op $self:ident Barrier) => ($self.block_start(););
     (before_op $self:ident If) => ($self.block_start(););
     (before_op $self:ident Try) => ($self.block_start(););
     (before_op $self:ident TryTable) => ($self.block_start(););
@@ -565,7 +565,6 @@ macro_rules! define_visit {
     (payload $self:ident ResumeThrow $type_index:ident $tag_index:ident $table:ident) => (
         $self.push_str(" ");
         $self.cont_index($type_index)?;
-        $self.push_str(" ");
         $self.tag_index($tag_index)?;
         if $table.len() > 0 {
             $self.push_str(" ");
