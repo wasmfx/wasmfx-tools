@@ -162,10 +162,7 @@ impl NewOpts {
             .encode()
             .context("failed to encode a component from module")?;
 
-        self.io.output(Output::Wasm {
-            bytes: &bytes,
-            wat: self.wat,
-        })?;
+        self.io.output_wasm(&bytes, self.wat)?;
 
         Ok(())
     }
@@ -185,11 +182,19 @@ struct WitResolve {
     /// items are otherwise hidden by default.
     #[clap(long)]
     features: Vec<String>,
+
+    /// Enable all features when parsing the `wit` option.
+    ///
+    /// This flag enables all `@unstable` features in WIT documents where the
+    /// items are otherwise hidden by default.
+    #[clap(long)]
+    all_features: bool,
 }
 
 impl WitResolve {
-    fn resolve_with_features(features: &[String]) -> Resolve {
+    fn resolve_with_features(features: &[String], all_features: bool) -> Resolve {
         let mut resolve = Resolve::default();
+        resolve.all_features = all_features;
         for feature in features {
             for f in feature.split_whitespace() {
                 for f in f.split(',').filter(|s| !s.is_empty()) {
@@ -201,7 +206,7 @@ impl WitResolve {
     }
 
     fn load(&self) -> Result<(Resolve, Vec<PackageId>)> {
-        let mut resolve = Self::resolve_with_features(&self.features);
+        let mut resolve = Self::resolve_with_features(&self.features, self.all_features);
         let (pkg_ids, _) = resolve.push_path(&self.wit)?;
         Ok((resolve, pkg_ids))
     }
@@ -233,19 +238,21 @@ pub struct EmbedOpts {
     /// The expected string encoding format for the component.
     ///
     /// Supported values are: `utf8` (default), `utf16`, and `compact-utf16`.
-    /// This is only applicable to the `--wit` argument to describe the string
+    /// This is only applicable to the `wit` argument to describe the string
     /// encoding of the functions in that world.
     #[clap(long, value_name = "ENCODING")]
     encoding: Option<StringEncoding>,
 
     /// The world that the component uses.
     ///
-    /// This is the path, within the `WIT` source provided as a positional argument, to the `world`
-    /// that the core wasm module works with. This can either be a bare string which is a document
-    /// name that has a `default world`, or it can be a `foo/bar` name where `foo` names a document
-    /// and `bar` names a world within that document. If the `WIT` source provided contains multiple
-    /// packages, this option must be set, and must be of the fully-qualified form (ex:
-    /// "wasi:http/proxy")
+    /// This is the path, within the `WIT` source provided as a positional
+    /// argument, to the `world` that the core wasm module works with. If this
+    /// option is omitted then the "main package" pointed to by `WIT` must have
+    /// a single world and that's what is used to embed. Otherwise this could be
+    /// a bare string `foo` to point to the `world foo` within the main
+    /// package of WIT. Finally this can be a fully qualified name too such as
+    /// `wasi:http/proxy` which can select a world from a WIT dependency as
+    /// well.
     #[clap(short, long)]
     world: Option<String>,
 
@@ -288,10 +295,7 @@ impl EmbedOpts {
             self.encoding.unwrap_or(StringEncoding::UTF8),
         )?;
 
-        self.io.output(Output::Wasm {
-            bytes: &wasm,
-            wat: self.wat,
-        })?;
+        self.io.output_wasm(&wasm, self.wat)?;
 
         Ok(())
     }
@@ -418,10 +422,7 @@ impl LinkOpts {
             .encode()
             .context("failed to encode a component from modules")?;
 
-        self.output.output(Output::Wasm {
-            bytes: &bytes,
-            wat: self.wat,
-        })?;
+        self.output.output_wasm(&self.general, &bytes, self.wat)?;
 
         Ok(())
     }
@@ -501,6 +502,13 @@ pub struct WitOpts {
     /// items are otherwise hidden by default.
     #[clap(long)]
     features: Vec<String>,
+
+    /// Enable all features when parsing the `wit` option.
+    ///
+    /// This flag enables all `@unstable` features in WIT documents where the
+    /// items are otherwise hidden by default.
+    #[clap(long)]
+    all_features: bool,
 }
 
 impl WitOpts {
@@ -531,7 +539,8 @@ impl WitOpts {
         // `parse_wit_from_path`.
         if let Some(input) = &self.input {
             if input.is_dir() {
-                let mut resolve = WitResolve::resolve_with_features(&self.features);
+                let mut resolve =
+                    WitResolve::resolve_with_features(&self.features, self.all_features);
                 let (pkg_ids, _) = resolve.push_dir(&input)?;
                 return Ok(DecodedWasm::WitPackages(resolve, pkg_ids));
             }
@@ -579,7 +588,8 @@ impl WitOpts {
                     Ok(s) => s,
                     Err(_) => bail!("input was not valid utf-8"),
                 };
-                let mut resolve = WitResolve::resolve_with_features(&self.features);
+                let mut resolve =
+                    WitResolve::resolve_with_features(&self.features, self.all_features);
                 let pkgs = UnresolvedPackageGroup::parse(path, input)?;
                 let ids = resolve.append(pkgs)?;
                 Ok(DecodedWasm::WitPackages(resolve, ids))
@@ -602,10 +612,7 @@ impl WitOpts {
             )
             .validate_all(&bytes)?;
         }
-        self.output.output(Output::Wasm {
-            bytes: &bytes,
-            wat: self.wat,
-        })?;
+        self.output.output_wasm(&self.general, &bytes, self.wat)?;
         Ok(())
     }
 
@@ -664,8 +671,14 @@ impl WitOpts {
                 }
             }
             None => {
-                let output = printer.print(resolve, &main)?;
-                self.output.output(Output::Wat(&output))?;
+                self.output.output(
+                    &self.general,
+                    Output::Wit {
+                        resolve: &resolve,
+                        ids: &main,
+                        printer,
+                    },
+                )?;
             }
         }
 
@@ -677,7 +690,7 @@ impl WitOpts {
 
         let resolve = decoded.resolve();
         let output = serde_json::to_string_pretty(&resolve)?;
-        self.output.output(Output::Json(&output))?;
+        self.output.output(&self.general, Output::Json(&output))?;
 
         Ok(())
     }
