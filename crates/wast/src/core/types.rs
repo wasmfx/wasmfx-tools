@@ -353,7 +353,7 @@ impl<'a> RefType<'a> {
             heap: HeapType::Abstract {
                 shared: false,
                 ty: AbstractHeapType::Cont,
-            }
+            },
         }
     }
 
@@ -364,7 +364,7 @@ impl<'a> RefType<'a> {
             heap: HeapType::Abstract {
                 shared: false,
                 ty: AbstractHeapType::NoCont,
-            }
+            },
         }
     }
 
@@ -407,9 +407,9 @@ impl<'a> RefType<'a> {
             || l.peek::<kw::nullfuncref>()?
             || l.peek::<kw::nullexternref>()?
             || l.peek::<kw::nullexnref>()?
-           || l.peek::<kw::nullref>()?
-           || l.peek::<kw::contref>()?
-           || l.peek::<kw::nullcontref>()?)
+            || l.peek::<kw::nullref>()?
+            || l.peek::<kw::contref>()?
+            || l.peek::<kw::nullcontref>()?)
     }
 
     /// Helper for parsing shorthand forms of reference types; e.g., `funcref`.
