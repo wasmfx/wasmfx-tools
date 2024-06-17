@@ -7,8 +7,8 @@ use arbitrary::{Result, Unstructured};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use wasm_encoder::{
-    ArrayType, BlockType, Catch, ConstExpr, ExportKind, FieldType, GlobalType, HeapType, MemArg,
-    RefType, StorageType, StructType,
+    AbstractHeapType, ArrayType, BlockType, Catch, ConstExpr, ExportKind, FieldType, GlobalType,
+    HeapType, MemArg, RefType, StorageType, StructType,
 };
 mod no_traps;
 
@@ -2044,6 +2044,14 @@ fn call_ref(
 
 #[inline]
 fn call_indirect_valid(module: &Module, builder: &mut CodeBuilder) -> bool {
+    call_indirect_valid_impl(module, builder, false)
+}
+
+fn call_indirect_valid_impl(
+    module: &Module,
+    builder: &mut CodeBuilder,
+    is_return_call: bool,
+) -> bool {
     if module.config.disallow_traps {
         // We have no way to reflect, at run time, on a `funcref` in
         // the `i`th slot in a table and dynamically avoid trapping
@@ -2059,9 +2067,10 @@ fn call_indirect_valid(module: &Module, builder: &mut CodeBuilder) -> bool {
         return false;
     }
     let ty = builder.allocs.operands.pop().unwrap();
-    let is_valid = module
-        .func_types()
-        .any(|(_, ty)| builder.types_on_stack(module, &ty.params));
+    let is_valid = module.func_types().any(|(_, ty)| {
+        builder.types_on_stack(module, &ty.params)
+            && (!is_return_call || builder.allocs.controls[0].label_types() == &ty.results)
+    });
     builder.allocs.operands.push(ty);
     is_valid
 }
@@ -2197,8 +2206,7 @@ fn return_call_indirect_valid(module: &Module, builder: &mut CodeBuilder) -> boo
     if !module.config.tail_call_enabled {
         return false;
     }
-
-    call_indirect_valid(module, builder)
+    call_indirect_valid_impl(module, builder, true)
 }
 
 fn return_call_indirect(
@@ -2301,18 +2309,12 @@ fn br_on_null(
             if !module.types.is_empty() && u.arbitrary()? {
                 HeapType::Concrete(u.int_in_range(0..=u32::try_from(module.types.len()).unwrap())?)
             } else {
-                *u.choose(&[
-                    HeapType::Func,
-                    HeapType::Extern,
-                    HeapType::Any,
-                    HeapType::None,
-                    HeapType::NoExtern,
-                    HeapType::NoFunc,
-                    HeapType::Eq,
-                    HeapType::Struct,
-                    HeapType::Array,
-                    HeapType::I31,
-                ])?
+                use AbstractHeapType::*;
+                let ty = *u.choose(&[
+                    Func, Extern, Any, None, NoExtern, NoFunc, Eq, Struct, Array, I31,
+                ])?;
+                // TODO: handle shared
+                HeapType::Abstract { shared: false, ty }
             }
         }
     };
@@ -5384,18 +5386,23 @@ fn ref_null(
         choices.push(RefType::EXNREF);
     }
     if module.config.gc_enabled {
+        use AbstractHeapType::*;
         let r = |heap_type| RefType {
             nullable: true,
             heap_type,
         };
-        choices.push(r(HeapType::Any));
-        choices.push(r(HeapType::Eq));
-        choices.push(r(HeapType::Array));
-        choices.push(r(HeapType::Struct));
-        choices.push(r(HeapType::I31));
-        choices.push(r(HeapType::None));
-        choices.push(r(HeapType::NoFunc));
-        choices.push(r(HeapType::NoExtern));
+        let a = |abstract_heap_type| HeapType::Abstract {
+            shared: false, // TODO: handle shared
+            ty: abstract_heap_type,
+        };
+        choices.push(r(a(Any)));
+        choices.push(r(a(Eq)));
+        choices.push(r(a(Array)));
+        choices.push(r(a(Struct)));
+        choices.push(r(a(I31)));
+        choices.push(r(a(None)));
+        choices.push(r(a(NoFunc)));
+        choices.push(r(a(NoExtern)));
         for i in 0..module.types.len() {
             let i = u32::try_from(i).unwrap();
             choices.push(r(HeapType::Concrete(i)));
@@ -5457,10 +5464,7 @@ fn ref_as_non_null(
 
 #[inline]
 fn ref_eq_valid(module: &Module, builder: &mut CodeBuilder) -> bool {
-    let eq_ref = ValType::Ref(RefType {
-        nullable: true,
-        heap_type: HeapType::Eq,
-    });
+    let eq_ref = ValType::Ref(RefType::EQREF);
     module.config.gc_enabled && builder.types_on_stack(module, &[eq_ref, eq_ref])
 }
 
@@ -6359,14 +6363,7 @@ fn array_set(
 
 #[inline]
 fn array_len_valid(module: &Module, builder: &mut CodeBuilder) -> bool {
-    module.config.gc_enabled
-        && builder.type_on_stack(
-            module,
-            ValType::Ref(RefType {
-                nullable: true,
-                heap_type: HeapType::Array,
-            }),
-        )
+    module.config.gc_enabled && builder.type_on_stack(module, ValType::Ref(RefType::ARRAYREF))
 }
 
 fn array_len(
@@ -6574,10 +6571,7 @@ fn ref_i31(
     instructions: &mut Vec<Instruction>,
 ) -> Result<()> {
     builder.pop_operand();
-    builder.push_operand(Some(ValType::Ref(RefType {
-        nullable: false,
-        heap_type: HeapType::I31,
-    })));
+    builder.push_operand(Some(ValType::Ref(RefType::I31REF)));
     instructions.push(Instruction::RefI31);
     Ok(())
 }
@@ -6617,7 +6611,7 @@ fn any_convert_extern_valid(module: &Module, builder: &mut CodeBuilder) -> bool 
             module,
             ValType::Ref(RefType {
                 nullable: true,
-                heap_type: HeapType::Extern,
+                heap_type: HeapType::EXTERN,
             }),
         )
 }
@@ -6634,7 +6628,7 @@ fn any_convert_extern(
     };
     builder.push_operand(Some(ValType::Ref(RefType {
         nullable,
-        heap_type: HeapType::Any,
+        heap_type: HeapType::ANY,
     })));
     instructions.push(Instruction::AnyConvertExtern);
     Ok(())
@@ -6642,14 +6636,7 @@ fn any_convert_extern(
 
 #[inline]
 fn extern_convert_any_valid(module: &Module, builder: &mut CodeBuilder) -> bool {
-    module.config.gc_enabled
-        && builder.type_on_stack(
-            module,
-            ValType::Ref(RefType {
-                nullable: true,
-                heap_type: HeapType::Any,
-            }),
-        )
+    module.config.gc_enabled && builder.type_on_stack(module, ValType::Ref(RefType::ANYREF))
 }
 
 fn extern_convert_any(
@@ -6662,10 +6649,12 @@ fn extern_convert_any(
         None => u.arbitrary()?,
         Some(r) => r.nullable,
     };
-    builder.push_operand(Some(ValType::Ref(RefType {
-        nullable,
-        heap_type: HeapType::Extern,
-    })));
+    let ty = if nullable {
+        RefType::EXTERNREF.nullable(true)
+    } else {
+        RefType::EXTERNREF
+    };
+    builder.push_operand(Some(ValType::Ref(ty)));
     instructions.push(Instruction::ExternConvertAny);
     Ok(())
 }
