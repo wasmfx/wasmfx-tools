@@ -179,7 +179,6 @@ where
     fn is_func_subtype(&self, a: FuncType, b: FuncType) -> bool {
         T::is_func_subtype(self, a, b)
     }
-
     fn element_count(&self) -> u32 {
         T::element_count(self)
     }
