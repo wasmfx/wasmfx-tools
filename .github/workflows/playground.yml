@@ -19,6 +19,7 @@ jobs:
   build:
     name: Build playground deployment
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'bytecodealliance'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,7 +46,7 @@ jobs:
 
   deploy:
     name: Deploy playground
-    if: github.ref == 'refs/heads/main'
+    if: github.repository_owner == 'bytecodealliance' && github.ref == 'refs/heads/main'
     needs: build
     permissions:
       pages: write
