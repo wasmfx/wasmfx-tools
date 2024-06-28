@@ -73,8 +73,8 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
     fn block_end(&mut self) -> Result<()> {
         if self.printer.nesting > self.nesting_start {
             self.printer.nesting -= 1;
-            self.separator()?;
         }
+        self.separator()?;
         Ok(())
     }
 
@@ -422,7 +422,6 @@ macro_rules! define_visit {
     //
     // * Print the name of the insruction as defined in this macro
     // * Print any payload, as necessary
-    // * Return the `OpKind`, as defined by this macro
     ($(@$proposal:ident $op:ident $({ $($arg:ident: $argty:ty),* })? => $visit:ident )*) => ($(
         fn $visit(&mut self $( , $($arg: $argty),* )?) -> Self::Output {
             define_visit!(before_op self $op);
