@@ -367,20 +367,23 @@ impl Encode for Type<'_> {
             }
             (None, _) => {} // No supertype, sub wasn't used
         }
-        match &self.def {
-            TypeDef::Func(func) => {
+        if self.def.shared {
+            e.push(0x65);
+        }
+        match &self.def.kind {
+            InnerTypeKind::Func(func) => {
                 e.push(0x60);
                 func.encode(e)
             }
-            TypeDef::Struct(r#struct) => {
+            InnerTypeKind::Struct(r#struct) => {
                 e.push(0x5f);
                 r#struct.encode(e)
             }
-            TypeDef::Array(array) => {
+            InnerTypeKind::Array(array) => {
                 e.push(0x5e);
                 array.encode(e)
             }
-            TypeDef::Cont(u) => {
+            InnerTypeKind::Cont(u) => {
                 e.push(0x5d);
                 u.encode(e)
             }
@@ -1202,9 +1205,9 @@ fn find_names<'a>(
         // Handle struct fields separately from above
         if let ModuleField::Type(ty) = field {
             let mut field_names = vec![];
-            match &ty.def {
-                TypeDef::Func(_) | TypeDef::Array(_) | TypeDef::Cont(_) => {}
-                TypeDef::Struct(ty_struct) => {
+            match &ty.def.kind {
+                InnerTypeKind::Func(_) | InnerTypeKind::Array(_) | InnerTypeKind::Cont(_) => {}
+                InnerTypeKind::Struct(ty_struct) => {
                     for (idx, field) in ty_struct.fields.iter().enumerate() {
                         if let Some(name) = get_name(&field.id, &None) {
                             field_names.push((idx as u32, name))

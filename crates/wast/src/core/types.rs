@@ -923,9 +923,9 @@ impl<'a> Parse<'a> for ContinuationType<'a> {
     }
 }
 
-/// A definition of a type.
+/// The inner kind of a type definition.
 #[derive(Debug)]
-pub enum TypeDef<'a> {
+pub enum InnerTypeKind<'a> {
     /// A function type definition.
     Func(FunctionType<'a>),
     /// A struct type definition.
@@ -936,23 +936,51 @@ pub enum TypeDef<'a> {
     Cont(ContinuationType<'a>),
 }
 
-impl<'a> Parse<'a> for TypeDef<'a> {
+impl<'a> Parse<'a> for InnerTypeKind<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut l = parser.lookahead1();
         if l.peek::<kw::func>()? {
             parser.parse::<kw::func>()?;
-            Ok(TypeDef::Func(parser.parse()?))
+            Ok(InnerTypeKind::Func(parser.parse()?))
         } else if l.peek::<kw::r#struct>()? {
             parser.parse::<kw::r#struct>()?;
-            Ok(TypeDef::Struct(parser.parse()?))
-        } else if l.peek::<kw::cont>()? {
-            parser.parse::<kw::cont>()?;
-            Ok(TypeDef::Cont(parser.parse()?))
+            Ok(InnerTypeKind::Struct(parser.parse()?))
         } else if l.peek::<kw::array>()? {
             parser.parse::<kw::array>()?;
-            Ok(TypeDef::Array(parser.parse()?))
+            Ok(InnerTypeKind::Array(parser.parse()?))
+        } else if l.peek::<kw::cont>()? {
+            parser.parse::<kw::cont>()?;
+            Ok(InnerTypeKind::Cont(parser.parse()?))
         } else {
             Err(l.error())
+        }
+    }
+}
+
+/// A definition of a type.
+#[derive(Debug)]
+pub struct TypeDef<'a> {
+    /// The inner definition.
+    pub kind: InnerTypeKind<'a>,
+    /// Whether the type is shared or not.
+    pub shared: bool,
+}
+
+impl<'a> Parse<'a> for TypeDef<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        let mut l = parser.lookahead1();
+        if l.peek::<kw::shared>()? {
+            parser.parse::<kw::shared>()?;
+            parser.parens(|parser| {
+                let kind = parser.parse()?;
+                Ok(TypeDef { shared: true, kind })
+            })
+        } else {
+            let kind = parser.parse()?;
+            Ok(TypeDef {
+                shared: false,
+                kind,
+            })
         }
     }
 }
