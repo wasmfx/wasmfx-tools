@@ -9,7 +9,6 @@ use super::{
     operators::{ty_to_str, OperatorValidator, OperatorValidatorAllocations},
     types::{CoreTypeId, EntityType, RecGroupId, TypeAlloc, TypeList},
 };
-use crate::prelude::*;
 use crate::{
     limits::*, validator::types::TypeIdentifier, BinaryReaderError, CompositeType, ConstExpr,
     ContType, Data, DataKind, Element, ElementKind, ExternalKind, FuncType, Global, GlobalType,
@@ -17,6 +16,7 @@ use crate::{
     TableInit, TableType, TagType, TypeRef, UnpackedIndex, ValType, VisitOperator, WasmFeatures,
     WasmModuleResources,
 };
+use crate::{prelude::*, CompositeInnerType};
 use alloc::sync::Arc;
 use core::mem;
 
@@ -608,7 +608,7 @@ impl Module {
             bail!(offset, "gc proposal must be enabled to use subtypes");
         }
 
-        self.check_composite_type(&ty.composite_type, features, types, offset)?;
+        self.check_composite_type(&ty.composite_type, features, &types, offset)?;
 
         let depth = if let Some(supertype_index) = ty.supertype_idx {
             debug_assert!(supertype_index.is_canonical());
@@ -644,15 +644,33 @@ impl Module {
         types: &TypeList,
         offset: usize,
     ) -> Result<()> {
-        let check = |ty: &ValType| {
+        let check = |ty: &ValType, shared: bool| {
             features
                 .check_value_type(*ty)
-                .map_err(|e| BinaryReaderError::new(e, offset))
+                .map_err(|e| BinaryReaderError::new(e, offset))?;
+            if shared && !types.valtype_is_shared(*ty) {
+                return Err(BinaryReaderError::new(
+                    "shared composite type must contain shared types",
+                    offset,
+                ));
+                // The other cases are fine:
+                // - both shared or unshared: good to go
+                // - the func type is unshared, `ty` is shared: though
+                //   odd, we _can_ in fact use shared values in
+                //   unshared composite types (e.g., functions).
+            }
+            Ok(())
         };
-        match ty {
-            CompositeType::Func(t) => {
-                for ty in t.params().iter().chain(t.results()) {
-                    check(ty)?;
+        if !features.shared_everything_threads() && ty.shared {
+            return Err(BinaryReaderError::new(
+                "shared composite types are not supported without the shared-everything-threads feature",
+                offset,
+            ));
+        }
+        match &ty.inner {
+            CompositeInnerType::Func(t) => {
+                for vt in t.params().iter().chain(t.results()) {
+                    check(vt, ty.shared)?;
                 }
                 if t.results().len() > 1 && !features.multi_value() {
                     return Err(BinaryReaderError::new(
@@ -661,7 +679,7 @@ impl Module {
                     ));
                 }
             }
-            CompositeType::Cont(ct) => {
+            CompositeInnerType::Cont(ct) => {
                 // Check that the type index points to a valid function type.
                 match ct.0 {
                     UnpackedIndex::Module(idx) => {
@@ -678,7 +696,7 @@ impl Module {
                     }
                 }
             }
-            CompositeType::Array(t) => {
+            CompositeInnerType::Array(t) => {
                 if !features.gc() {
                     return Err(BinaryReaderError::new(
                         "array indexed types not supported without the gc feature",
@@ -686,21 +704,25 @@ impl Module {
                     ));
                 }
                 match &t.0.element_type {
-                    StorageType::I8 | StorageType::I16 => {}
-                    StorageType::Val(value_type) => check(value_type)?,
+                    StorageType::I8 | StorageType::I16 => {
+                        // Note: scalar types are always `shared`.
+                    }
+                    StorageType::Val(value_type) => check(value_type, ty.shared)?,
                 };
             }
-            CompositeType::Struct(t) => {
+            CompositeInnerType::Struct(t) => {
                 if !features.gc() {
                     return Err(BinaryReaderError::new(
                         "struct indexed types not supported without the gc feature",
                         offset,
                     ));
                 }
-                for ty in t.fields.iter() {
-                    match &ty.element_type {
-                        StorageType::I8 | StorageType::I16 => {}
-                        StorageType::Val(value_type) => check(value_type)?,
+                for ft in t.fields.iter() {
+                    match &ft.element_type {
+                        StorageType::I8 | StorageType::I16 => {
+                            // Note: scalar types are always `shared`.
+                        }
+                        StorageType::Val(value_type) => check(value_type, ty.shared)?,
                     }
                 }
             }
@@ -842,8 +864,12 @@ impl Module {
         types: &'a TypeList,
         offset: usize,
     ) -> Result<&'a FuncType> {
-        match &self.sub_type_at(types, type_index, offset)?.composite_type {
-            CompositeType::Func(f) => Ok(f),
+        match &self
+            .sub_type_at(types, type_index, offset)?
+            .composite_type
+            .inner
+        {
+            CompositeInnerType::Func(f) => Ok(f),
             _ => bail!(offset, "type index {type_index} is not a function type"),
         }
     }
@@ -1321,16 +1347,16 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
     }
 
     fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
-        let ct = match &self.types[id].composite_type {
-            CompositeType::Cont(c) => c.clone(),
+        let ct = match &self.types[id].composite_type.inner {
+            CompositeInnerType::Cont(c) => c.clone(),
             _ => return None,
         };
         Some(ct)
     }
 
     fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
-        match &self.types[id].composite_type {
-            CompositeType::Func(f) => Some(f),
+        match &self.types[id].composite_type.inner {
+            CompositeInnerType::Func(f) => Some(f),
             _ => None,
         }
     }
@@ -1353,8 +1379,8 @@ impl WasmModuleResources for ValidatorResources {
     fn tag_at(&self, at: u32) -> Option<&FuncType> {
         let id = *self.0.tags.get(at as usize)?;
         let types = self.0.snapshot.as_ref().unwrap();
-        match &types[id].composite_type {
-            CompositeType::Func(f) => Some(f),
+        match &types[id].composite_type.inner {
+            CompositeInnerType::Func(f) => Some(f),
             _ => None,
         }
     }
@@ -1427,8 +1453,8 @@ impl WasmModuleResources for ValidatorResources {
     // Returns the continuation type at the type index, if any
     fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
         let types = self.0.snapshot.as_ref().unwrap();
-        let ct = match &types[id].composite_type {
-            CompositeType::Cont(c) => c.clone(),
+        let ct = match &types[id].composite_type.inner {
+            CompositeInnerType::Cont(c) => c.clone(),
             _ => return None,
         };
         Some(ct)
@@ -1436,8 +1462,8 @@ impl WasmModuleResources for ValidatorResources {
 
     fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
         let types = self.0.snapshot.as_ref().unwrap();
-        match &types[id].composite_type {
-            CompositeType::Func(f) => Some(f),
+        match &types[id].composite_type.inner {
+            CompositeInnerType::Func(f) => Some(f),
             _ => None,
         }
     }

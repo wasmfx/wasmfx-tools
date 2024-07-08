@@ -751,12 +751,12 @@ impl Printer<'_, '_> {
         )?;
         let ty = match ty {
             CoreType::Sub(ty) => {
-                let ty = match &ty.composite_type {
-                    CompositeType::Func(f) => f,
-                    CompositeType::Array(_) | CompositeType::Struct(_) => {
+                let ty = match &ty.composite_type.inner {
+                    CompositeInnerType::Func(f) => f,
+                    CompositeInnerType::Array(_) | CompositeInnerType::Struct(_) => {
                         unreachable!("Wasm GC types cannot appear in components yet")
                     }
-                    CompositeType::Cont(_) => {
+                    CompositeInnerType::Cont(_) => {
                         unreachable!("Continuation types cannot appear in components yet")
                     }
                 };
@@ -764,10 +764,14 @@ impl Printer<'_, '_> {
                 self.start_group("func")?;
                 self.print_func_type(states.last().unwrap(), &ty, None)?;
                 self.end_group()?;
+                let composite_type = CompositeType {
+                    inner: CompositeInnerType::Func(ty.clone()),
+                    shared: false,
+                };
                 Some(SubType {
                     is_final: true,
                     supertype_idx: None,
-                    composite_type: CompositeType::Func(ty.clone()),
+                    composite_type,
                 })
             }
             CoreType::Module(decls) => {
@@ -821,32 +825,38 @@ impl Printer<'_, '_> {
     }
 
     fn print_composite(&mut self, state: &State, ty: &CompositeType, ty_idx: u32) -> Result<u32> {
-        let r = match &ty {
-            CompositeType::Func(ty) => {
+        if ty.shared {
+            self.start_group("shared")?;
+        }
+        let r = match &ty.inner {
+            CompositeInnerType::Func(ty) => {
                 self.start_group("func")?;
                 let r = self.print_func_type(state, ty, None)?;
                 self.end_group()?; // `func`
                 r
             }
-            CompositeType::Array(ty) => {
+            CompositeInnerType::Array(ty) => {
                 self.start_group("array")?;
                 let r = self.print_array_type(state, ty)?;
                 self.end_group()?; // `array`
                 r
             }
-            CompositeType::Struct(ty) => {
+            CompositeInnerType::Struct(ty) => {
                 self.start_group("struct")?;
                 let r = self.print_struct_type(state, ty, ty_idx)?;
                 self.end_group()?; // `struct`
                 r
             }
-            CompositeType::Cont(ct) => {
+            CompositeInnerType::Cont(ct) => {
                 self.start_group("cont")?;
                 let r = self.print_cont_type(state, ct)?;
                 self.end_group()?;
                 r
             }
         };
+        if ty.shared {
+            self.end_group()?; // `shared`
+        }
         Ok(r)
     }
 
@@ -890,7 +900,11 @@ impl Printer<'_, '_> {
 
         match state.core.types.get(idx as usize) {
             Some(Some(SubType {
-                composite_type: CompositeType::Func(ty),
+                composite_type:
+                    CompositeType {
+                        inner: CompositeInnerType::Func(ty),
+                        shared: false,
+                    },
                 ..
             })) => self.print_func_type(state, ty, names_for).map(Some),
             Some(Some(_)) | Some(None) | None => Ok(None),
