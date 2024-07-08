@@ -65,6 +65,17 @@ impl From<wasmparser::FuncType> for TypeInfo {
     }
 }
 
+// TODO(dhil): Remove this when `into_iter_err_on_gc_types` has been
+// redesigned.
+impl From<wasmparser::FuncOrContType> for TypeInfo {
+    fn from(t: wasmparser::FuncOrContType) -> Self {
+        match t {
+            wasmparser::FuncOrContType::Func(f) => f.into(),
+            wasmparser::FuncOrContType::Cont(_) => todo!("continuation types are not supported"),
+        }
+    }
+}
+
 pub fn map_type(tpe: wasmparser::ValType) -> Result<ValType> {
     match tpe {
         wasmparser::ValType::I32 => Ok(ValType::I32),

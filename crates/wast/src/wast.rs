@@ -102,6 +102,11 @@ pub enum WastDirective<'a> {
         span: Span,
         exec: WastExecute<'a>,
     },
+    AssertSuspension {
+        span: Span,
+        exec: WastExecute<'a>,
+        message: &'a str,
+    },
     Thread(WastThread<'a>),
     Wait {
         span: Span,
@@ -124,6 +129,7 @@ impl WastDirective<'_> {
             | WastDirective::AssertUnlinkable { span, .. }
             | WastDirective::AssertInvalid { span, .. }
             | WastDirective::AssertException { span, .. }
+            | WastDirective::AssertSuspension { span, .. }
             | WastDirective::Wait { span, .. } => *span,
             WastDirective::Invoke(i) => i.span,
             WastDirective::Thread(t) => t.span,
@@ -197,6 +203,13 @@ impl<'a> Parse<'a> for WastDirective<'a> {
             Ok(WastDirective::AssertException {
                 span,
                 exec: parser.parens(|p| p.parse())?,
+            })
+        } else if l.peek::<kw::assert_suspension>()? {
+            let span = parser.parse::<kw::assert_suspension>()?.0;
+            Ok(WastDirective::AssertSuspension {
+                span,
+                exec: parser.parens(|p| p.parse())?,
+                message: parser.parse()?,
             })
         } else if l.peek::<kw::thread>()? {
             Ok(WastDirective::Thread(parser.parse()?))

@@ -71,6 +71,9 @@ fn encode_core_type(encoder: CoreTypeEncoder, ty: &CoreTypeDef) {
                 core::InnerTypeKind::Struct(_) | core::InnerTypeKind::Array(_) => {
                     todo!("encoding of GC proposal types not yet implemented")
                 }
+                core::InnerTypeKind::Cont(_) => {
+                    todo!("encoding of continuation types not yet implemented") // TODO(dhil): revisit later.
+                }
             }
         }
         CoreTypeDef::Module(t) => {
@@ -622,6 +625,10 @@ impl From<core::HeapType<'_>> for wasm_encoder::HeapType {
                 | core::AbstractHeapType::I31 => {
                     todo!("encoding of GC proposal types not yet implemented")
                 }
+                core::AbstractHeapType::Cont | core::AbstractHeapType::NoCont => {
+                    todo!("encoding of typed continuations proposal types not yet implemented")
+                    // TODO(dhil): revisit later.
+                }
             },
             core::HeapType::Concrete(Index::Num(i, _)) => Self::Concrete(i),
             core::HeapType::Concrete(_) => panic!("unresolved index"),
@@ -890,6 +897,9 @@ impl From<&ModuleType<'_>> for wasm_encoder::ModuleType {
                     ),
                     core::InnerTypeKind::Struct(_) | core::InnerTypeKind::Array(_) => {
                         todo!("encoding of GC proposal types not yet implemented")
+                    }
+                    core::InnerTypeKind::Cont(_) => {
+                        todo!("encoding of continuation types not yet implemented")
                     }
                 },
                 ModuleTypeDecl::Alias(a) => match &a.target {

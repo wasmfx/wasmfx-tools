@@ -29,6 +29,10 @@ pub fn parser_features_from_config(config: &Config) -> WasmFeatures {
         WasmFeatures::CUSTOM_PAGE_SIZES,
         config.custom_page_sizes_enabled,
     );
+    features.set(
+        WasmFeatures::TYPED_CONTINUATIONS,
+        config.typed_continuations_enabled,
+    );
     features
 }
 

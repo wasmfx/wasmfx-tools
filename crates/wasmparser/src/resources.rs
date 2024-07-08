@@ -14,8 +14,8 @@
  */
 
 use crate::{
-    types::CoreTypeId, BinaryReaderError, FuncType, GlobalType, HeapType, MemoryType, RefType,
-    SubType, TableType, ValType, WasmFeatures,
+    types::CoreTypeId, BinaryReaderError, ContType, FuncType, GlobalType, HeapType, MemoryType,
+    RefType, SubType, TableType, ValType, WasmFeatures,
 };
 
 /// Types that qualify as Wasm validation database.
@@ -59,6 +59,12 @@ pub trait WasmModuleResources {
     /// The function type must be canonicalized.
     fn type_of_function(&self, func_idx: u32) -> Option<&FuncType>;
 
+    /// Return the `ContType` associated with the given id.
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType>;
+
+    /// Return the `FuncType` associated with the given id.
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType>;
+
     /// Returns the element type at the given index.
     ///
     /// The `RefType` must be canonicalized.
@@ -66,6 +72,9 @@ pub trait WasmModuleResources {
 
     /// Is `a` a subtype of `b`?
     fn is_subtype(&self, a: ValType, b: ValType) -> bool;
+
+    /// Is `a` a function subtype of `b`?
+    fn is_func_subtype(&self, a: FuncType, b: FuncType) -> bool;
 
     /// Check and canonicalize a value type.
     ///
@@ -149,6 +158,12 @@ where
     fn type_of_function(&self, func_idx: u32) -> Option<&FuncType> {
         T::type_of_function(self, func_idx)
     }
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
+        T::cont_type_at(self, id)
+    }
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
+        T::func_type_at_id(self, id)
+    }
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<(), BinaryReaderError> {
         T::check_heap_type(self, t, offset)
     }
@@ -160,6 +175,9 @@ where
     }
     fn is_subtype(&self, a: ValType, b: ValType) -> bool {
         T::is_subtype(self, a, b)
+    }
+    fn is_func_subtype(&self, a: FuncType, b: FuncType) -> bool {
+        T::is_func_subtype(self, a, b)
     }
     fn element_count(&self) -> u32 {
         T::element_count(self)
@@ -204,6 +222,14 @@ where
         T::type_of_function(self, func_idx)
     }
 
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
+        T::cont_type_at(self, id)
+    }
+
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
+        T::func_type_at_id(self, id)
+    }
+
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<(), BinaryReaderError> {
         T::check_heap_type(self, t, offset)
     }
@@ -218,6 +244,10 @@ where
 
     fn is_subtype(&self, a: ValType, b: ValType) -> bool {
         T::is_subtype(self, a, b)
+    }
+
+    fn is_func_subtype(&self, a: FuncType, b: FuncType) -> bool {
+        T::is_func_subtype(self, a, b)
     }
 
     fn element_count(&self) -> u32 {

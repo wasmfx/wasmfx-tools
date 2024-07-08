@@ -288,6 +288,9 @@ mod tests {
         fn is_subtype(&self, _t1: ValType, _t2: ValType) -> bool {
             todo!()
         }
+        fn is_func_subtype(&self, _t1: crate::FuncType, _t2: crate::FuncType) -> bool {
+            todo!()
+        }
         fn element_count(&self) -> u32 {
             todo!()
         }
@@ -295,6 +298,12 @@ mod tests {
             todo!()
         }
         fn is_function_referenced(&self, _idx: u32) -> bool {
+            todo!()
+        }
+        fn cont_type_at(&self, _at: CoreTypeId) -> Option<crate::ContType> {
+            todo!()
+        }
+        fn func_type_at_id(&self, _id: CoreTypeId) -> Option<&crate::FuncType> {
             todo!()
         }
     }

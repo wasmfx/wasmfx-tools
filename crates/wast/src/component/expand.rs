@@ -435,6 +435,7 @@ impl<'a> Expander<'a> {
                     }
                     core::InnerTypeKind::Struct(_) => {}
                     core::InnerTypeKind::Array(_) => {}
+                    core::InnerTypeKind::Cont(_) => {}
                 },
                 ModuleTypeDecl::Alias(_) => {}
                 ModuleTypeDecl::Import(ty) => {

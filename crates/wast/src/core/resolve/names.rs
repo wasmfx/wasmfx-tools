@@ -65,7 +65,7 @@ impl<'a> Resolver<'a> {
                 }
             }
 
-            InnerTypeKind::Array(_) | InnerTypeKind::Func(_) => {}
+            InnerTypeKind::Array(_) | InnerTypeKind::Func(_) | InnerTypeKind::Cont(_) => {}
         }
 
         // Record function signatures as we see them to so we can
@@ -127,6 +127,7 @@ impl<'a> Resolver<'a> {
                     self.resolve_storagetype(&mut field.ty)?;
                 }
             }
+            InnerTypeKind::Cont(cont) => self.resolve_continuationtype(cont)?,
             InnerTypeKind::Array(array) => self.resolve_storagetype(&mut array.ty)?,
         }
         if let Some(parent) = &mut ty.parent {
@@ -306,6 +307,11 @@ impl<'a> Resolver<'a> {
             StorageType::Val(ty) => self.resolve_valtype(ty)?,
             _ => {}
         }
+        Ok(())
+    }
+
+    fn resolve_continuationtype(&self, ty: &mut ContinuationType<'a>) -> Result<(), Error> {
+        self.resolve(&mut ty.idx, Ns::Type)?;
         Ok(())
     }
 
@@ -502,7 +508,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolver.resolve(i, Ns::Type)?;
             }
 
-            Block(bt) | If(bt) | Loop(bt) | Try(bt) => {
+            Block(bt) | If(bt) | Loop(bt) | Try(bt) | Barrier(bt) => {
                 self.blocks.push(ExprBlock {
                     label: bt.label,
                     pushed_scope: false,
@@ -568,7 +574,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 self.resolve_label(&mut i.default)?;
             }
 
-            Throw(i) | Catch(i) => {
+            Throw(i) | Catch(i) | Suspend(i) => {
                 self.resolver.resolve(i, Ns::Tag)?;
             }
 
@@ -653,6 +659,28 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
 
             RefNull(ty) => self.resolver.resolve_heaptype(ty)?,
 
+            ContNew(ty) => {
+                self.resolver.resolve(ty, Ns::Type)?;
+            }
+            ContBind(cb) => {
+                self.resolver.resolve(&mut cb.src_index, Ns::Type)?;
+                self.resolver.resolve(&mut cb.dst_index, Ns::Type)?;
+            }
+            Resume(r) => {
+                self.resolver.resolve(&mut r.index, Ns::Type)?;
+                for (tag, label) in &mut r.table.targets {
+                    self.resolver.resolve(tag, Ns::Tag)?;
+                    self.resolve_label(label)?;
+                }
+            }
+            ResumeThrow(rt) => {
+                self.resolver.resolve(&mut rt.type_index, Ns::Type)?;
+                self.resolver.resolve(&mut rt.tag_index, Ns::Tag)?;
+                for (tag, label) in &mut rt.table.targets {
+                    self.resolver.resolve(tag, Ns::Tag)?;
+                    self.resolve_label(label)?;
+                }
+            }
             _ => {}
         }
         Ok(())

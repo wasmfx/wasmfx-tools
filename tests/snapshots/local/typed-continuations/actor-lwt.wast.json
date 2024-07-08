@@ -1,0 +1,145 @@
+{
+  "source_filename": "tests/local/typed-continuations/actor-lwt.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 4,
+      "name": "actor",
+      "filename": "actor-lwt.0.wasm"
+    },
+    {
+      "type": "register",
+      "line": 17,
+      "as": "actor"
+    },
+    {
+      "type": "module",
+      "line": 20,
+      "name": "chain",
+      "filename": "actor-lwt.1.wasm"
+    },
+    {
+      "type": "register",
+      "line": 63,
+      "as": "chain"
+    },
+    {
+      "type": "module",
+      "line": 66,
+      "name": "queue",
+      "filename": "actor-lwt.2.wasm"
+    },
+    {
+      "type": "register",
+      "line": 180,
+      "as": "queue"
+    },
+    {
+      "type": "module",
+      "line": 182,
+      "name": "mailboxes",
+      "filename": "actor-lwt.3.wasm"
+    },
+    {
+      "type": "register",
+      "line": 242,
+      "as": "mailboxes"
+    },
+    {
+      "type": "module",
+      "line": 246,
+      "name": "chain",
+      "filename": "actor-lwt.4.wasm"
+    },
+    {
+      "type": "register",
+      "line": 285,
+      "as": "chain"
+    },
+    {
+      "type": "module",
+      "line": 288,
+      "name": "lwt",
+      "filename": "actor-lwt.5.wasm"
+    },
+    {
+      "type": "register",
+      "line": 295,
+      "as": "lwt"
+    },
+    {
+      "type": "module",
+      "line": 298,
+      "name": "queue",
+      "filename": "actor-lwt.6.wasm"
+    },
+    {
+      "type": "register",
+      "line": 354,
+      "as": "queue"
+    },
+    {
+      "type": "module",
+      "line": 357,
+      "name": "scheduler",
+      "filename": "actor-lwt.7.wasm"
+    },
+    {
+      "type": "register",
+      "line": 389,
+      "as": "scheduler"
+    },
+    {
+      "type": "module",
+      "line": 391,
+      "name": "mailboxes",
+      "filename": "actor-lwt.8.wasm"
+    },
+    {
+      "type": "register",
+      "line": 448,
+      "as": "mailboxes"
+    },
+    {
+      "type": "module",
+      "line": 451,
+      "name": "actor-as-lwt",
+      "filename": "actor-lwt.9.wasm"
+    },
+    {
+      "type": "register",
+      "line": 547,
+      "as": "actor-as-lwt"
+    },
+    {
+      "type": "module",
+      "line": 550,
+      "name": "actor-scheduler",
+      "filename": "actor-lwt.10.wasm"
+    },
+    {
+      "type": "register",
+      "line": 566,
+      "as": "actor-scheduler"
+    },
+    {
+      "type": "module",
+      "line": 568,
+      "filename": "actor-lwt.11.wasm"
+    },
+    {
+      "type": "action",
+      "line": 585,
+      "action": {
+        "type": "invoke",
+        "field": "run-chain",
+        "args": [
+          {
+            "type": "i32",
+            "value": "64"
+          }
+        ]
+      }
+    }
+  ]
+}

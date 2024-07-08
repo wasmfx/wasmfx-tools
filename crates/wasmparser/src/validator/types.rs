@@ -8,9 +8,9 @@ use crate::{collections::map::Entry, AbstractHeapType};
 use crate::{prelude::*, CompositeInnerType};
 use crate::{validator::names::KebabString, HeapType, ValidatorId};
 use crate::{
-    BinaryReaderError, Export, ExternalKind, FuncType, GlobalType, Import, Matches, MemoryType,
-    PackedIndex, PrimitiveValType, RecGroup, RefType, Result, SubType, TableType, TypeRef,
-    UnpackedIndex, ValType, WithRecGroup,
+    BinaryReaderError, ContType, Export, ExternalKind, FuncType, GlobalType, Import, Matches,
+    MemoryType, PackedIndex, PrimitiveValType, RecGroup, RefType, Result, SubType, TableType,
+    TypeRef, UnpackedIndex, ValType, WithRecGroup,
 };
 use alloc::sync::Arc;
 use core::ops::{Deref, DerefMut, Index, Range};
@@ -297,6 +297,7 @@ impl TypeData for SubType {
             CompositeInnerType::Func(ty) => 1 + (ty.params().len() + ty.results().len()) as u32,
             CompositeInnerType::Array(_) => 2,
             CompositeInnerType::Struct(ty) => 1 + 2 * ty.fields.len() as u32,
+            CompositeInnerType::Cont(_) => 1, // TODO(dhil): Changes to the `ContType` structure needs to be reflected here.
         };
         // TODO: handle shared?
         TypeInfo::core(size)
@@ -316,9 +317,19 @@ impl CoreType {
     pub fn unwrap_func(&self) -> &FuncType {
         match &self.unwrap_sub().composite_type.inner {
             CompositeInnerType::Func(f) => f,
-            CompositeInnerType::Array(_) | CompositeInnerType::Struct(_) => {
+            CompositeInnerType::Array(_)
+            | CompositeInnerType::Struct(_)
+            | CompositeInnerType::Cont(_) => {
                 panic!("`unwrap_func` on non-func composite type")
             }
+        }
+    }
+
+    /// Get the underlying `ContType` within this `SubType` or panic.
+    pub fn unwrap_cont(&self) -> &ContType {
+        match &self.unwrap_sub().composite_type.inner {
+            CompositeInnerType::Cont(ct) => ct,
+            _ => panic!("`unwrap_cont` on non-cont composite type"),
         }
     }
 
@@ -2773,7 +2784,7 @@ impl TypeList {
                         // future.)
                         (
                             Func | Extern | Exn | Any | Eq | Array | I31 | Struct | None | NoFunc
-                            | NoExtern | NoExn,
+                            | NoExtern | NoExn | Cont | NoCont,
                             _,
                         ) => false,
                     }
@@ -2789,9 +2800,10 @@ impl TypeList {
                     Struct => matches!(a_ty.inner, CT::Struct(_)),
                     Array => matches!(a_ty.inner, CT::Array(_)),
                     Func => matches!(a_ty.inner, CT::Func(_)),
+                    Cont => matches!(a_ty.inner, CT::Cont(_)),
                     // Nothing else matches. (Avoid full wildcard matches so
                     // that adding/modifying variants is easier in the future.)
-                    Extern | Exn | I31 | None | NoFunc | NoExtern | NoExn => false,
+                    Extern | Exn | I31 | None | NoFunc | NoExtern | NoExn | NoCont => false,
                 }
             }
 
@@ -2803,11 +2815,11 @@ impl TypeList {
                 match ty {
                     None => matches!(b_ty.inner, CT::Array(_) | CT::Struct(_)),
                     NoFunc => matches!(b_ty.inner, CT::Func(_)),
+                    NoCont => matches!(b_ty.inner, CT::Cont(_)),
                     // Nothing else matches. (Avoid full wildcard matches so
                     // that adding/modifying variants is easier in the future.)
-                    Func | Extern | Exn | Any | Eq | Array | I31 | Struct | NoExtern | NoExn => {
-                        false
-                    }
+                    Func | Extern | Exn | Any | Eq | Array | I31 | Struct | NoExtern | NoExn
+                    | Cont => false,
                 }
             }
 
@@ -2865,6 +2877,7 @@ impl TypeList {
                     CompositeInnerType::Array(_) | CompositeInnerType::Struct(_) => {
                         HeapType::Abstract { shared, ty: Any }
                     }
+                    CompositeInnerType::Cont(_) => HeapType::Abstract { shared, ty: Cont },
                 }
             }
             HeapType::Abstract { shared, ty } => {
@@ -2873,6 +2886,7 @@ impl TypeList {
                     Extern | NoExtern => Extern,
                     Any | Eq | Struct | Array | I31 | None => Any,
                     Exn | NoExn => Exn,
+                    Cont | NoCont => Cont,
                 };
                 HeapType::Abstract { shared, ty }
             }

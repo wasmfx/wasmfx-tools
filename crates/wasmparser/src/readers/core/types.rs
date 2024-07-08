@@ -238,7 +238,7 @@ impl fmt::Display for PackedIndex {
 /// The uncompressed form of a `PackedIndex`.
 ///
 /// Can be used for `match` statements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnpackedIndex {
     /// An index into a Wasm module's types space.
     Module(u32),
@@ -494,6 +494,13 @@ impl SubType {
         self.composite_type.unwrap_struct()
     }
 
+    /// Unwrap an `ContType` or panic.
+    ///
+    /// Does not check finality or whether there is a supertype.
+    pub fn unwrap_cont(&self) -> &ContType {
+        self.composite_type.unwrap_cont()
+    }
+
     /// Maps any `UnpackedIndex` via the specified closure.
     #[cfg(feature = "validate")]
     pub(crate) fn remap_indices(
@@ -520,6 +527,9 @@ impl SubType {
                     field.remap_indices(f)?;
                 }
             }
+            CompositeInnerType::Cont(ct) => {
+                ct.remap_indices(f)?;
+            }
         }
         Ok(())
     }
@@ -544,6 +554,8 @@ pub enum CompositeInnerType {
     Array(ArrayType),
     /// The type is for a struct.
     Struct(StructType),
+    /// The type is for a continuation.
+    Cont(ContType),
 }
 
 impl fmt::Display for CompositeType {
@@ -556,6 +568,7 @@ impl fmt::Display for CompositeType {
             Array(_) => write!(f, "(array ...)"),
             Func(_) => write!(f, "(func ...)"),
             Struct(_) => write!(f, "(struct ...)"),
+            Cont(_) => write!(f, "(cont ...)"),
         }?;
         if self.shared {
             write!(f, ")")?;
@@ -587,6 +600,19 @@ impl CompositeType {
             CompositeInnerType::Struct(s) => s,
             _ => panic!("not a struct"),
         }
+    }
+
+    /// Unwrap a `ContType` or panic.
+    pub fn unwrap_cont(&self) -> &ContType {
+        match &self.inner {
+            CompositeInnerType::Cont(ct) => ct,
+            _ => panic!("not a cont"),
+        }
+    }
+
+    /// Is the composite type `shared`?
+    pub fn is_shared(&self) -> bool {
+        todo!("shared composite types are not yet implemented")
     }
 }
 
@@ -764,6 +790,25 @@ pub struct StructType {
     pub fields: Box<[FieldType]>,
 }
 
+/// Represents a type of a continuation in a WebAssembly module.
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct ContType(pub UnpackedIndex);
+
+impl ContType {
+    /// Maps any `UnpackedIndex` via the specified closure.
+    #[cfg(feature = "validate")]
+    pub(crate) fn remap_indices(
+        &mut self,
+        map: &mut dyn FnMut(&mut PackedIndex) -> Result<()>,
+    ) -> Result<()> {
+        let mut idx = UnpackedIndex::pack(&self.0)
+            .expect("implementation limit: unable to pack continuation type index");
+        map(&mut idx)?;
+        *self = ContType(PackedIndex::unpack(&idx));
+        Ok(())
+    }
+}
+
 /// Represents the types of values in a WebAssembly module.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ValType {
@@ -905,6 +950,9 @@ impl ValType {
 //   0011 = extern
 //   0010 = noextern
 //
+//   0111 = cont
+//   0110 = nocont
+//
 //   0001 = exn
 //
 //   0000 = none
@@ -990,6 +1038,8 @@ impl RefType {
     const EXN_ABSTYPE: u32 = 0b0001 << 17;
     const NOEXN_ABSTYPE: u32 = 0b1110 << 17;
     const NONE_ABSTYPE: u32 = 0b0000 << 17;
+    const CONT_ABSTYPE: u32 = 0b0111 << 17;
+    const NOCONT_ABSTYPE: u32 = 0b0110 << 17;
 
     // The `index` is valid only when `concrete == 1`.
     const INDEX_MASK: u32 = (1 << 22) - 1;
@@ -1067,6 +1117,12 @@ impl RefType {
     /// A non-nullable reference to an i31 object aka `(ref i31)`.
     pub const I31: Self = RefType::from_u32(Self::I31_ABSTYPE);
 
+    /// A non-nullable reference to a cont type aka `(ref cont)`.
+    pub const CONT: Self = RefType::from_u32(Self::CONT_ABSTYPE);
+
+    /// A non-nullable reference to a nocont type aka `(ref nocont)`.
+    pub const NOCONT: Self = RefType::from_u32(Self::NOCONT_ABSTYPE);
+
     /// A non-nullable reference to an exn object aka `(ref exn)`.
     pub const EXN: Self = RefType::from_u32(Self::EXN_ABSTYPE);
 
@@ -1112,6 +1168,8 @@ impl RefType {
                         | Self::EXTERN_ABSTYPE
                         | Self::NOEXTERN_ABSTYPE
                         | Self::NONE_ABSTYPE
+                        | Self::CONT_ABSTYPE
+                        | Self::NOCONT_ABSTYPE
                         | Self::EXN_ABSTYPE
                         | Self::NOEXN_ABSTYPE
                 )
@@ -1156,6 +1214,8 @@ impl RefType {
                     I31 => Some(Self::from_u32(base32 | Self::I31_ABSTYPE)),
                     Exn => Some(Self::from_u32(base32 | Self::EXN_ABSTYPE)),
                     NoExn => Some(Self::from_u32(base32 | Self::NOEXN_ABSTYPE)),
+                    Cont => Some(Self::from_u32(base32 | Self::CONT_ABSTYPE)),
+                    NoCont => Some(Self::from_u32(base32 | Self::NOCONT_ABSTYPE)),
                 }
             }
         }
@@ -1221,6 +1281,11 @@ impl RefType {
         !self.is_concrete_type_ref() && self.abstype() == Self::STRUCT_ABSTYPE
     }
 
+    /// Is this an untyped continuation reference aka `(ref null cont)`
+    pub const fn is_cont_ref(&self) -> bool {
+        !self.is_concrete_type_ref() && self.abstype() == Self::CONT_ABSTYPE
+    }
+
     /// Is this ref type nullable?
     pub const fn is_nullable(&self) -> bool {
         self.as_u32() & Self::NULLABLE_BIT != 0
@@ -1266,6 +1331,8 @@ impl RefType {
                 Self::I31_ABSTYPE => I31,
                 Self::EXN_ABSTYPE => Exn,
                 Self::NOEXN_ABSTYPE => NoExn,
+                Self::CONT_ABSTYPE => Cont,
+                Self::NOCONT_ABSTYPE => NoCont,
                 _ => unreachable!(),
             };
             HeapType::Abstract { shared, ty }
@@ -1333,6 +1400,16 @@ impl RefType {
                     (false, false, I31) => "(ref i31)",
                     (false, false, Exn) => "(ref exn)",
                     (false, false, NoExn) => "(ref noexn)",
+
+                    // Continuations
+                    (true, true, Cont) => "(shared contref)",
+                    (true, true, NoCont) => "(share nullcontref)",
+                    (true, false, Cont) => "(ref (shared cont))",
+                    (true, false, NoCont) => "(ref (shared nocont))",
+                    (false, true, Cont) => "contref",
+                    (false, true, NoCont) => "nullcontref",
+                    (false, false, Cont) => "(ref cont)",
+                    (false, false, NoCont) => "(ref nocont)",
                 }
             }
             HeapType::Concrete(_) => {
@@ -1450,6 +1527,15 @@ pub enum AbstractHeapType {
     /// Introduced in the GC proposal.
     I31,
 
+    /// The `cont` heap type. The common supertype of all continuation types.
+    ///
+    /// Introduced in the Typed Continuations proposal.
+    Cont,
+    /// The `nocont` heap type. The common subtype (a.k.a. bottom) of all continuation types.
+    ///
+    /// Introduced in the Typed Continuations proposal.
+    NoCont,
+
     /// The abstraction `exception` heap type.
     ///
     /// Introduced in the exception-handling proposal.
@@ -1483,6 +1569,9 @@ impl AbstractHeapType {
             (_, Exn) => "exn",
             (true, NoExn) => "nullexn",
             (false, NoExn) => "noexn",
+            (_, Cont) => "cont",
+            (true, NoCont) => "nullcont",
+            (false, NoCont) => "nocont",
         }
     }
 }
@@ -1604,8 +1693,8 @@ impl<'a> FromReader<'a> for RefType {
         // NB: See `FromReader<'a> for ValType` for a table of how this
         // interacts with other value encodings.
         match reader.read()? {
-            byte @ (0x70 | 0x6F | 0x6E | 0x71 | 0x72 | 0x73 | 0x6D | 0x6B | 0x6A | 0x6C | 0x69
-            | 0x74) => {
+            byte @ (0x70 | 0x6F | 0x6E | 0x71 | 0x72 | 0x73 | 0x6D | 0x6B | 0x6A | 0x6C | 0x68
+            | 0x69 | 0x74 | 0x75) => {
                 let pos = reader.original_position();
                 absheapty(byte, pos)
             }
@@ -1635,7 +1724,8 @@ impl<'a> FromReader<'a> for HeapType {
                 let ty = reader.read()?;
                 Ok(HeapType::Abstract { shared: true, ty })
             }
-            0x70 | 0x6F | 0x6E | 0x71 | 0x72 | 0x73 | 0x6D | 0x6B | 0x6A | 0x6C | 0x69 | 0x74 => {
+            0x70 | 0x6F | 0x6E | 0x71 | 0x72 | 0x73 | 0x6D | 0x6B | 0x6A | 0x6C | 0x68 | 0x69
+            | 0x74 | 0x75 => {
                 let ty = reader.read()?;
                 Ok(HeapType::Abstract { shared: false, ty })
             }
@@ -1794,6 +1884,42 @@ pub struct TagType {
 /// A reader for the type section of a WebAssembly module.
 pub type TypeSectionReader<'a> = SectionLimited<'a, RecGroup>;
 
+// A sum type used by TypeSectionReader to return either a function
+// type or a continuation type.  NOTE(dhil): This is only intended as
+// a temporary workaround/hack.
+#[allow(missing_docs)]
+#[derive(Clone, Debug)]
+pub enum FuncOrContType {
+    Func(FuncType),
+    Cont(ContType),
+}
+
+impl FuncOrContType {
+    #[allow(missing_docs)]
+    pub fn unwrap_func(self) -> Result<FuncType> {
+        match self {
+            FuncOrContType::Func(f) => Ok(f),
+            _ => panic!("attempt to unwrap non-function type"),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn params(self) -> Vec<ValType> {
+        match self {
+            FuncOrContType::Func(f) => f.params().to_vec(),
+            _ => panic!("attempt to apply params() on non-function type"),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn results(self) -> Vec<ValType> {
+        match self {
+            FuncOrContType::Func(f) => f.results().to_vec(),
+            _ => panic!("attempt to apply results() on non-function type"),
+        }
+    }
+}
+
 impl<'a> TypeSectionReader<'a> {
     /// Returns an iterator over this type section which will only yield
     /// function types and any usage of GC types from the GC proposal will
@@ -1814,8 +1940,55 @@ impl<'a> TypeSectionReader<'a> {
                 CompositeInnerType::Array(_) | CompositeInnerType::Struct(_) => {
                     bail!(offset, "gc proposal not supported");
                 }
+                CompositeInnerType::Cont(_) => {
+                    bail!(offset, "typed continuations proposal not supported");
+                }
             }
         })
+    }
+
+    /// Returns an iterator over this type section which will only yield
+    /// function types and any usage of GC types from the GC proposal will
+    /// be translated into an error.
+    pub fn into_iter_err_on_gc_types_tc(self) -> impl Iterator<Item = Result<FuncOrContType>> + 'a {
+        // TODO(dhil): Upstream need only return a FuncType at the
+        // moment, we need both FuncType and ContType. Thus we
+        // temporary fix the return to be a sum. Eventually upstream
+        // will have to return a sum-like thing, at which point we
+        // will revert from using this workaround.
+        self.into_iter_with_offsets().map(|item| {
+            let (offset, group) = item?;
+            let mut types = group.into_types();
+            let ty = match (types.next(), types.next()) {
+                (Some(ty), None) => ty,
+                _ => bail!(offset, "gc proposal not supported"),
+            };
+            if !ty.is_final || ty.supertype_idx.is_some() {
+                bail!(offset, "gc proposal not supported");
+            }
+            match ty.composite_type.inner {
+                CompositeInnerType::Func(f) => Ok(FuncOrContType::Func(f)),
+                CompositeInnerType::Cont(c) => Ok(FuncOrContType::Cont(c)),
+                CompositeInnerType::Array(_) | CompositeInnerType::Struct(_) => {
+                    bail!(offset, "gc proposal not supported");
+                }
+            }
+        })
+    }
+}
+
+impl<'a> FromReader<'a> for FuncOrContType {
+    fn from_reader(reader: &mut BinaryReader<'a>) -> Result<Self> {
+        match read_composite_type(reader.read_u8()?, reader)?.inner {
+            CompositeInnerType::Func(f) => Ok(FuncOrContType::Func(f)),
+            CompositeInnerType::Cont(u) => Ok(FuncOrContType::Cont(u)),
+            _ => {
+                return Err(BinaryReaderError::new(
+                    "gc types are not supported",
+                    reader.original_position(),
+                ))
+            }
+        }
     }
 }
 
@@ -1838,6 +2011,7 @@ fn read_composite_type(
     };
     let inner = match opcode {
         0x60 => CompositeInnerType::Func(reader.read()?),
+        0x5d => CompositeInnerType::Cont(reader.read()?),
         0x5e => CompositeInnerType::Array(reader.read()?),
         0x5f => CompositeInnerType::Struct(reader.read()?),
         x => return reader.invalid_leading_byte(x, "type"),
@@ -1923,6 +2097,24 @@ impl<'a> FromReader<'a> for FuncType {
             params_results.push(result?);
         }
         Ok(FuncType::from_raw_parts(params_results.into(), len_params))
+    }
+}
+
+impl<'a> FromReader<'a> for ContType {
+    fn from_reader(reader: &mut BinaryReader<'a>) -> Result<Self> {
+        let idx = match u32::try_from(reader.read_var_s33()?) {
+            Ok(idx) => idx,
+            Err(_) => {
+                bail!(reader.original_position(), "invalid indexed cont type");
+            }
+        };
+        let idx = PackedIndex::from_module_index(idx).ok_or_else(|| {
+            BinaryReaderError::new(
+                "type index greater than implementation limits",
+                reader.original_position(),
+            )
+        })?;
+        Ok(ContType(idx.unpack()))
     }
 }
 

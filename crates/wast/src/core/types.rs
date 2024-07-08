@@ -108,6 +108,9 @@ impl<'a> Peek for HeapType<'a> {
 /// An abstract heap type.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum AbstractHeapType {
+    /// An untyped continuation reference: contref. This is part of
+    /// the typed continuations proposal.
+    Cont,
     /// An untyped function reference: funcref. This is part of the reference
     /// types proposal.
     Func,
@@ -128,6 +131,8 @@ pub enum AbstractHeapType {
     Array,
     /// An unboxed 31-bit integer: i31ref. Part of the GC proposal.
     I31,
+    /// The bottom type of the contref hierarchy. Part of the typed continuations proposal.
+    NoCont,
     /// The bottom type of the funcref hierarchy. Part of the GC proposal.
     NoFunc,
     /// The bottom type of the externref hierarchy. Part of the GC proposal.
@@ -141,7 +146,10 @@ pub enum AbstractHeapType {
 impl<'a> Parse<'a> for AbstractHeapType {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut l = parser.lookahead1();
-        if l.peek::<kw::func>()? {
+        if l.peek::<kw::cont>()? {
+            parser.parse::<kw::cont>()?;
+            Ok(AbstractHeapType::Cont)
+        } else if l.peek::<kw::func>()? {
             parser.parse::<kw::func>()?;
             Ok(AbstractHeapType::Func)
         } else if l.peek::<kw::r#extern>()? {
@@ -165,6 +173,9 @@ impl<'a> Parse<'a> for AbstractHeapType {
         } else if l.peek::<kw::i31>()? {
             parser.parse::<kw::i31>()?;
             Ok(AbstractHeapType::I31)
+        } else if l.peek::<kw::nocont>()? {
+            parser.parse::<kw::nocont>()?;
+            Ok(AbstractHeapType::NoCont)
         } else if l.peek::<kw::nofunc>()? {
             parser.parse::<kw::nofunc>()?;
             Ok(AbstractHeapType::NoFunc)
@@ -185,7 +196,8 @@ impl<'a> Parse<'a> for AbstractHeapType {
 
 impl<'a> Peek for AbstractHeapType {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
-        Ok(kw::func::peek(cursor)?
+        Ok(kw::cont::peek(cursor)?
+            || kw::func::peek(cursor)?
             || kw::r#extern::peek(cursor)?
             || kw::exn::peek(cursor)?
             || kw::any::peek(cursor)?
@@ -193,6 +205,7 @@ impl<'a> Peek for AbstractHeapType {
             || kw::r#struct::peek(cursor)?
             || kw::array::peek(cursor)?
             || kw::i31::peek(cursor)?
+            || kw::nocont::peek(cursor)?
             || kw::nofunc::peek(cursor)?
             || kw::noextern::peek(cursor)?
             || kw::noexn::peek(cursor)?
@@ -333,6 +346,28 @@ impl<'a> RefType<'a> {
         }
     }
 
+    /// A `contref` as abbreviation for `(ref null cont)`.
+    pub fn contref() -> Self {
+        RefType {
+            nullable: true,
+            heap: HeapType::Abstract {
+                shared: false,
+                ty: AbstractHeapType::Cont,
+            },
+        }
+    }
+
+    /// A `contref` as abbreviation for `(ref null nocont)`.
+    pub fn nullcontref() -> Self {
+        RefType {
+            nullable: true,
+            heap: HeapType::Abstract {
+                shared: false,
+                ty: AbstractHeapType::NoCont,
+            },
+        }
+    }
+
     /// A `nullexnref` as an abbreviation for `(ref null noexn)`.
     pub fn nullexnref() -> Self {
         RefType {
@@ -372,7 +407,9 @@ impl<'a> RefType<'a> {
             || l.peek::<kw::nullfuncref>()?
             || l.peek::<kw::nullexternref>()?
             || l.peek::<kw::nullexnref>()?
-            || l.peek::<kw::nullref>()?)
+            || l.peek::<kw::nullref>()?
+            || l.peek::<kw::contref>()?
+            || l.peek::<kw::nullcontref>()?)
     }
 
     /// Helper for parsing shorthand forms of reference types; e.g., `funcref`.
@@ -401,6 +438,12 @@ impl<'a> RefType<'a> {
         } else if l.peek::<kw::i31ref>()? {
             parser.parse::<kw::i31ref>()?;
             Ok(RefType::i31())
+        } else if l.peek::<kw::contref>()? {
+            parser.parse::<kw::contref>()?;
+            Ok(RefType::contref())
+        } else if l.peek::<kw::nullcontref>()? {
+            parser.parse::<kw::nullcontref>()?;
+            Ok(RefType::nullcontref())
         } else if l.peek::<kw::nullfuncref>()? {
             parser.parse::<kw::nullfuncref>()?;
             Ok(RefType::nullfuncref())
@@ -459,7 +502,8 @@ impl<'a> Parse<'a> for RefType<'a> {
 
 impl<'a> Peek for RefType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
-        Ok(kw::funcref::peek(cursor)?
+        Ok(kw::contref::peek(cursor)?
+            || kw::funcref::peek(cursor)?
             || kw::externref::peek(cursor)?
             || kw::exnref::peek(cursor)?
             || kw::anyref::peek(cursor)?
@@ -864,6 +908,21 @@ impl<'a> Parse<'a> for ExportType<'a> {
     }
 }
 
+/// A continuation type.
+#[derive(Clone, Debug)]
+pub struct ContinuationType<'a> {
+    /// Function type index.
+    pub idx: Index<'a>,
+}
+
+impl<'a> Parse<'a> for ContinuationType<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        Ok(ContinuationType {
+            idx: parser.parse::<Index<'a>>()?,
+        })
+    }
+}
+
 /// The inner kind of a type definition.
 #[derive(Debug)]
 pub enum InnerTypeKind<'a> {
@@ -873,6 +932,8 @@ pub enum InnerTypeKind<'a> {
     Struct(StructType<'a>),
     /// An array type definition.
     Array(ArrayType<'a>),
+    /// A continuation type definition.
+    Cont(ContinuationType<'a>),
 }
 
 impl<'a> Parse<'a> for InnerTypeKind<'a> {
@@ -887,6 +948,9 @@ impl<'a> Parse<'a> for InnerTypeKind<'a> {
         } else if l.peek::<kw::array>()? {
             parser.parse::<kw::array>()?;
             Ok(InnerTypeKind::Array(parser.parse()?))
+        } else if l.peek::<kw::cont>()? {
+            parser.parse::<kw::cont>()?;
+            Ok(InnerTypeKind::Cont(parser.parse()?))
         } else {
             Err(l.error())
         }

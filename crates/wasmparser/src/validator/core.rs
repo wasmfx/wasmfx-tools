@@ -10,10 +10,10 @@ use super::{
     types::{CoreTypeId, EntityType, RecGroupId, TypeAlloc, TypeList},
 };
 use crate::{
-    limits::*, validator::types::TypeIdentifier, BinaryReaderError, CompositeType, ConstExpr, Data,
-    DataKind, Element, ElementKind, ExternalKind, FuncType, Global, GlobalType, HeapType,
-    MemoryType, PackedIndex, RecGroup, RefType, Result, StorageType, SubType, Table, TableInit,
-    TableType, TagType, TypeRef, UnpackedIndex, ValType, VisitOperator, WasmFeatures,
+    limits::*, validator::types::TypeIdentifier, BinaryReaderError, CompositeType, ConstExpr,
+    ContType, Data, DataKind, Element, ElementKind, ExternalKind, FuncType, Global, GlobalType,
+    HeapType, MemoryType, PackedIndex, RecGroup, RefType, Result, StorageType, SubType, Table,
+    TableInit, TableType, TagType, TypeRef, UnpackedIndex, ValType, VisitOperator, WasmFeatures,
     WasmModuleResources,
 };
 use crate::{prelude::*, CompositeInnerType};
@@ -679,6 +679,23 @@ impl Module {
                     ));
                 }
             }
+            CompositeInnerType::Cont(ct) => {
+                // Check that the type index points to a valid function type.
+                match ct.0 {
+                    UnpackedIndex::Module(idx) => {
+                        if (idx as usize) >= self.types.len() {
+                            return Err(BinaryReaderError::new("invalid type index", offset));
+                            // TODO(dhil): tidy up error message.
+                        }
+                        let _ = self.func_type_at(idx, types, offset)?;
+                    }
+                    UnpackedIndex::RecGroup(_) | UnpackedIndex::Id(_) => {
+                        // If the type index has already been canonicalized,
+                        // then we already checked that it was in bounds and
+                        // valid at that time.
+                    }
+                }
+            }
             CompositeInnerType::Array(t) => {
                 if !features.gc() {
                     return Err(BinaryReaderError::new(
@@ -1076,7 +1093,7 @@ impl Module {
             ));
         }
         let ty = self.func_type_at(ty.func_type_idx, types, offset)?;
-        if !ty.results().is_empty() {
+        if !ty.results().is_empty() && !features.contains(WasmFeatures::TYPED_CONTINUATIONS) {
             return Err(BinaryReaderError::new(
                 "invalid exception type: non-empty tag result type",
                 offset,
@@ -1304,6 +1321,19 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.types.valtype_is_subtype(a, b)
     }
 
+    // TODO(dhil): This is sort of a hack; really we ought to be using
+    // the existing infrastructure to perform this subtype check.
+    fn is_func_subtype(&self, mut a: FuncType, mut b: FuncType) -> bool {
+        a.params_mut()
+            .iter()
+            .zip(b.params_mut())
+            .all(|(aty, bty)| self.is_subtype(*bty, *aty))
+            && a.results_mut()
+                .iter()
+                .zip(b.results_mut())
+                .all(|(aty, bty)| self.is_subtype(*aty, *bty))
+    }
+
     fn element_count(&self) -> u32 {
         self.module.element_types.len() as u32
     }
@@ -1314,6 +1344,21 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
 
     fn is_function_referenced(&self, idx: u32) -> bool {
         self.module.function_references.contains(&idx)
+    }
+
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
+        let ct = match &self.types[id].composite_type.inner {
+            CompositeInnerType::Cont(c) => c.clone(),
+            _ => return None,
+        };
+        Some(ct)
+    }
+
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
+        match &self.types[id].composite_type.inner {
+            CompositeInnerType::Func(f) => Some(f),
+            _ => None,
+        }
     }
 }
 
@@ -1376,6 +1421,23 @@ impl WasmModuleResources for ValidatorResources {
         self.0.snapshot.as_ref().unwrap().valtype_is_subtype(a, b)
     }
 
+    // TODO(dhil): See the comment on `is_func_subtype` above.
+    fn is_func_subtype(&self, a: FuncType, b: FuncType) -> bool {
+        a.params().iter().zip(b.params()).all(|(aty, bty)| {
+            self.0
+                .snapshot
+                .as_ref()
+                .unwrap()
+                .valtype_is_subtype(*bty, *aty)
+        }) && a.results().iter().zip(b.results()).all(|(aty, bty)| {
+            self.0
+                .snapshot
+                .as_ref()
+                .unwrap()
+                .valtype_is_subtype(*aty, *bty)
+        })
+    }
+
     fn element_count(&self) -> u32 {
         self.0.element_types.len() as u32
     }
@@ -1386,6 +1448,24 @@ impl WasmModuleResources for ValidatorResources {
 
     fn is_function_referenced(&self, idx: u32) -> bool {
         self.0.function_references.contains(&idx)
+    }
+
+    // Returns the continuation type at the type index, if any
+    fn cont_type_at(&self, id: CoreTypeId) -> Option<ContType> {
+        let types = self.0.snapshot.as_ref().unwrap();
+        let ct = match &types[id].composite_type.inner {
+            CompositeInnerType::Cont(c) => c.clone(),
+            _ => return None,
+        };
+        Some(ct)
+    }
+
+    fn func_type_at_id(&self, id: CoreTypeId) -> Option<&FuncType> {
+        let types = self.0.snapshot.as_ref().unwrap();
+        match &types[id].composite_type.inner {
+            CompositeInnerType::Func(f) => Some(f),
+            _ => None,
+        }
     }
 }
 

@@ -756,6 +756,9 @@ impl Printer<'_, '_> {
                     CompositeInnerType::Array(_) | CompositeInnerType::Struct(_) => {
                         unreachable!("Wasm GC types cannot appear in components yet")
                     }
+                    CompositeInnerType::Cont(_) => {
+                        unreachable!("Continuation types cannot appear in components yet")
+                    }
                 };
                 self.result.write_str(" ")?;
                 self.start_group("func")?;
@@ -842,6 +845,12 @@ impl Printer<'_, '_> {
                 self.start_group("struct")?;
                 let r = self.print_struct_type(state, ty, ty_idx)?;
                 self.end_group()?; // `struct`
+                r
+            }
+            CompositeInnerType::Cont(ct) => {
+                self.start_group("cont")?;
+                let r = self.print_cont_type(state, ct)?;
+                self.end_group()?;
                 r
             }
         };
@@ -934,6 +943,12 @@ impl Printer<'_, '_> {
             self.end_group()?;
         }
         Ok(ty.params().len() as u32)
+    }
+
+    fn print_cont_type(&mut self, state: &State, ct: &ContType) -> Result<u32> {
+        self.result.write_str(" ")?;
+        self.print_idx(&state.core.type_names, ct.0.as_module_index().unwrap())?;
+        Ok(0)
     }
 
     fn print_field_type(
@@ -1062,6 +1077,8 @@ impl Printer<'_, '_> {
                     I31 => self.print_type_keyword("i31")?,
                     Exn => self.print_type_keyword("exn")?,
                     NoExn => self.print_type_keyword("noexn")?,
+                    Cont => self.print_type_keyword("cont")?,
+                    NoCont => self.print_type_keyword("nocont")?,
                 }
                 if shared {
                     self.end_group()?;

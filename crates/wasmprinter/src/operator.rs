@@ -1,6 +1,8 @@
 use super::{Print, Printer, State};
 use anyhow::{anyhow, bail, Result};
-use wasmparser::{BlockType, BrTable, Catch, MemArg, Ordering, RefType, TryTable, VisitOperator};
+use wasmparser::{
+    BlockType, BrTable, Catch, MemArg, Ordering, RefType, ResumeTable, TryTable, VisitOperator,
+};
 
 pub struct PrintOperator<'printer, 'state, 'a, 'b> {
     pub(super) printer: &'printer mut Printer<'a, 'b>,
@@ -226,6 +228,17 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
         Ok(())
     }
 
+    fn resumetable(&mut self, targets: ResumeTable<'_>) -> Result<()> {
+        for (_, item) in targets.targets().enumerate() {
+            let (tag, label) = item?;
+            self.push_str("(tag")?;
+            self.tag_index(tag)?;
+            self.relative_depth(label)?;
+            self.push_str(")")?;
+        }
+        Ok(())
+    }
+
     fn function_index(&mut self, idx: u32) -> Result<()> {
         self.push_str(" ")?;
         self.printer.print_idx(&self.state.core.func_names, idx)
@@ -259,6 +272,10 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
     fn type_index(&mut self, idx: u32) -> Result<()> {
         self.push_str(" ")?;
         self.printer.print_core_type_ref(self.state, idx)
+    }
+
+    fn cont_index(&mut self, idx: u32) -> Result<()> {
+        self.printer.print_idx(&self.state.core.type_names, idx)
     }
 
     fn array_type_index(&mut self, idx: u32) -> Result<()> {
@@ -424,6 +441,7 @@ macro_rules! define_visit {
     // The catch-all for "before an op" is "print an newline"
     (before_op $self:ident Loop) => ($self.block_start()?;);
     (before_op $self:ident Block) => ($self.block_start()?;);
+    (before_op $self:ident Barrier) => ($self.block_start()?;);
     (before_op $self:ident If) => ($self.block_start()?;);
     (before_op $self:ident Try) => ($self.block_start()?;);
     (before_op $self:ident TryTable) => ($self.block_start()?;);
@@ -550,6 +568,34 @@ macro_rules! define_visit {
             )?;
         }
         $self.result().reset_color()?;
+    );
+
+    (payload $self:ident ContNew $hty:ident) => (
+        $self.push_str(" ")?;
+        $self.cont_index($hty)?;
+    );
+    (payload $self:ident Resume $type_index:ident $table:ident) => (
+        $self.push_str(" ")?;
+        $self.cont_index($type_index)?;
+        if $table.len() > 0 {
+            $self.push_str(" ")?;
+        }
+        $self.resumetable($table)?;
+    );
+    (payload $self:ident ResumeThrow $type_index:ident $tag_index:ident $table:ident) => (
+        $self.push_str(" ")?;
+        $self.cont_index($type_index)?;
+        $self.tag_index($tag_index)?;
+        if $table.len() > 0 {
+            $self.push_str(" ")?;
+        }
+        $self.resumetable($table)?;
+    );
+    (payload $self:ident ContBind $src_index:ident $dst_index:ident) => (
+        $self.push_str(" ")?;
+        $self.cont_index($src_index)?;
+        $self.push_str(" ")?;
+        $self.cont_index($dst_index)?;
     );
     (payload $self:ident RefTestNonNull $hty:ident) => (
         $self.push_str(" ")?;
@@ -1132,6 +1178,15 @@ macro_rules! define_visit {
     (name I16x8RelaxedQ15mulrS) => ("i16x8.relaxed_q15mulr_s");
     (name I16x8RelaxedDotI8x16I7x16S) => ("i16x8.relaxed_dot_i8x16_i7x16_s");
     (name I32x4RelaxedDotI8x16I7x16AddS) => ("i32x4.relaxed_dot_i8x16_i7x16_add_s");
+
+    // Typed continuations instructions
+    (name ContNew) => ("cont.new");
+    (name ContBind) => ("cont.bind");
+    (name Resume) => ("resume");
+    (name ResumeThrow) => ("resume_throw");
+    (name Suspend) => ("suspend");
+    (name Barrier) => ("barrier");
+
     (name StructNew) => ("struct.new");
     (name StructNewDefault) => ("struct.new_default");
     (name StructGet) => ("struct.get");

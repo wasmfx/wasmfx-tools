@@ -24,9 +24,9 @@
 
 use crate::{
     limits::MAX_WASM_FUNCTION_LOCALS, AbstractHeapType, ArrayType, BinaryReaderError, BlockType,
-    BrTable, Catch, FieldType, FuncType, GlobalType, HeapType, Ieee32, Ieee64, MemArg, RefType,
-    Result, StorageType, StructType, SubType, TableType, TryTable, UnpackedIndex, ValType,
-    VisitOperator, WasmFeatures, WasmModuleResources, V128,
+    BrTable, Catch, ContType, FieldType, FuncType, GlobalType, HeapType, Ieee32, Ieee64, MemArg,
+    RefType, Result, ResumeTable, StorageType, StructType, SubType, TableType, TryTable,
+    UnpackedIndex, ValType, VisitOperator, WasmFeatures, WasmModuleResources, V128,
 };
 use crate::{prelude::*, CompositeInnerType};
 use core::ops::{Deref, DerefMut};
@@ -121,6 +121,12 @@ pub enum FrameKind {
     ///
     /// This belongs to the Wasm exception handling proposal.
     TryTable,
+    /// A Wasm `barrier` control block.
+    ///
+    /// # Note
+    ///
+    /// This belongs to the Wasm typed continuations proposal.
+    Barrier,
 }
 
 struct OperatorValidatorTemp<'validator, 'resources, T> {
@@ -1092,6 +1098,67 @@ where
         Ok(())
     }
 
+    fn cont_type_of_heap_type(&self, hty: HeapType) -> Result<ContType> {
+        match hty {
+            HeapType::Concrete(unpacked_index) => {
+                match UnpackedIndex::as_core_type_id(&unpacked_index) {
+                    None => Err(format_err!(
+                        self.offset,
+                        "cannot convert heap type to continuation type. Has the heap type ({:?}) been canonicalised?", hty)),
+                    Some(id) => self.cont_type_at(id),
+                }
+            }
+            _ => Err(format_err!(
+                self.offset,
+                "cannot convert heap type to continuation type. The heap type was ({:?})",
+                hty
+            )),
+        }
+    }
+
+    fn func_repr_cont_type_of_heap_type(&self, hty: HeapType) -> Result<&'resources FuncType> {
+        match hty {
+            HeapType::Concrete(unpacked_index) => self.func_repr_cont_type_at(unpacked_index),
+            _ => Err(format_err!(
+                self.offset,
+                "cannot convert heap type to function type. The heap type was ({:?})",
+                hty
+            )),
+        }
+    }
+
+    fn cont_type_at(&self, id: crate::types::CoreTypeId) -> Result<ContType> {
+        self.resources.cont_type_at(id).ok_or_else(|| {
+            format_err!(
+                self.offset,
+                "unknown continuation type: type index ({:?}) out of bounds",
+                id
+            )
+        })
+    }
+
+    /// Retrieves the function type representation of the continuation
+    /// type stored at the given type index.
+    fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<&'resources FuncType> {
+        match at {
+            UnpackedIndex::Id(id) => {
+                let ct = self.cont_type_at(id)?;
+                let unpacked_index = ct.0;
+                self.resources
+                    .func_type_at_id(UnpackedIndex::as_core_type_id(&unpacked_index).unwrap())
+                    .ok_or_else(|| {
+                        format_err!(
+                            self.offset,
+                            "unknown function type: type index ({:?}) out of bounds",
+                            id
+                        )
+                    })
+            }
+            UnpackedIndex::RecGroup(_) => todo!(),
+            UnpackedIndex::Module(_) => unreachable!(),
+        }
+    }
+
     /// Common helper for `ref.test` and `ref.cast` downcasting/checking
     /// instructions. Returns the given `heap_type` as a `ValType`.
     fn check_downcast(
@@ -1260,6 +1327,91 @@ where
             _ => Either::B(self.results(ty)?),
         })
     }
+
+    /// Validates a resume table.
+    fn check_resume_table(
+        &mut self,
+        table: ResumeTable, // The table to validate.
+        ctft: &FuncType, // The type of the continuation applied to the resume, which `table` is attached to.
+    ) -> Result<()> {
+        // Resume table validation is somewhat involved as we have to
+        // check that the domain of each tag matches up with the
+        // expected type at its associated label. In addition, we also
+        // need to check that the continuation type matches the
+        // expectation at each label.
+        //
+        // Concretely, let's say the given continuation type has the
+        // form
+        //     ctft := ts1 -> ts2
+        // and that each tag type has the form
+        //     tagtype := ts1' -> ts2'
+        // and each label type has the form
+        //     labeltype := ts1'' (ref null? (cont $ft))
+        // then for each tag-label pair we have to check that domain
+        // (ts1') of the tag type matches the prefix of the label
+        // type, i.e.  ts1' <: ts1''
+        //
+        // Subsequently, we must check that the codomain of each
+        // tagtype matches the domain of the dynamic continuation type
+        // at its label. Moreover, we also need to check that the
+        // codomain of continuation type matches the overall return
+        // type of the context --- this type is given by the provided
+        // continuation $ctft. In essence, we need to check that
+        //     (ts2' -> ts2) <: $ft
+        for pair in table.targets() {
+            let (tag, relative_depth) = pair?;
+            // tagtype := ts1' -> ts2'
+            let tagtype = self.tag_at(tag)?;
+            let block = self.jump(relative_depth)?;
+
+            // label_types(offset, block.0, block.1) := ts1''* (ref null? (cont $ft))
+            if tagtype.params().len() != self.label_types(block.0, block.1)?.len() - 1 {
+                bail!(
+                    self.offset,
+                    "type mismatch between label type and tag type length"
+                ) // TODO(dhil): tidy up
+            }
+            let labeltys = self
+                .label_types(block.0, block.1)?
+                .take(tagtype.params().len());
+
+            // Next check that ts1' <: ts1''.
+            for (tagty, &lblty) in labeltys.zip(tagtype.params()) {
+                if !self.resources.is_subtype(tagty, lblty) {
+                    bail!(self.offset, "type mismatch between tag type and label type")
+                    // TODO(dhil): tidy up
+                }
+            }
+
+            // Retrieve the continuation reference type (i.e. (cont $ft)).
+            match self.label_types(block.0, block.1)?.last() {
+                Some(ValType::Ref(rt)) if rt.is_concrete_type_ref() => {
+                    let z = rt.type_index().unwrap().unpack();
+                    let ctft2 = self.func_repr_cont_type_at(z)?;
+                    // Now we must check that (ts2' -> ts2) <: $ft
+                    // This method should be exposed by resources to make this correct
+                    for (&tagty, &ct2ty) in tagtype.results().iter().zip(ctft2.params()) {
+                        // Note: according to spec we should check for equality here
+                        if !self.resources.is_subtype(ct2ty, tagty) {
+                            bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                    for (&ctty, &ct2ty) in ctft.results().iter().zip(ctft2.results()) {
+                        // Note: according to spec we should check for equality here
+                        if !self.resources.is_subtype(ctty, ct2ty) {
+                            bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                        }
+                    }
+                }
+                Some(ty) => {
+                    bail!(self.offset, "type mismatch: {}", ty_to_str(ty))
+                }
+                _ => bail!(self.offset,
+                    "type mismatch: instruction requires continuation reference type but label has none")
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn ty_to_str(ty: ValType) -> &'static str {
@@ -1320,6 +1472,7 @@ macro_rules! validate_proposal {
     (desc exceptions) => ("exceptions");
     (desc tail_call) => ("tail calls");
     (desc function_references) => ("function references");
+    (desc typed_continuations) => ("typed continuations");
     (desc memory_control) => ("memory control");
     (desc gc) => ("gc");
 }
@@ -3693,6 +3846,193 @@ where
         self.pop_operand(Some(table.index_type()))?;
         Ok(())
     }
+
+    // Typed continuations operators.
+    fn visit_cont_new(&mut self, type_index: u32) -> Self::Output {
+        let unpacked_index = UnpackedIndex::Module(type_index);
+        let mut c_hty = HeapType::Concrete(unpacked_index);
+        self.resources.check_heap_type(&mut c_hty, self.offset)?;
+        let f_idx = self.cont_type_of_heap_type(c_hty)?.0;
+        let f_hty = f_idx.pack().expect("hty should be previously validated");
+        let expected_rt = RefType::concrete(true, f_hty);
+        self.pop_operand(Some(ValType::Ref(expected_rt)))?;
+        let result =
+            ValType::Ref(RefType::new(false, c_hty).expect("hty should be previously validated"));
+        self.push_operand(result)?;
+        Ok(())
+    }
+    fn visit_cont_bind(&mut self, src_index: u32, dst_index: u32) -> Self::Output {
+        let src_unpacked_index = UnpackedIndex::Module(src_index);
+        let mut src_hty = HeapType::Concrete(src_unpacked_index);
+        self.resources.check_heap_type(&mut src_hty, self.offset)?;
+        let src_cont = self.func_repr_cont_type_of_heap_type(src_hty)?;
+
+        let dst_unpacked_index = UnpackedIndex::Module(dst_index);
+        let mut dst_hty = HeapType::Concrete(dst_unpacked_index);
+        self.resources.check_heap_type(&mut dst_hty, self.offset)?;
+        let dst_cont = self.func_repr_cont_type_of_heap_type(dst_hty)?;
+
+        // Verify that the source domain is at least as large as the
+        // target domain.
+        if src_cont.params().len() < dst_cont.params().len() {
+            bail!(self.offset, "type mismatch in continuation arguments");
+        }
+
+        // Next check that the source and target agrees modulo the
+        // prefix.
+        let src_prefix = src_cont
+            .params()
+            .iter()
+            .take(src_cont.params().len() - dst_cont.params().len());
+        let src_suffix: Vec<_> = src_cont
+            .params()
+            .iter()
+            .skip(src_cont.params().len() - dst_cont.params().len())
+            .map(|i| *i)
+            .collect();
+        // TODO(dhil): `is_func_subtype` is a kind of convenience hack
+        // that implements the subtyping relation for function
+        // types. Ideally, we would use the upstream implementation of
+        // function subtyping.
+        if !self.resources.is_func_subtype(
+            crate::FuncType::new(src_suffix, src_cont.results().to_vec()),
+            crate::FuncType::new(dst_cont.params().to_vec(), dst_cont.results().to_vec()),
+        ) {
+            bail!(self.offset, "type mismatch in continuation types");
+        }
+
+        // Check that the continuation is available on the stack.
+        match self.pop_ref()? {
+            None => {} // bot case
+            Some(rt) => {
+                let expected = ValType::Ref(
+                    RefType::new(false, src_hty).expect("hty should be previously validated"),
+                );
+                if !self.resources.is_subtype(expected, ValType::Ref(rt)) {
+                    bail!(
+                        self.offset,
+                        "type mismatch: instruction requires {} but stack has {}",
+                        ty_to_str(expected),
+                        ty_to_str(ValType::Ref(rt))
+                    );
+                }
+
+                // Check that the prefix is available on the stack.
+                for &ty in src_prefix.rev() {
+                    self.pop_operand(Some(ty))?;
+                }
+            }
+        }
+
+        // Construct the result type.
+        let result =
+            ValType::Ref(RefType::new(false, dst_hty).expect("hty should be previously validated"));
+
+        // Push the continuation reference.
+        self.push_operand(result)?;
+
+        Ok(())
+    }
+    fn visit_suspend(&mut self, tag_index: u32) -> Self::Output {
+        let ft = &self.tag_at(tag_index)?;
+        for &ty in ft.params().iter().rev() {
+            self.pop_operand(Some(ty))?;
+        }
+        for &ty in ft.results() {
+            self.push_operand(ty)?;
+        }
+        Ok(())
+    }
+    fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
+        let unpacked_index = UnpackedIndex::Module(type_index);
+        let mut hty = HeapType::Concrete(unpacked_index);
+        self.resources.check_heap_type(&mut hty, self.offset)?;
+
+        let expected = RefType::new(true, hty).expect("hty should be previously validated");
+        match self.pop_ref()? {
+            None => {}
+            Some(rt)
+                if self
+                    .resources
+                    .is_subtype(ValType::Ref(rt), ValType::Ref(expected)) =>
+            {
+                let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
+                // ft := ts1 -> ts2
+                self.check_resume_table(resumetable, ctft)?;
+
+                // Check that ts1 are available on the stack.
+                for &ty in ctft.params().iter().rev() {
+                    self.pop_operand(Some(ty))?;
+                }
+
+                // Make ts2 available on the stack.
+                for &ty in ctft.results() {
+                    self.push_operand(ty)?;
+                }
+            }
+            Some(rt) => {
+                bail!(
+                    self.offset,
+                    "type mismatch: instruction requires {} but stack has {}",
+                    ty_to_str(ValType::Ref(expected)),
+                    ty_to_str(ValType::Ref(rt))
+                )
+            }
+        }
+        Ok(())
+    }
+    fn visit_resume_throw(
+        &mut self,
+        type_index: u32,
+        tag_index: u32,
+        resumetable: ResumeTable,
+    ) -> Self::Output {
+        let unpacked_index = UnpackedIndex::Module(type_index);
+        let mut hty = HeapType::Concrete(unpacked_index);
+        self.resources.check_heap_type(&mut hty, self.offset)?;
+        let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
+        let expected =
+            ValType::Ref(RefType::new(true, hty).expect("hty should be previously validated"));
+        match self.pop_ref()? {
+            None => {}
+            Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {
+                // ft := ts1 -> ts2
+                self.check_resume_table(resumetable, &ctft)?;
+
+                // tagtype := ts1' -> []
+                let tagtype = &self.tag_at(tag_index)?;
+
+                // Check that ts1' are available on the stack.
+                for &tagty in tagtype.params().iter().rev() {
+                    self.pop_operand(Some(tagty))?;
+                }
+
+                // Make ts2 available on the stack.
+                for &ty in ctft.results() {
+                    self.push_operand(ty)?;
+                }
+            }
+            Some(rt) => {
+                bail!(
+                    self.offset,
+                    "type mismatch: instruction requires {} but stack has {}",
+                    ty_to_str(expected),
+                    ty_to_str(ValType::Ref(rt))
+                )
+            }
+        }
+
+        Ok(())
+    }
+    fn visit_barrier(&mut self, mut blockty: BlockType) -> Self::Output {
+        self.check_block_type(&mut blockty)?;
+        for ty in self.params(blockty)?.rev() {
+            self.pop_operand(Some(ty))?;
+        }
+        self.push_ctrl(FrameKind::Barrier, blockty)?;
+        Ok(())
+    }
+
     fn visit_struct_new(&mut self, struct_type_index: u32) -> Self::Output {
         let struct_ty = self.struct_type_at(struct_type_index)?;
         for ty in struct_ty.fields.iter().rev() {

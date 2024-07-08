@@ -1050,6 +1050,24 @@ pub enum Instruction<'a> {
     I64AtomicRmw16CmpxchgU(MemArg),
     I64AtomicRmw32CmpxchgU(MemArg),
 
+    // Typed continuations proposal
+    ContNew(u32),
+    ContBind {
+        src_index: u32,
+        dst_index: u32,
+    },
+    Suspend(u32),
+    Resume {
+        type_index: u32,
+        resumetable: Cow<'a, [(u32, u32)]>,
+    },
+    ResumeThrow {
+        type_index: u32,
+        tag_index: u32,
+        resumetable: Cow<'a, [(u32, u32)]>,
+    },
+    Barrier(BlockType),
+
     // More atomic instructions (the shared-everything-threads proposal)
     GlobalAtomicGet {
         ordering: Ordering,
@@ -3235,6 +3253,34 @@ impl Encode for Instruction<'_> {
                 sink.push(0xFE);
                 sink.push(0x4E);
                 memarg.encode(sink);
+            }
+            Instruction::ContNew(_type_index) => {
+                todo!()
+            }
+            Instruction::ContBind {
+                src_index: _,
+                dst_index: _,
+            } => {
+                todo!()
+            }
+            Instruction::Suspend(_tag_index) => {
+                todo!()
+            }
+            Instruction::Resume {
+                type_index: _,
+                resumetable: _,
+            } => {
+                todo!()
+            }
+            Instruction::ResumeThrow {
+                type_index: _,
+                tag_index: _,
+                resumetable: _,
+            } => {
+                todo!()
+            }
+            Instruction::Barrier(_blockty) => {
+                todo!()
             }
 
             // Atomic instructions from the shared-everything-threads proposal

@@ -55,7 +55,8 @@ impl<'a> Expander<'a> {
                     InnerTypeKind::Func(f) => {
                         f.key().insert(self, Index::Id(id));
                     }
-                    InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) => {}
+                    InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) | InnerTypeKind::Cont(_) => {
+                    }
                 }
             }
             _ => {}
@@ -140,6 +141,7 @@ impl<'a> Expander<'a> {
             | Instruction::If(bt)
             | Instruction::Loop(bt)
             | Instruction::Try(bt)
+            | Instruction::Barrier(bt)
             | Instruction::TryTable(TryTable { block: bt, .. }) => {
                 // No expansion necessary, a type reference is already here.
                 // We'll verify that it's the same as the inline type, if any,

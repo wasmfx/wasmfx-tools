@@ -325,6 +325,12 @@ impl Encode for ExportType<'_> {
     }
 }
 
+impl Encode for ContinuationType<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.idx.encode(e);
+    }
+}
+
 enum RecOrType<'a> {
     Type(&'a Type<'a>),
     Rec(&'a Rec<'a>),
@@ -376,6 +382,10 @@ impl Encode for Type<'_> {
             InnerTypeKind::Array(array) => {
                 e.push(0x5e);
                 array.encode(e)
+            }
+            InnerTypeKind::Cont(u) => {
+                e.push(0x5d);
+                u.encode(e)
             }
         }
     }
@@ -447,6 +457,8 @@ impl<'a> Encode for AbstractHeapType {
             NoExtern => e.push(0x72),
             NoExn => e.push(0x74),
             None => e.push(0x71),
+            Cont => e.push(0x68),
+            NoCont => e.push(0x75),
         }
     }
 }
@@ -993,6 +1005,34 @@ impl Encode for BrTableIndices<'_> {
     }
 }
 
+impl Encode for ContBind<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.src_index.encode(e);
+        self.dst_index.encode(e);
+    }
+}
+
+impl Encode for ResumeTableIndices<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.targets.encode(e);
+    }
+}
+
+impl Encode for Resume<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.index.encode(e);
+        self.table.encode(e);
+    }
+}
+
+impl Encode for ResumeThrow<'_> {
+    fn encode(&self, e: &mut Vec<u8>) {
+        self.type_index.encode(e);
+        self.tag_index.encode(e);
+        self.table.encode(e);
+    }
+}
+
 impl Encode for F32 {
     fn encode(&self, e: &mut Vec<u8>) {
         e.extend_from_slice(&self.bits.to_le_bytes());
@@ -1143,6 +1183,7 @@ fn find_names<'a>(
                         | Instruction::Block(block)
                         | Instruction::Loop(block)
                         | Instruction::Try(block)
+                        | Instruction::Barrier(block)
                         | Instruction::TryTable(TryTable { block, .. }) => {
                             if let Some(name) = get_name(&block.label, &block.label_name) {
                                 label_names.push((label_idx, name));
@@ -1165,7 +1206,7 @@ fn find_names<'a>(
         if let ModuleField::Type(ty) = field {
             let mut field_names = vec![];
             match &ty.def.kind {
-                InnerTypeKind::Func(_) | InnerTypeKind::Array(_) => {}
+                InnerTypeKind::Func(_) | InnerTypeKind::Array(_) | InnerTypeKind::Cont(_) => {}
                 InnerTypeKind::Struct(ty_struct) => {
                     for (idx, field) in ty_struct.fields.iter().enumerate() {
                         if let Some(name) = get_name(&field.id, &None) {

@@ -1,0 +1,25 @@
+{
+  "source_filename": "tests/local/typed-continuations/cont_suspend.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 6,
+      "filename": "cont_suspend.0.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 25,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": []
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ]
+    }
+  ]
+}

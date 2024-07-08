@@ -944,6 +944,7 @@ pub mod utils {
             I31 => crate::AbstractHeapType::I31,
             Exn => crate::AbstractHeapType::Exn,
             NoExn => crate::AbstractHeapType::NoExn,
+            Cont | NoCont => todo!(), // TODO(dhil): revisit later.
         }
     }
 
@@ -1011,6 +1012,7 @@ pub mod utils {
             wasmparser::CompositeInnerType::Struct(s) => {
                 crate::CompositeInnerType::Struct(reencoder.struct_type(s)?)
             }
+            wasmparser::CompositeInnerType::Cont(_) => todo!(), // TODO(dhil): revisit later.
         };
         Ok(crate::CompositeType {
             inner,
@@ -1534,6 +1536,12 @@ pub mod utils {
             (map $arg:ident array_size) => ($arg);
             (map $arg:ident field_index) => ($arg);
             (map $arg:ident try_table) => ($arg);
+            (map $arg:ident resumetable) => ((
+                $arg.targets().map(|i| i.unwrap()).collect::<Vec<_>>().into()
+            ));
+            // NOTE(dhil): The following two rules are used to map over cont.bind.
+            (map $arg:ident src_index) => ($arg);
+            (map $arg:ident dst_index) => ($arg);
 
             // This case takes the arguments of a wasmparser instruction and creates
             // a wasm-encoder instruction. There are a few special cases for where
@@ -1549,6 +1557,7 @@ pub mod utils {
             (build TryTable $table:ident) => (Instruction::TryTable(reencoder.block_type($table.ty)?, {
                 $table.catches.into_iter().map(|c| reencoder.catch(c)).collect::<Vec<_>>().into()
             }));
+            (build ResumeTable $resume_table:ident) => (todo!()); // TODO(dhil): revisit sometime later.
             (build $op:ident $arg:ident) => (Instruction::$op($arg));
             (build $op:ident $($arg:ident)*) => (Instruction::$op { $($arg),* });
         }

@@ -524,6 +524,12 @@ define_config! {
         /// the size would otherwise be smaller than number returned here.
         pub min_uleb_size: u8 = 1,
 
+        /// Determines whether the typed continuations proposal is enabled
+        /// for generating instructions.
+        ///
+        /// Defaults to `false`.
+        pub typed_continuations_enabled: bool = false,
+
         /// Determines whether the multi-value results are enabled.
         ///
         /// Defaults to `true`.
@@ -727,6 +733,7 @@ impl<'a> Arbitrary<'a> for Config {
             gc_enabled: false,
             custom_page_sizes_enabled: false,
             generate_custom_sections: false,
+            typed_continuations_enabled: false,
             allow_invalid_funcs: false,
         })
     }

@@ -1014,6 +1014,11 @@ macro_rules! define_visit {
     (mark_live $self:ident $arg:ident data_index) => {};
     (mark_live $self:ident $arg:ident array_data_index) => {};
     (mark_live $self:ident $arg:ident elem_index) => {};
+    // TODO(dhil): I don't understand what's going on here. I'll revisit later.
+    (mark_live $self:ident $type_index:ident resumetable) => {};
+    (mark_live $self:ident $type_index:ident $tag_index:ident resumetable) => {};
+    (mark_live $self:ident $src_index:ident $dst_index:ident) => {};
+
     (mark_live $self:ident $arg:ident array_elem_index) => {};
     (mark_live $self:ident $arg:ident array_size) => {};
     (mark_live $self:ident $arg:ident field_index) => {};

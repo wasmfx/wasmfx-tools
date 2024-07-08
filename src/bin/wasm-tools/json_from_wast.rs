@@ -255,6 +255,18 @@ impl<'a> JsonBuilder<'a> {
                 line,
                 thread: thread.name(),
             },
+            WastDirective::AssertSuspension {
+                span: _,
+                exec,
+                message,
+            } => {
+                let line = self.lineno(exec.span());
+                json::Command::AssertSuspension {
+                    line,
+                    action: self.action(exec)?,
+                    text: message,
+                }
+            }
         };
         Ok(command)
     }
@@ -616,6 +628,11 @@ mod json {
         Wait {
             line: u32,
             thread: &'a str,
+        },
+        AssertSuspension {
+            line: u32,
+            action: Action<'a>,
+            text: &'a str,
         },
     }
 

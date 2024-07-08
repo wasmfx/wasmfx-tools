@@ -776,6 +776,14 @@ macro_rules! for_each_operator {
             @function_references RefAsNonNull => visit_ref_as_non_null
             @function_references BrOnNull { relative_depth: u32 } => visit_br_on_null
             @function_references BrOnNonNull { relative_depth: u32 } => visit_br_on_non_null
+
+            // Typed continuations
+            @typed_continuations ContNew { type_index: u32 } => visit_cont_new
+            @typed_continuations ContBind { src_index: u32, dst_index: u32 } => visit_cont_bind
+            @typed_continuations Suspend { tag_index: u32 } => visit_suspend
+            @typed_continuations Resume { type_index: u32, resumetable: $crate::ResumeTable<'a> } => visit_resume
+            @typed_continuations ResumeThrow { type_index: u32, tag_index: u32, resumetable: $crate::ResumeTable<'a> } => visit_resume_throw
+            @typed_continuations Barrier { blockty: $crate::BlockType } => visit_barrier
         }
     };
 }

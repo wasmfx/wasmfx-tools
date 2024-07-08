@@ -297,6 +297,15 @@ impl WasmFeatures {
                             Err("exception refs not supported without the exception handling feature")
                         }
                     }
+
+                    // These were added in the typed continuations proposal.
+                    (Cont | NoCont, _) => {
+                        if self.typed_continuations() {
+                            Ok(())
+                        } else {
+                            Err("continuation types not supported without the typed-continuations feature")
+                        }
+                    }
                 }
             }
         }
@@ -1628,5 +1637,10 @@ mod tests {
         assert!(std::ptr::eq(&types[t_id], &types[a2_id],));
 
         Ok(())
+    }
+
+    #[test]
+    fn valtype_is_small() {
+        assert_eq!(std::mem::size_of::<ValType>(), 4);
     }
 }

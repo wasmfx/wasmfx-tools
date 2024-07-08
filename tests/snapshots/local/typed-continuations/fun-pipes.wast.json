@@ -1,0 +1,35 @@
+{
+  "source_filename": "tests/local/typed-continuations/fun-pipes.wast",
+  "commands": [
+    {
+      "type": "module",
+      "line": 2,
+      "name": "pipes",
+      "filename": "fun-pipes.0.wasm"
+    },
+    {
+      "type": "register",
+      "line": 35,
+      "as": "pipes"
+    },
+    {
+      "type": "module",
+      "line": 37,
+      "filename": "fun-pipes.1.wasm"
+    },
+    {
+      "type": "action",
+      "line": 88,
+      "action": {
+        "type": "invoke",
+        "field": "run",
+        "args": [
+          {
+            "type": "i32",
+            "value": "0"
+          }
+        ]
+      }
+    }
+  ]
+}

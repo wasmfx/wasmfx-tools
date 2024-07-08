@@ -394,6 +394,7 @@ pub mod kw {
     custom_keyword!(assert_invalid);
     custom_keyword!(assert_malformed);
     custom_keyword!(assert_return);
+    custom_keyword!(assert_suspension);
     custom_keyword!(assert_trap);
     custom_keyword!(assert_unlinkable);
     custom_keyword!(before);
@@ -406,6 +407,8 @@ pub mod kw {
     custom_keyword!(catch_all_ref);
     custom_keyword!(code);
     custom_keyword!(component);
+    custom_keyword!(cont);
+    custom_keyword!(contref);
     custom_keyword!(data);
     custom_keyword!(declare);
     custom_keyword!(delegate);
@@ -454,11 +457,13 @@ pub mod kw {
     custom_keyword!(modulecode);
     custom_keyword!(nan_arithmetic = "nan:arithmetic");
     custom_keyword!(nan_canonical = "nan:canonical");
+    custom_keyword!(nocont);
     custom_keyword!(nofunc);
     custom_keyword!(noextern);
     custom_keyword!(noexn);
     custom_keyword!(none);
     custom_keyword!(null);
+    custom_keyword!(nullcontref);
     custom_keyword!(nullfuncref);
     custom_keyword!(nullexternref);
     custom_keyword!(nullexnref);
@@ -535,6 +540,7 @@ pub mod kw {
     custom_keyword!(core);
     custom_keyword!(true_ = "true");
     custom_keyword!(false_ = "false");
+
     custom_keyword!(language);
     custom_keyword!(sdk);
     custom_keyword!(processed_by = "processed-by");
