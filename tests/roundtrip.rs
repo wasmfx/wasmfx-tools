@@ -583,6 +583,7 @@ impl TestState {
             & !WasmFeatures::COMPONENT_MODEL
             & !WasmFeatures::COMPONENT_MODEL_NESTED_NAMES
             & !WasmFeatures::COMPONENT_MODEL_MORE_FLAGS
+            & !WasmFeatures::COMPONENT_MODEL_MULTIPLE_RETURNS
             & !WasmFeatures::LEGACY_EXCEPTIONS;
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
@@ -608,7 +609,7 @@ impl TestState {
                 }
                 "simd" => features.insert(WasmFeatures::SIMD),
                 "exception-handling" => features.insert(WasmFeatures::EXCEPTIONS),
-                "legacy-exceptions.wat" => features.insert(WasmFeatures::LEGACY_EXCEPTIONS),
+                "legacy-exceptions" => features.insert(WasmFeatures::LEGACY_EXCEPTIONS),
                 "tail-call" => features.insert(WasmFeatures::TAIL_CALL),
                 "memory64" => features.insert(WasmFeatures::MEMORY64),
                 "component-model" => features.insert(WasmFeatures::COMPONENT_MODEL),
@@ -631,6 +632,9 @@ impl TestState {
                 }
                 "more-flags.wast" => {
                     features.insert(WasmFeatures::COMPONENT_MODEL_MORE_FLAGS);
+                }
+                "multiple-returns.wast" => {
+                    features.insert(WasmFeatures::COMPONENT_MODEL_MULTIPLE_RETURNS);
                 }
                 _ => {}
             }
