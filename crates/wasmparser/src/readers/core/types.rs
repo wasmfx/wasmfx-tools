@@ -1764,8 +1764,10 @@ impl<'a> FromReader<'a> for AbstractHeapType {
             0x6B => Ok(Struct),
             0x6A => Ok(Array),
             0x6C => Ok(I31),
+            0x68 => Ok(NoCont),
             0x69 => Ok(Exn),
             0x74 => Ok(NoExn),
+            0x75 => Ok(Cont),
             _ => {
                 bail!(reader.original_position(), "invalid abstract heap type");
             }
