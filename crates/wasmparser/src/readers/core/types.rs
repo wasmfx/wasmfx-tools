@@ -1685,8 +1685,10 @@ impl<'a> FromReader<'a> for RefType {
             0x6B => Ok(RefType::STRUCT.nullable()),
             0x6A => Ok(RefType::ARRAY.nullable()),
             0x6C => Ok(RefType::I31.nullable()),
+            0x68 => Ok(RefType::NOCONT.nullable()),
             0x69 => Ok(RefType::EXN.nullable()),
             0x74 => Ok(RefType::NOEXN.nullable()),
+            0x75 => Ok(RefType::CONT.nullable()),
             _ => bail!(pos, "invalid abstract heap type"),
         };
 
