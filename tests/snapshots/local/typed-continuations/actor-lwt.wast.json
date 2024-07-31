@@ -26,110 +26,77 @@
     {
       "type": "module",
       "line": 66,
-      "name": "queue",
+      "name": "lwt",
       "filename": "actor-lwt.2.wasm"
     },
     {
       "type": "register",
-      "line": 180,
-      "as": "queue"
-    },
-    {
-      "type": "module",
-      "line": 182,
-      "name": "mailboxes",
-      "filename": "actor-lwt.3.wasm"
-    },
-    {
-      "type": "register",
-      "line": 242,
-      "as": "mailboxes"
-    },
-    {
-      "type": "module",
-      "line": 246,
-      "name": "chain",
-      "filename": "actor-lwt.4.wasm"
-    },
-    {
-      "type": "register",
-      "line": 285,
-      "as": "chain"
-    },
-    {
-      "type": "module",
-      "line": 288,
-      "name": "lwt",
-      "filename": "actor-lwt.5.wasm"
-    },
-    {
-      "type": "register",
-      "line": 295,
+      "line": 73,
       "as": "lwt"
     },
     {
       "type": "module",
-      "line": 298,
+      "line": 76,
       "name": "queue",
-      "filename": "actor-lwt.6.wasm"
+      "filename": "actor-lwt.3.wasm"
     },
     {
       "type": "register",
-      "line": 354,
+      "line": 132,
       "as": "queue"
     },
     {
       "type": "module",
-      "line": 357,
+      "line": 135,
       "name": "scheduler",
-      "filename": "actor-lwt.7.wasm"
+      "filename": "actor-lwt.4.wasm"
     },
     {
       "type": "register",
-      "line": 389,
+      "line": 167,
       "as": "scheduler"
     },
     {
       "type": "module",
-      "line": 391,
+      "line": 169,
       "name": "mailboxes",
-      "filename": "actor-lwt.8.wasm"
+      "filename": "actor-lwt.5.wasm"
     },
     {
       "type": "register",
-      "line": 448,
+      "line": 226,
       "as": "mailboxes"
     },
     {
       "type": "module",
-      "line": 451,
+      "line": 229,
       "name": "actor-as-lwt",
-      "filename": "actor-lwt.9.wasm"
+      "filename": "actor-lwt.6.wasm"
     },
     {
       "type": "register",
-      "line": 547,
+      "line": 325,
       "as": "actor-as-lwt"
     },
     {
       "type": "module",
-      "line": 550,
+      "line": 328,
       "name": "actor-scheduler",
-      "filename": "actor-lwt.10.wasm"
+      "filename": "actor-lwt.7.wasm"
     },
     {
       "type": "register",
-      "line": 566,
+      "line": 344,
       "as": "actor-scheduler"
     },
     {
       "type": "module",
-      "line": 568,
-      "filename": "actor-lwt.11.wasm"
+      "line": 346,
+      "filename": "actor-lwt.8.wasm"
     },
     {
       "type": "action",
-      "line": 585,
+      "line": 363,
       "action": {
         "type": "invoke",
         "field": "run-chain",

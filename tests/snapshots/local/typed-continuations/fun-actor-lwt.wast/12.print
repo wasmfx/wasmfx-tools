@@ -33,7 +33,7 @@
           block $on_recv (result (ref $i-cont))
             local.get $res
             local.get $ik
-            resume $i-cont (tag $self $on_self)(tag $spawn $on_spawn)(tag $send $on_send)(tag $recv $on_recv)
+            resume $i-cont (on $self $on_self)(on $spawn $on_spawn)(on $send $on_send)(on $recv $on_recv)
             return
           end
           local.set $ik
@@ -87,7 +87,7 @@
         block $on_send (type 13) (result i32 i32 (ref $cont))
           block $on_recv (result (ref $i-cont))
             local.get $k
-            resume $cont (tag $self $on_self)(tag $spawn $on_spawn)(tag $send $on_send)(tag $recv $on_recv)
+            resume $cont (on $self $on_self)(on $spawn $on_spawn)(on $send $on_send)(on $recv $on_recv)
             return
           end
           local.set $ik

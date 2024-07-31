@@ -16,7 +16,7 @@
       end
       block $on_yield (result (ref $cont))
         call $dequeue
-        resume $cont (tag $yield $on_yield)
+        resume $cont (on $yield $on_yield)
         br $l
       end
       call $enqueue

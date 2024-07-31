@@ -10,7 +10,7 @@
     block $on_e3 (type 6) (result i32 (ref $res_int_to_int))
       i32.const 49
       ref.null $f3_ct
-      resume $f3_ct (tag $e3_int_to_int $on_e3)
+      resume $f3_ct (on $e3_int_to_int $on_e3)
       unreachable
     end
     unreachable

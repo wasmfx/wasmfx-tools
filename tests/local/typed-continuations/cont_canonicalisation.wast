@@ -11,7 +11,7 @@
   (func $test_case_4 (export "test_case_4") (result i32)
 
     (block $on_e3 (result i32 (ref $res_int_to_int))
-      (resume $f3_ct (tag $e3_int_to_int $on_e3) (i32.const 49) (ref.null $f3_ct))
+      (resume $f3_ct (on $e3_int_to_int $on_e3) (i32.const 49) (ref.null $f3_ct))
       (unreachable))
     ;; after on_e3, expected stack: [50 resumption]
     (unreachable)

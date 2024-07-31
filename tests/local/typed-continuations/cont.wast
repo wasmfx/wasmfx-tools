@@ -18,7 +18,7 @@
 
   (func (export "unhandled-3")
     (block $h (result (ref $k1))
-      (resume $k1 (tag $e2 $h) (cont.new $k1 (ref.func $f1)))
+      (resume $k1 (on $e2 $h) (cont.new $k1 (ref.func $f1)))
       (unreachable)
     )
     (drop)
@@ -26,7 +26,7 @@
 
   (func (export "handled")
     (block $h (result (ref $k1))
-      (resume $k1 (tag $e1 $h) (cont.new $k1 (ref.func $f1)))
+      (resume $k1 (on $e1 $h) (cont.new $k1 (ref.func $f1)))
       (unreachable)
     )
     (drop)
@@ -39,7 +39,7 @@
 
   (func (export "uncaught-1")
     (block $h (result (ref $k1))
-      (resume $k1 (tag $e1 $h) (cont.new $k1 (ref.func $f2)))
+      (resume $k1 (on $e1 $h) (cont.new $k1 (ref.func $f2)))
       (unreachable)
     )
     (drop)
@@ -47,7 +47,7 @@
 
   (func (export "uncaught-2")
     (block $h (result (ref $k1))
-      (resume $k1 (tag $e1 $h) (cont.new $k1 (ref.func $f1)))
+      (resume $k1 (on $e1 $h) (cont.new $k1 (ref.func $f1)))
       (unreachable)
     )
     (resume_throw $k1 $exn)
@@ -63,7 +63,7 @@
 
   (func (export "barrier")
     (block $h (result (ref $k1))
-      (resume $k1 (tag $e1 $h) (cont.new $k1 (ref.func $f3)))
+      (resume $k1 (on $e1 $h) (cont.new $k1 (ref.func $f3)))
       (unreachable)
     )
     (resume_throw $k1 $exn)
@@ -79,7 +79,7 @@
   )
   (func $nl2 (param $k (ref $k1))
     (block $h (result (ref $k1))
-      (resume $k1 (tag $e1 $h) (local.get $k))
+      (resume $k1 (on $e1 $h) (local.get $k))
       (unreachable)
     )
     (resume $k1 (local.get $k))
@@ -88,12 +88,12 @@
   (func $nl3 (param $k (ref $k1))
     (local $k' (ref null $k1))
     (block $h1 (result (ref $k1))
-      (resume $k1 (tag $e1 $h1) (local.get $k))
+      (resume $k1 (on $e1 $h1) (local.get $k))
       (unreachable)
     )
     (local.set $k')
     (block $h2 (result (ref $k1))
-      (resume $k1 (tag $e1 $h2) (local.get $k'))
+      (resume $k1 (on $e1 $h2) (local.get $k'))
       (unreachable)
     )
     (resume $k1 (local.get $k'))
@@ -123,10 +123,6 @@
 (assert_suspension (invoke "unhandled-3") "unhandled")
 (assert_return (invoke "handled"))
 
-;; (assert_exception (invoke "uncaught-1") "unhandled")
-;; (assert_exception (invoke "uncaught-2") "unhandled")
-;; TODO(dhil): the implementation of assert_exception in crates/wast
-;; do not support comparison with an expected value yet.
 (assert_exception (invoke "uncaught-1"))
 (assert_exception (invoke "uncaught-2"))
 
@@ -137,6 +133,100 @@
 (assert_trap (invoke "non-linear-3") "continuation already consumed")
 (assert_trap (invoke "non-linear-4") "continuation already consumed")
 
+(assert_invalid
+  (module
+    (type $ft (func))
+    (func
+      (cont.new $ft (ref.null $ft))
+      (drop)))
+  "non-continuation type 0")
+
+(assert_invalid
+  (module
+    (type $ft (func))
+    (type $ct (cont $ft))
+    (func
+      (resume $ft (ref.null $ct))
+      (unreachable)))
+  "non-continuation type 0")
+
+(assert_invalid
+  (module
+    (type $ft (func))
+    (type $ct (cont $ft))
+    (tag $exn)
+    (func
+      (resume_throw $ft $exn (ref.null $ct))
+      (unreachable)))
+  "non-continuation type 0")
+
+(assert_invalid
+  (module
+    (type $ft (func))
+    (type $ct (cont $ft))
+    (func
+      (cont.bind $ft $ct (ref.null $ct))
+      (unreachable)))
+  "non-continuation type 0")
+
+(assert_invalid
+  (module
+    (type $ft (func))
+    (type $ct (cont $ft))
+    (func
+      (cont.bind $ct $ft (ref.null $ct))
+      (unreachable)))
+  "non-continuation type 0")
+
+(assert_invalid
+  (module
+    (type $ft (func))
+    (type $ct (cont $ft))
+    (tag $foo)
+    (func
+      (block $on_foo (result (ref $ft))
+        (resume $ct (on $foo $on_foo) (ref.null $ct))
+        (unreachable)
+      )
+      (drop)))
+  "non-continuation type 0")
+
+(assert_invalid
+  (module
+    (type $ft (func))
+    (type $ct (cont $ft))
+    (tag $foo)
+    (func
+      (block $on_foo (result (ref $ct) (ref $ft))
+        (resume $ct (on $foo $on_foo) (ref.null $ct))
+        (unreachable)
+      )
+      (drop)
+      (drop)))
+  "non-continuation type 0")
+
+(assert_invalid
+  (module
+    (type $ct (cont $ct)))
+  "non-function type 0")
+
+(assert_invalid
+  (module
+    (rec
+      (type $s0 (struct (field (ref 0) (ref 1) (ref $s0) (ref $s1))))
+      (type $s1 (struct (field (ref 0) (ref 1) (ref $s0) (ref $s1))))
+    )
+    (type $ct (cont $s0)))
+  "non-function type 0")
+
+(module
+  (rec
+    (type $f1 (func (param (ref $f2))))
+    (type $f2 (func (param (ref $f1))))
+  )
+  (type $c1 (cont $f1))
+  (type $c2 (cont $f2))
+)
 
 ;; Simple state example
 
@@ -151,7 +241,7 @@
     (loop $loop
       (block $on_get (result (ref $k))
         (block $on_set (result i32 (ref $k))
-          (resume $k (tag $get $on_get) (tag $set $on_set)
+          (resume $k (on $get $on_get) (on $set $on_set)
             (local.get $s) (local.get $k)
           )
           (return)
@@ -223,7 +313,7 @@
     (local.get $i)
     (cont.new $cont0 (ref.func $gen))
     (block $on_first_yield (param i64 (ref $cont0)) (result i64 (ref $cont))
-      (resume $cont0 (tag $yield $on_first_yield))
+      (resume $cont0 (on $yield $on_first_yield))
       (unreachable)
     )
     (loop $on_yield (param i64) (param (ref $cont))
@@ -231,7 +321,8 @@
       (local.set $n)
       (local.set $sum (i64.add (local.get $sum) (local.get $n)))
       (i64.eq (local.get $n) (local.get $j))
-      (resume $cont (tag $yield $on_yield) (local.get $k))
+      (local.get $k)
+      (resume $cont (on $yield $on_yield))
     )
     (return (local.get $sum))
   )
@@ -313,7 +404,7 @@
       (if (call $queue-empty) (then (return)))
       (block $on_yield (result (ref $cont))
         (block $on_spawn (result (ref $cont) (ref $cont))
-          (resume $cont (tag $yield $on_yield) (tag $spawn $on_spawn)
+          (resume $cont (on $yield $on_yield) (on $spawn $on_spawn)
             (call $dequeue)
           )
           (br $l)  ;; thread terminated
@@ -533,7 +624,7 @@
     (local $k4 (ref null $k4))
     (local $k2 (ref null $k2))
     (block $l (result (ref $k6))
-      (resume $k0 (tag $e $l) (cont.new $k0 (ref.func $f)))
+      (resume $k0 (on $e $l) (cont.new $k0 (ref.func $f)))
       (unreachable)
     )
     (local.set $k6)
@@ -546,4 +637,20 @@
 (assert_return (invoke "run")
   (i32.const 0) (i32.const 1) (i32.const 2) (i32.const 3)
   (i32.const 4) (i32.const 5) (i32.const 6)
+)
+
+;; Subtyping
+(module
+  (type $ft1 (func (param i32)))
+  (type $ct1 (sub (cont $ft1)))
+
+  (type $ft0 (func))
+  (type $ct0 (sub (cont $ft0)))
+
+  (func $test (param $x (ref $ct1))
+    (i32.const 123)
+    (local.get $x)
+    (cont.bind $ct1 $ct0)
+    (drop)
+  )
 )

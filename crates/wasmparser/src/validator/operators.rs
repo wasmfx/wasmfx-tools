@@ -1138,8 +1138,8 @@ where
         self.resources.cont_type_at(id).ok_or_else(|| {
             format_err!(
                 self.offset,
-                "unknown continuation type: type index ({:?}) out of bounds",
-                id
+                "non-continuation type {}",
+                crate::validator::types::TypeIdentifier::index(&id)
             )
         })
     }
@@ -4019,6 +4019,7 @@ where
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
+        let _ = self.cont_type_of_heap_type(hty);
 
         let expected = RefType::new(true, hty).expect("hty should be previously validated");
         match self.pop_ref()? {
@@ -4062,13 +4063,14 @@ where
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
-        let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
+        let _ = self.cont_type_of_heap_type(hty);
         let expected =
             ValType::Ref(RefType::new(true, hty).expect("hty should be previously validated"));
         match self.pop_ref()? {
             None => {}
             Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {
                 // ft := ts1 -> ts2
+                let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
                 self.check_resume_table(resumetable, &ctft)?;
 
                 // tagtype := ts1' -> []

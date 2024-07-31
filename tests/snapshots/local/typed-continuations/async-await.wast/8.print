@@ -39,7 +39,7 @@
           block $on_async (type 13) (result (ref $i-cont) (ref $i-cont))
             block $on_await (type 14) (result i32 (ref $i-cont))
               local.get $nextk
-              resume $cont (tag $yield $on_yield)(tag $fulfill $on_fulfill)(tag $async $on_async)(tag $await $on_await)
+              resume $cont (on $yield $on_yield)(on $fulfill $on_fulfill)(on $async $on_async)(on $await $on_await)
               call $dequeue
               local.set $nextk
               br $l

@@ -20,7 +20,7 @@
     block $on_yield (result (ref $cont))
       block $on_fork (type 6) (result (ref $cont) (ref $cont))
         local.get $nextk
-        resume $cont (tag $yield $on_yield)(tag $fork $on_fork)
+        resume $cont (on $yield $on_yield)(on $fork $on_fork)
         call $dequeue
         return_call $sync
       end
@@ -40,7 +40,7 @@
     block $on_yield (result (ref $cont))
       block $on_fork (type 6) (result (ref $cont) (ref $cont))
         local.get $nextk
-        resume $cont (tag $yield $on_yield)(tag $fork $on_fork)
+        resume $cont (on $yield $on_yield)(on $fork $on_fork)
         call $dequeue
         return_call $tk
       end
@@ -62,7 +62,7 @@
     block $on_yield (result (ref $cont))
       block $on_fork (type 6) (result (ref $cont) (ref $cont))
         local.get $nextk
-        resume $cont (tag $yield $on_yield)(tag $fork $on_fork)
+        resume $cont (on $yield $on_yield)(on $fork $on_fork)
         call $dequeue
         return_call $kt
       end
@@ -82,7 +82,7 @@
     block $on_yield (result (ref $cont))
       block $on_fork (type 6) (result (ref $cont) (ref $cont))
         local.get $nextk
-        resume $cont (tag $yield $on_yield)(tag $fork $on_fork)
+        resume $cont (on $yield $on_yield)(on $fork $on_fork)
         call $dequeue
         return_call $ykt
       end
@@ -105,7 +105,7 @@
     block $on_yield (result (ref $cont))
       block $on_fork (type 6) (result (ref $cont) (ref $cont))
         local.get $nextk
-        resume $cont (tag $yield $on_yield)(tag $fork $on_fork)
+        resume $cont (on $yield $on_yield)(on $fork $on_fork)
         call $dequeue
         return_call $ytk
       end
