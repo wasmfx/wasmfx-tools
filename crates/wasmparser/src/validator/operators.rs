@@ -3960,7 +3960,7 @@ where
             .params()
             .iter()
             .skip(src_cont.params().len() - dst_cont.params().len())
-            .map(|i| *i)
+            .copied()
             .collect();
         // TODO(dhil): `is_func_subtype` is a kind of convenience hack
         // that implements the subtyping relation for function

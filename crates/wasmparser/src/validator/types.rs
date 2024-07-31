@@ -3842,7 +3842,7 @@ impl<'a> SubtypeCx<'a> {
         let b_imports = self.b[b]
             .imports
             .iter()
-            .map(|(name, ty)| (name.clone(), ty.clone()))
+            .map(|(name, ty)| (name.clone(), *ty))
             .collect();
         self.swap();
         let mut import_mapping =
@@ -3852,7 +3852,7 @@ impl<'a> SubtypeCx<'a> {
             let mut a_exports = this.a[a]
                 .exports
                 .iter()
-                .map(|(name, ty)| (name.clone(), ty.clone()))
+                .map(|(name, ty)| (name.clone(), *ty))
                 .collect::<IndexMap<_, _>>();
             for ty in a_exports.values_mut() {
                 this.a.remap_component_entity(ty, &mut import_mapping);
@@ -4196,7 +4196,7 @@ impl<'a> SubtypeCx<'a> {
         let mut to_typecheck = Vec::new();
         for (name, expected) in entities.iter() {
             match a.get(name) {
-                Some(arg) => to_typecheck.push((arg.clone(), expected.clone())),
+                Some(arg) => to_typecheck.push((*arg, *expected)),
                 None => bail!(offset, "missing {} named `{name}`", kind.desc()),
             }
         }
