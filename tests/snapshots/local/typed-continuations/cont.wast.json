@@ -563,6 +563,21 @@
       "type": "module",
       "line": 643,
       "filename": "cont.18.wasm"
+    },
+    {
+      "type": "module",
+      "line": 659,
+      "filename": "cont.19.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 672,
+      "action": {
+        "type": "invoke",
+        "field": "set-global",
+        "args": []
+      },
+      "expected": []
     }
   ]
 }
