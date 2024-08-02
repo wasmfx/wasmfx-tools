@@ -231,7 +231,7 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
     fn resumetable(&mut self, targets: ResumeTable<'_>) -> Result<()> {
         for (_, item) in targets.targets().enumerate() {
             let (tag, label) = item?;
-            self.push_str("(tag")?;
+            self.push_str("(on")?;
             self.tag_index(tag)?;
             self.relative_depth(label)?;
             self.push_str(")")?;

@@ -15,7 +15,7 @@
     block $on_h (result (ref $ct))
       ref.func $f
       cont.new $ct
-      resume $ct (tag $h $on_h)
+      resume $ct (on $h $on_h)
       unreachable
     end
     drop

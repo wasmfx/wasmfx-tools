@@ -29,7 +29,7 @@
     ref.func $gen
     cont.new $cont0
     block $on_first_yield (type 6) (param i64 (ref $cont0)) (result i64 (ref $cont))
-      resume $cont0 (tag $yield $on_first_yield)
+      resume $cont0 (on $yield $on_first_yield)
       unreachable
     end
     loop $on_yield (type 7) (param i64 (ref $cont))
@@ -43,7 +43,7 @@
       local.get $j
       i64.eq
       local.get $k
-      resume $cont (tag $yield $on_yield)
+      resume $cont (on $yield $on_yield)
     end
     local.get $sum
     return

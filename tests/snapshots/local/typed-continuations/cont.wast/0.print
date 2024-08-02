@@ -14,7 +14,7 @@
     block $h (result (ref $k1))
       ref.func $f1
       cont.new $k1
-      resume $k1 (tag $e2 $h)
+      resume $k1 (on $e2 $h)
       unreachable
     end
     drop
@@ -23,7 +23,7 @@
     block $h (result (ref $k1))
       ref.func $f1
       cont.new $k1
-      resume $k1 (tag $e1 $h)
+      resume $k1 (on $e1 $h)
       unreachable
     end
     drop
@@ -35,7 +35,7 @@
     block $h (result (ref $k1))
       ref.func $f2
       cont.new $k1
-      resume $k1 (tag $e1 $h)
+      resume $k1 (on $e1 $h)
       unreachable
     end
     drop
@@ -44,7 +44,7 @@
     block $h (result (ref $k1))
       ref.func $f1
       cont.new $k1
-      resume $k1 (tag $e1 $h)
+      resume $k1 (on $e1 $h)
       unreachable
     end
     resume_throw $k1 $exn
@@ -61,7 +61,7 @@
     block $h (result (ref $k1))
       ref.func $f3
       cont.new $k1
-      resume $k1 (tag $e1 $h)
+      resume $k1 (on $e1 $h)
       unreachable
     end
     resume_throw $k1 $exn
@@ -80,7 +80,7 @@
   (func $nl2 (;13;) (type 2) (param $k (ref $k1))
     block $h (result (ref $k1))
       local.get $k
-      resume $k1 (tag $e1 $h)
+      resume $k1 (on $e1 $h)
       unreachable
     end
     local.get $k
@@ -91,13 +91,13 @@
     (local $k' (ref null $k1))
     block $h1 (result (ref $k1))
       local.get $k
-      resume $k1 (tag $e1 $h1)
+      resume $k1 (on $e1 $h1)
       unreachable
     end
     local.set $k'
     block $h2 (result (ref $k1))
       local.get $k'
-      resume $k1 (tag $e1 $h2)
+      resume $k1 (on $e1 $h2)
       unreachable
     end
     local.get $k'

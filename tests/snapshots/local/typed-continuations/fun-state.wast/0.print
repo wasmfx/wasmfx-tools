@@ -12,7 +12,7 @@
       block $on_set (type 6) (result i32 (ref $sk))
         local.get $s
         local.get $k
-        resume $gk (tag $get $on_get)(tag $set $on_set)
+        resume $gk (on $get $on_get)(on $set $on_set)
         return
       end
       return_call $setting
@@ -24,7 +24,7 @@
     block $on_get (result (ref $gk))
       block $on_set (type 6) (result i32 (ref $sk))
         local.get $k
-        resume $sk (tag $get $on_get)(tag $set $on_set)
+        resume $sk (on $get $on_get)(on $set $on_set)
         return
       end
       return_call $setting

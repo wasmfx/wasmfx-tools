@@ -12,7 +12,7 @@
     block $on-receive (result (ref $consumer))
       local.get $n
       local.get $c
-      resume $consumer (tag $receive $on-receive)
+      resume $consumer (on $receive $on-receive)
       return
     end
     local.set $c
@@ -24,7 +24,7 @@
     (local $n i32)
     block $on-send (type 7) (result i32 (ref $producer))
       local.get $p
-      resume $producer (tag $send $on-send)
+      resume $producer (on $send $on-send)
       return
     end
     local.set $p

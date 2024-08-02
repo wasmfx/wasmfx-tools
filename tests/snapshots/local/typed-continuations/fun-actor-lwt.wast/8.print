@@ -21,7 +21,7 @@
       block $on_yield (result (ref $cont))
         block $on_fork (type 5) (result (ref $cont) (ref $cont))
           call $dequeue
-          resume $cont (tag $yield $on_yield)(tag $fork $on_fork)
+          resume $cont (on $yield $on_yield)(on $fork $on_fork)
           br $l
         end
         call $enqueue

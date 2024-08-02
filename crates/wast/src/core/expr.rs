@@ -1431,9 +1431,9 @@ impl<'a> Parse<'a> for (Index<'a>, Index<'a>) {
 impl<'a> Parse<'a> for ResumeTableIndices<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let mut targets = vec![];
-        while parser.peek2::<kw::tag>()? {
+        while parser.peek2::<kw::on>()? {
             parser.parens(|p| {
-                p.parse::<kw::tag>()?;
+                p.parse::<kw::on>()?;
                 targets.push(p.parse()?);
                 Ok(())
             })?;

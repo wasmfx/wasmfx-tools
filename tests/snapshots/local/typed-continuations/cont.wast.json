@@ -48,7 +48,7 @@
     },
     {
       "type": "assert_exception",
-      "line": 130,
+      "line": 126,
       "action": {
         "type": "invoke",
         "field": "uncaught-1",
@@ -57,7 +57,7 @@
     },
     {
       "type": "assert_exception",
-      "line": 131,
+      "line": 127,
       "action": {
         "type": "invoke",
         "field": "uncaught-2",
@@ -66,7 +66,7 @@
     },
     {
       "type": "assert_trap",
-      "line": 133,
+      "line": 129,
       "action": {
         "type": "invoke",
         "field": "barrier",
@@ -76,7 +76,7 @@
     },
     {
       "type": "assert_trap",
-      "line": 135,
+      "line": 131,
       "action": {
         "type": "invoke",
         "field": "non-linear-1",
@@ -86,7 +86,7 @@
     },
     {
       "type": "assert_trap",
-      "line": 136,
+      "line": 132,
       "action": {
         "type": "invoke",
         "field": "non-linear-2",
@@ -96,7 +96,7 @@
     },
     {
       "type": "assert_trap",
-      "line": 137,
+      "line": 133,
       "action": {
         "type": "invoke",
         "field": "non-linear-3",
@@ -106,7 +106,7 @@
     },
     {
       "type": "assert_trap",
-      "line": 138,
+      "line": 134,
       "action": {
         "type": "invoke",
         "field": "non-linear-4",
@@ -115,14 +115,82 @@
       "text": "continuation already consumed"
     },
     {
+      "type": "assert_invalid",
+      "line": 137,
+      "filename": "cont.1.wasm",
+      "text": "non-continuation type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 145,
+      "filename": "cont.2.wasm",
+      "text": "non-continuation type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 154,
+      "filename": "cont.3.wasm",
+      "text": "non-continuation type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 164,
+      "filename": "cont.4.wasm",
+      "text": "non-continuation type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 173,
+      "filename": "cont.5.wasm",
+      "text": "non-continuation type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 182,
+      "filename": "cont.6.wasm",
+      "text": "non-continuation type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 195,
+      "filename": "cont.7.wasm",
+      "text": "non-continuation type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 209,
+      "filename": "cont.8.wasm",
+      "text": "non-function type 0",
+      "module_type": "binary"
+    },
+    {
+      "type": "assert_invalid",
+      "line": 214,
+      "filename": "cont.9.wasm",
+      "text": "non-function type 0",
+      "module_type": "binary"
+    },
+    {
       "type": "module",
-      "line": 143,
+      "line": 222,
+      "filename": "cont.10.wasm"
+    },
+    {
+      "type": "module",
+      "line": 233,
       "name": "state",
-      "filename": "cont.1.wasm"
+      "filename": "cont.11.wasm"
     },
     {
       "type": "assert_return",
-      "line": 191,
+      "line": 281,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -137,18 +205,18 @@
     },
     {
       "type": "module",
-      "line": 196,
+      "line": 286,
       "name": "generator",
-      "filename": "cont.2.wasm"
+      "filename": "cont.12.wasm"
     },
     {
       "type": "register",
-      "line": 240,
+      "line": 331,
       "as": "generator"
     },
     {
       "type": "assert_return",
-      "line": 242,
+      "line": 333,
       "action": {
         "type": "invoke",
         "field": "sum",
@@ -172,7 +240,7 @@
     },
     {
       "type": "assert_return",
-      "line": 243,
+      "line": 334,
       "action": {
         "type": "invoke",
         "field": "sum",
@@ -196,7 +264,7 @@
     },
     {
       "type": "assert_return",
-      "line": 244,
+      "line": 335,
       "action": {
         "type": "invoke",
         "field": "sum",
@@ -220,7 +288,7 @@
     },
     {
       "type": "assert_return",
-      "line": 245,
+      "line": 336,
       "action": {
         "type": "invoke",
         "field": "sum",
@@ -244,7 +312,7 @@
     },
     {
       "type": "assert_return",
-      "line": 246,
+      "line": 337,
       "action": {
         "type": "invoke",
         "field": "sum",
@@ -268,23 +336,23 @@
     },
     {
       "type": "module",
-      "line": 251,
+      "line": 342,
       "name": "scheduler",
-      "filename": "cont.3.wasm"
+      "filename": "cont.13.wasm"
     },
     {
       "type": "register",
-      "line": 333,
+      "line": 424,
       "as": "scheduler"
     },
     {
       "type": "module",
-      "line": 335,
-      "filename": "cont.4.wasm"
+      "line": 426,
+      "filename": "cont.14.wasm"
     },
     {
       "type": "assert_return",
-      "line": 415,
+      "line": 506,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -303,7 +371,7 @@
     },
     {
       "type": "assert_return",
-      "line": 416,
+      "line": 507,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -322,7 +390,7 @@
     },
     {
       "type": "assert_return",
-      "line": 417,
+      "line": 508,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -341,7 +409,7 @@
     },
     {
       "type": "assert_return",
-      "line": 418,
+      "line": 509,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -360,7 +428,7 @@
     },
     {
       "type": "assert_return",
-      "line": 419,
+      "line": 510,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -379,13 +447,13 @@
     },
     {
       "type": "module",
-      "line": 424,
+      "line": 515,
       "name": "concurrent-generator",
-      "filename": "cont.5.wasm"
+      "filename": "cont.15.wasm"
     },
     {
       "type": "assert_return",
-      "line": 476,
+      "line": 567,
       "action": {
         "type": "invoke",
         "field": "sum",
@@ -409,12 +477,12 @@
     },
     {
       "type": "module",
-      "line": 481,
-      "filename": "cont.6.wasm"
+      "line": 572,
+      "filename": "cont.16.wasm"
     },
     {
       "type": "assert_return",
-      "line": 507,
+      "line": 598,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -449,12 +517,12 @@
     },
     {
       "type": "module",
-      "line": 513,
-      "filename": "cont.7.wasm"
+      "line": 604,
+      "filename": "cont.17.wasm"
     },
     {
       "type": "assert_return",
-      "line": 546,
+      "line": 637,
       "action": {
         "type": "invoke",
         "field": "run",
@@ -490,6 +558,26 @@
           "value": "6"
         }
       ]
+    },
+    {
+      "type": "module",
+      "line": 643,
+      "filename": "cont.18.wasm"
+    },
+    {
+      "type": "module",
+      "line": 659,
+      "filename": "cont.19.wasm"
+    },
+    {
+      "type": "assert_return",
+      "line": 672,
+      "action": {
+        "type": "invoke",
+        "field": "set-global",
+        "args": []
+      },
+      "expected": []
     }
   ]
 }

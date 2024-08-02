@@ -687,12 +687,27 @@ impl Module {
                             return Err(BinaryReaderError::new("invalid type index", offset));
                             // TODO(dhil): tidy up error message.
                         }
-                        let _ = self.func_type_at(idx, types, offset)?;
+                        if self.func_type_at(idx, types, offset).is_err() {
+                            return Err(BinaryReaderError::new(
+                                format!("non-function type {}", idx),
+                                offset,
+                            ));
+                        }
                     }
-                    UnpackedIndex::RecGroup(_) | UnpackedIndex::Id(_) => {
-                        // If the type index has already been canonicalized,
-                        // then we already checked that it was in bounds and
-                        // valid at that time.
+                    UnpackedIndex::RecGroup(_) => unreachable!(),
+                    UnpackedIndex::Id(id) => {
+                        // NOTE(dhil): This is a bit dodgy... it'd be
+                        // better to check wellformedness before
+                        // canonicalisation.
+                        if self
+                            .func_type_at(id.index().try_into().unwrap(), types, offset)
+                            .is_err()
+                        {
+                            return Err(BinaryReaderError::new(
+                                format!("non-function type {}", id.index()),
+                                offset,
+                            ));
+                        }
                     }
                 }
             }

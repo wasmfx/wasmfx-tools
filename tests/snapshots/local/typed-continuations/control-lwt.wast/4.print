@@ -1,15 +1,17 @@
 (module $queue
   (type $func (;0;) (func))
   (type $cont (;1;) (cont $func))
-  (type (;2;) (func (result i32)))
-  (type (;3;) (func (result (ref null $cont))))
-  (type (;4;) (func (param (ref $cont))))
-  (func $queue-empty (;0;) (type 2) (result i32)
+  (type (;2;) (func (param i32)))
+  (type (;3;) (func (result i32)))
+  (type (;4;) (func (result (ref null $cont))))
+  (type (;5;) (func (param (ref $cont))))
+  (import "spectest" "print_i32" (func $log (;0;) (type 2)))
+  (func $queue-empty (;1;) (type 3) (result i32)
     global.get $qfront
     global.get $qback
     i32.eq
   )
-  (func $dequeue (;1;) (type 3) (result (ref null $cont))
+  (func $dequeue (;2;) (type 4) (result (ref null $cont))
     (local $i i32)
     call $queue-empty
     if ;; label = @1
@@ -25,7 +27,7 @@
     local.get $i
     table.get $queue
   )
-  (func $enqueue (;2;) (type 4) (param $k (ref $cont))
+  (func $enqueue (;3;) (type 5) (param $k (ref $cont))
     global.get $qback
     table.size $queue
     i32.eq

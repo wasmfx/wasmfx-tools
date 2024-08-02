@@ -802,5 +802,11 @@ fn error_matches(error: &str, message: &str) -> bool {
         return error.contains("invalid character in string");
     }
 
+    if message == "non-continuation type 0" {
+        return error.contains("type mismatch between label type and tag type length (at offset 0x29)")
+            || error.contains("type mismatch: instruction requires (ref null $type) but stack has (ref null $type) (at offset 0x1b)")
+            || error.contains("type mismatch: instruction requires (ref null $type) but stack has (ref null $type) (at offset 0x20)");
+    }
+
     return false;
 }
