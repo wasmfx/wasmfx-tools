@@ -83,7 +83,6 @@ pub trait Reencode {
         utils::resume_table(self, table)
     }
 
-
     fn block_type(
         &mut self,
         arg: wasmparser::BlockType,
@@ -1496,7 +1495,10 @@ pub mod utils {
         _reencoder: &mut T,
         resumetable: wasmparser::ResumeTable<'_>,
     ) -> Result<crate::ResumeTable, Error<T::Error>> {
-        let targets = resumetable.targets().map(|i| i.unwrap()).collect::<Vec<(u32,u32)>>();
+        let targets = resumetable
+            .targets()
+            .map(|i| i.unwrap())
+            .collect::<Vec<(u32, u32)>>();
         Ok(crate::ResumeTable { targets })
     }
 

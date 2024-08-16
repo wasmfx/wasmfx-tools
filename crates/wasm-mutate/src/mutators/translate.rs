@@ -115,8 +115,17 @@ pub trait Translator {
         })
     }
 
-    fn translate_resume_table(&mut self, table: &wasmparser::ResumeTable<'_>) -> Result<ResumeTable> {
-        Ok(ResumeTable { targets: table.targets().map(|i| i.unwrap()).collect::<Vec<(u32, u32)>>().into() })
+    fn translate_resume_table(
+        &mut self,
+        table: &wasmparser::ResumeTable<'_>,
+    ) -> Result<ResumeTable> {
+        Ok(ResumeTable {
+            targets: table
+                .targets()
+                .map(|i| i.unwrap())
+                .collect::<Vec<(u32, u32)>>()
+                .into(),
+        })
     }
 
     fn remap(&mut self, item: Item, idx: u32) -> Result<u32> {

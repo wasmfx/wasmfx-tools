@@ -50,9 +50,7 @@ impl Encode for CompositeType {
             CompositeInnerType::Struct(ty) => {
                 TypeSection::encode_struct(sink, ty.fields.iter().cloned())
             }
-            CompositeInnerType::Cont(ty) => {
-                TypeSection::encode_continuation(sink, ty.0)
-            }
+            CompositeInnerType::Cont(ty) => TypeSection::encode_continuation(sink, ty.0),
         }
     }
 }
