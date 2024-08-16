@@ -1059,12 +1059,12 @@ pub enum Instruction<'a> {
     Suspend(u32),
     Resume {
         type_index: u32,
-        resumetable: Cow<'a, [(u32, u32)]>,
+        resumetable: ResumeTable,
     },
     ResumeThrow {
         type_index: u32,
         tag_index: u32,
-        resumetable: Cow<'a, [(u32, u32)]>,
+        resumetable: ResumeTable,
     },
     Barrier(BlockType),
 
@@ -3370,33 +3370,43 @@ impl Encode for Instruction<'_> {
                 sink.push(0x4E);
                 memarg.encode(sink);
             }
-            Instruction::ContNew(_type_index) => {
-                todo!()
+            Instruction::ContNew(type_index) => {
+                sink.push(0xE0);
+                type_index.encode(sink);
             }
             Instruction::ContBind {
-                src_index: _,
-                dst_index: _,
+                src_index,
+                dst_index,
             } => {
-                todo!()
+                sink.push(0xE1);
+                src_index.encode(sink);
+                dst_index.encode(sink);
             }
-            Instruction::Suspend(_tag_index) => {
-                todo!()
+            Instruction::Suspend(tag_index) => {
+                sink.push(0xE2);
+                tag_index.encode(sink);
             }
             Instruction::Resume {
-                type_index: _,
-                resumetable: _,
+                type_index,
+                ref resumetable,
             } => {
-                todo!()
+                sink.push(0xE3);
+                type_index.encode(sink);
+                resumetable.encode(sink);
             }
             Instruction::ResumeThrow {
-                type_index: _,
-                tag_index: _,
-                resumetable: _,
+                type_index,
+                tag_index,
+                ref resumetable,
             } => {
-                todo!()
+                sink.push(0xE4);
+                type_index.encode(sink);
+                tag_index.encode(sink);
+                resumetable.encode(sink);
             }
-            Instruction::Barrier(_blockty) => {
-                todo!()
+            Instruction::Barrier(blockty) => {
+                sink.push(0xE5);
+                blockty.encode(sink);
             }
 
             // Atomic instructions from the shared-everything-threads proposal
@@ -3739,7 +3749,7 @@ impl Encode for Instruction<'_> {
             }
             Instruction::RefI31Shared => {
                 sink.push(0xFE);
-                sink.push(0x1F);
+                sink.push(0x72);
             }
         }
     }
@@ -3775,6 +3785,22 @@ impl Encode for Catch {
                 sink.push(0x03);
                 label.encode(sink);
             }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[allow(missing_docs)]
+pub struct ResumeTable {
+    pub targets: Vec<(u32, u32)>,
+}
+
+impl Encode for ResumeTable {
+    fn encode(&self, sink: &mut Vec<u8>) {
+        self.targets.len().encode(sink);
+        for (tag, lbl) in &self.targets {
+            tag.encode(sink);
+            lbl.encode(sink);
         }
     }
 }

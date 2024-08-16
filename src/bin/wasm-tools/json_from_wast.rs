@@ -539,7 +539,13 @@ fn null_heap_ty(ty: HeapType<'_>) -> Result<json::Const> {
                 Exn => json::Const::ExnRef {
                     value: Some("null".to_string()),
                 },
-                _ => bail!("unsupported abstract type found in `ref.null`"),
+                Eq => json::Const::EqRef,
+                Struct => json::Const::StructRef,
+                Array => json::Const::ArrayRef,
+                I31 => json::Const::I31Ref,
+                NoExn => json::Const::NullExnRef,
+                Cont => json::Const::Cont,
+                NoCont => json::Const::NoCont,
             }
         }
         _ => bail!("unsupported heap type found in `ref.null`"),
@@ -695,6 +701,8 @@ mod json {
         NullFuncRef,
         // (ref.null noextern)
         NullExternRef,
+        // (ref.null noexn)
+        NullExnRef,
 
         ExnRef {
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -703,5 +711,8 @@ mod json {
 
         // any null reference, type doesn't matter
         RefNull,
+
+        Cont,
+        NoCont,
     }
 }
