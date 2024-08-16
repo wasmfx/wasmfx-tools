@@ -663,7 +663,7 @@ impl Module {
         };
         if !features.shared_everything_threads() && ty.shared {
             return Err(BinaryReaderError::new(
-                "shared composite types are not supported without the shared-everything-threads feature",
+                "shared composite types require the shared-everything-threads proposal",
                 offset,
             ));
         }
@@ -1367,6 +1367,10 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
                 .all(|(aty, bty)| self.is_subtype(*aty, *bty))
     }
 
+    fn is_shared(&self, ty: RefType) -> bool {
+        self.types.reftype_is_shared(ty)
+    }
+
     fn element_count(&self) -> u32 {
         self.module.element_types.len() as u32
     }
@@ -1469,6 +1473,10 @@ impl WasmModuleResources for ValidatorResources {
                 .unwrap()
                 .valtype_is_subtype(*aty, *bty)
         })
+    }
+
+    fn is_shared(&self, ty: RefType) -> bool {
+        self.0.snapshot.as_ref().unwrap().reftype_is_shared(ty)
     }
 
     fn element_count(&self) -> u32 {

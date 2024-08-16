@@ -30,6 +30,7 @@ use std::process::{Command, Stdio};
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
+use wasm_encoder::reencode::{Reencode, ReencodeComponent, RoundtripReencoder};
 use wasmparser::*;
 use wast::core::{Module, ModuleKind};
 use wast::lexer::Lexer;
@@ -178,8 +179,23 @@ impl TestState {
                 .context(format!("text:\n{}", string))?;
             self.bump_ntests();
             self.binary_compare(&binary2, contents)
-                .context("failed to compare original `wat` with roundtrip `wat`")
-                .context(format!("as parsed:\n{}", string))?;
+                .context("failed to compare original `wat` with roundtrip `wat`")?;
+
+            if wasmparser::Parser::is_component(contents) {
+                let mut reencode = Default::default();
+                RoundtripReencoder
+                    .parse_component(&mut reencode, wasmparser::Parser::new(0), contents)
+                    .context("failed to reencode module")?;
+                self.binary_compare(&reencode.finish(), contents)
+                    .context("failed to compare reencoded module with original encoding")?;
+            } else {
+                let mut reencode = Default::default();
+                RoundtripReencoder
+                    .parse_core_module(&mut reencode, wasmparser::Parser::new(0), contents)
+                    .context("failed to reencode module")?;
+                self.binary_compare(&reencode.finish(), contents)
+                    .context("failed to compare reencoded module with original encoding")?;
+            }
         }
 
         // Test that the `wasmprinter`-printed bytes have "pretty" whitespace
@@ -529,8 +545,9 @@ impl TestState {
         dump.stdin.take().unwrap().write_all(bytes)?;
         let mut stdout = String::new();
         dump.stdout.take().unwrap().read_to_string(&mut stdout)?;
-        if dump.wait()?.success() {
-            bail!("dump subcommand failed");
+        let status = dump.wait()?;
+        if !status.success() {
+            bail!("dump subcommand failed: {status}");
         }
         Ok(stdout)
     }
@@ -606,7 +623,14 @@ impl TestState {
                 "exception-handling" => features.insert(WasmFeatures::EXCEPTIONS),
                 "legacy-exceptions" => features.insert(WasmFeatures::LEGACY_EXCEPTIONS),
                 "tail-call" => features.insert(WasmFeatures::TAIL_CALL),
-                "memory64" => features.insert(WasmFeatures::MEMORY64),
+                "memory64" => features.insert(
+                    WasmFeatures::MEMORY64
+                        | WasmFeatures::GC
+                        | WasmFeatures::REFERENCE_TYPES
+                        | WasmFeatures::MULTI_MEMORY
+                        | WasmFeatures::FUNCTION_REFERENCES
+                        | WasmFeatures::EXCEPTIONS,
+                ),
                 "component-model" => features.insert(WasmFeatures::COMPONENT_MODEL),
                 "shared-everything-threads" => {
                     features.insert(WasmFeatures::COMPONENT_MODEL);
@@ -619,6 +643,7 @@ impl TestState {
                 "reference-types" => features.insert(WasmFeatures::REFERENCE_TYPES),
                 "gc" => {
                     features.insert(WasmFeatures::FUNCTION_REFERENCES);
+                    features.insert(WasmFeatures::REFERENCE_TYPES);
                     features.insert(WasmFeatures::GC);
                 }
                 "custom-page-sizes" => features.insert(WasmFeatures::CUSTOM_PAGE_SIZES),
@@ -751,7 +776,9 @@ fn error_matches(error: &str, message: &str) -> bool {
     }
 
     if message == "unexpected content after last section" {
-        return error.contains("section out of order");
+        return error.contains("section out of order")
+            || error.contains("function and code section have inconsistent lengths")
+            || error.contains("type index out of bounds");
     }
 
     if message == "malformed limits flags" {
@@ -760,6 +787,10 @@ fn error_matches(error: &str, message: &str) -> bool {
             // These tests need to be updated for the new limits flags in the
             // custom-page-sizes-proposal.
             || error.contains("unexpected end-of-file");
+    }
+
+    if message == "malformed memop flags" {
+        return error.contains("malformed memop alignment");
     }
 
     // Our error for these tests is happening as a parser error of

@@ -50,6 +50,9 @@ impl Encode for CompositeType {
             CompositeInnerType::Struct(ty) => {
                 TypeSection::encode_struct(sink, ty.fields.iter().cloned())
             }
+            CompositeInnerType::Cont(ty) => {
+                TypeSection::encode_continuation(sink, ty.0)
+            }
         }
     }
 }
@@ -63,6 +66,8 @@ pub enum CompositeInnerType {
     Array(ArrayType),
     /// The type is for a struct.
     Struct(StructType),
+    /// The type is for a continuation.
+    Cont(ContType),
 }
 
 /// Represents a type of a function in a WebAssembly module.
@@ -73,6 +78,10 @@ pub struct FuncType {
     /// The number of parameter types.
     len_params: usize,
 }
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[allow(missing_docs)]
+pub struct ContType(pub u32);
 
 /// Represents a type of an array in a WebAssembly module.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -328,29 +337,34 @@ impl RefType {
 
 impl Encode for RefType {
     fn encode(&self, sink: &mut Vec<u8>) {
-        if self.nullable {
-            // Favor the original encodings of `funcref` and `externref` where
-            // possible.
-            use AbstractHeapType::*;
-            match self.heap_type {
-                HeapType::Abstract {
-                    shared: false,
-                    ty: Func,
-                } => return sink.push(0x70),
-                HeapType::Abstract {
-                    shared: false,
-                    ty: Extern,
-                } => return sink.push(0x6f),
-                _ => {}
+        match self {
+            // Binary abbreviations (i.e., short form), for when the ref is
+            // nullable.
+            RefType {
+                nullable: true,
+                heap_type: heap @ HeapType::Abstract { .. },
+            } => {
+                heap.encode(sink);
+            }
+
+            // Generic 'ref null <heaptype>' encoding (i.e., long form).
+            RefType {
+                nullable: true,
+                heap_type,
+            } => {
+                sink.push(0x63);
+                heap_type.encode(sink);
+            }
+
+            // Generic 'ref <heaptype>' encoding.
+            RefType {
+                nullable: false,
+                heap_type,
+            } => {
+                sink.push(0x64);
+                heap_type.encode(sink);
             }
         }
-
-        if self.nullable {
-            sink.push(0x63);
-        } else {
-            sink.push(0x64);
-        }
-        self.heap_type.encode(sink);
     }
 }
 
@@ -610,6 +624,18 @@ impl TypeSection {
         for f in fields {
             Self::encode_field(sink, &f.element_type, f.mutable);
         }
+    }
+
+    /// Define a continuation type in this type section.
+    pub fn cont_type(&mut self, ty: &ContType) -> &mut Self {
+        Self::encode_continuation(&mut self.bytes, ty.0);
+        self.num_added += 1;
+        self
+    }
+
+    fn encode_continuation(sink: &mut Vec<u8>, index: u32) {
+        sink.push(0x5d);
+        i64::from(index).encode(sink)
     }
 
     /// Define an explicit subtype in this type section.

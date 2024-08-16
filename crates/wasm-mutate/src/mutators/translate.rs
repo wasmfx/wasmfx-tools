@@ -115,6 +115,10 @@ pub trait Translator {
         })
     }
 
+    fn translate_resume_table(&mut self, table: &wasmparser::ResumeTable<'_>) -> Result<ResumeTable> {
+        Ok(ResumeTable { targets: table.targets().map(|i| i.unwrap()).collect::<Vec<(u32, u32)>>().into() })
+    }
+
     fn remap(&mut self, item: Item, idx: u32) -> Result<u32> {
         let _ = item;
         Ok(idx)
@@ -383,12 +387,7 @@ pub fn op(t: &mut dyn Translator, op: &Operator<'_>) -> Result<Instruction<'stat
         (map $arg:ident value) => ($arg);
         (map $arg:ident lane) => (*$arg);
         (map $arg:ident lanes) => (*$arg);
-        (map $arg:ident resumetable) => (
-            $arg
-                .targets()
-                .collect::<Result<Vec<_>, wasmparser::BinaryReaderError>>()?
-                .into()
-        );
+        (map $arg:ident resumetable) => (t.translate_resume_table($arg)?);
         (map $arg:ident array_size) => (*$arg);
         (map $arg:ident field_index) => (*$arg);
         (map $arg:ident from_type_nullable) => (*$arg);

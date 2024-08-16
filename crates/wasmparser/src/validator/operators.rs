@@ -205,15 +205,6 @@ impl From<RefType> for MaybeType {
     }
 }
 
-impl MaybeType {
-    fn as_type(&self) -> Option<ValType> {
-        match *self {
-            Self::Type(ty) => Some(ty),
-            Self::Bot | Self::HeapBot => None,
-        }
-    }
-}
-
 impl OperatorValidator {
     fn new(features: &WasmFeatures, allocs: OperatorValidatorAllocations) -> Self {
         let OperatorValidatorAllocations {
@@ -619,6 +610,7 @@ where
         Ok(actual)
     }
 
+    /// Pop a reference type from the operand stack.
     fn pop_ref(&mut self) -> Result<Option<RefType>> {
         match self.pop_operand(None)? {
             MaybeType::Bot | MaybeType::HeapBot => Ok(None),
@@ -629,6 +621,43 @@ where
                 ty_to_str(ty)
             ),
         }
+    }
+
+    /// Pop a reference type from the operand stack, checking if it is a subtype
+    /// of a nullable type of `expected` or the shared version of `expected`.
+    ///
+    /// This function returns the popped reference type and its `shared`-ness,
+    /// saving extra lookups for concrete types.
+    fn pop_maybe_shared_ref(
+        &mut self,
+        expected: AbstractHeapType,
+    ) -> Result<Option<(RefType, bool)>> {
+        let actual = match self.pop_ref()? {
+            Some(rt) => rt,
+            None => return Ok(None),
+        };
+        // Change our expectation based on whether we're dealing with an actual
+        // shared or unshared type.
+        let is_actual_shared = self.resources.is_shared(actual);
+        let expected = RefType::new(
+            true,
+            HeapType::Abstract {
+                shared: is_actual_shared,
+                ty: expected,
+            },
+        )
+        .unwrap();
+
+        // Check (again) that the actual type is a subtype of the expected type.
+        // Note that `_pop_operand` already does this kind of thing but we leave
+        // that for a future refactoring (TODO).
+        if !self.resources.is_subtype(actual.into(), expected.into()) {
+            bail!(
+                self.offset,
+                "type mismatch: expected subtype of {expected}, found {actual}",
+            )
+        }
+        Ok(Some((actual, is_actual_shared)))
     }
 
     /// Fetches the type for the local at `idx`, returning an error if it's out
@@ -755,7 +784,7 @@ where
         if memarg.align > memarg.max_align {
             bail!(
                 self.offset,
-                "malformed memop flags: alignment must not be larger than natural"
+                "malformed memop alignment: alignment must not be larger than natural"
             );
         }
         if index_ty == ValType::I32 && memarg.offset > u64::from(u32::MAX) {
@@ -1617,6 +1646,7 @@ where
         for ty in self.params(ty.ty)?.rev() {
             self.pop_operand(Some(ty))?;
         }
+        let exn_type = ValType::from(RefType::EXN);
         for catch in ty.catches {
             match catch {
                 Catch::One { tag, label } => {
@@ -1648,7 +1678,7 @@ where
                         );
                     }
                     for (expected_label_tyep, actual_tag_param) in
-                        label_types.zip(tag_params.chain([ValType::EXNREF]))
+                        label_types.zip(tag_params.chain([exn_type]))
                     {
                         self.push_operand(actual_tag_param)?;
                         self.pop_operand(Some(expected_label_tyep))?;
@@ -1668,15 +1698,22 @@ where
                 Catch::AllRef { label } => {
                     let (ty, kind) = self.jump(label)?;
                     let mut types = self.label_types(ty, kind)?;
-                    match (types.next(), types.next()) {
-                        (Some(ValType::EXNREF), None) => {}
+                    let ty = match (types.next(), types.next()) {
+                        (Some(ty), None) => ty,
                         _ => {
                             bail!(
                                 self.offset,
                                 "type mismatch: catch_all_ref label must have \
-                                 one exnref result type"
+                                 exactly one result type"
                             );
                         }
+                    };
+                    if !self.resources.is_subtype(exn_type, ty) {
+                        bail!(
+                            self.offset,
+                            "type mismatch: catch_all_ref label must a \
+                             subtype of (ref exn)"
+                        );
                     }
                 }
             }
@@ -2868,8 +2905,22 @@ where
         Ok(())
     }
     fn visit_ref_eq(&mut self) -> Self::Output {
-        self.pop_operand(Some(RefType::EQ.nullable().into()))?;
-        self.pop_operand(Some(RefType::EQ.nullable().into()))?;
+        let a = self.pop_maybe_shared_ref(AbstractHeapType::Eq)?;
+        let b = self.pop_maybe_shared_ref(AbstractHeapType::Eq)?;
+        match (a, b) {
+            (Some((_, is_a_shared)), Some((_, is_b_shared))) => {
+                if is_a_shared != is_b_shared {
+                    bail!(
+                        self.offset,
+                        "type mismatch: expected `ref.eq` types to match `shared`-ness"
+                    );
+                }
+            }
+            _ => {
+                // One or both of the types are from unreachable code; assume
+                // the shared-ness matches.
+            }
+        }
         self.push_operand(ValType::I32)
     }
     fn visit_v128_load(&mut self, memarg: MemArg) -> Self::Output {
@@ -4558,7 +4609,7 @@ where
         Ok(())
     }
     fn visit_array_len(&mut self) -> Self::Output {
-        self.pop_operand(Some(RefType::ARRAY.nullable().into()))?;
+        self.pop_maybe_shared_ref(AbstractHeapType::Array)?;
         self.push_operand(ValType::I32)
     }
     fn visit_array_fill(&mut self, array_type_index: u32) -> Self::Output {
@@ -4740,24 +4791,32 @@ where
         Ok(())
     }
     fn visit_any_convert_extern(&mut self) -> Self::Output {
-        let extern_ref = self.pop_operand(Some(RefType::EXTERNREF.into()))?;
-        let is_nullable = extern_ref
-            .as_type()
-            .map_or(false, |ty| ty.as_reference_type().unwrap().is_nullable());
+        let extern_ref = self.pop_maybe_shared_ref(AbstractHeapType::Extern)?;
+        let (is_nullable, shared) = if let Some((extern_ref, shared)) = extern_ref {
+            (extern_ref.is_nullable(), shared)
+        } else {
+            // TODO: propagating unshared may be incorrect here
+            // (https://github.com/WebAssembly/shared-everything-threads/issues/80)
+            (false, false)
+        };
         let heap_type = HeapType::Abstract {
-            shared: false, // TODO: handle shared--see https://github.com/WebAssembly/shared-everything-threads/issues/65.
+            shared,
             ty: AbstractHeapType::Any,
         };
         let any_ref = RefType::new(is_nullable, heap_type).unwrap();
         self.push_operand(any_ref)
     }
     fn visit_extern_convert_any(&mut self) -> Self::Output {
-        let any_ref = self.pop_operand(Some(RefType::ANY.nullable().into()))?;
-        let is_nullable = any_ref
-            .as_type()
-            .map_or(false, |ty| ty.as_reference_type().unwrap().is_nullable());
+        let any_ref = self.pop_maybe_shared_ref(AbstractHeapType::Any)?;
+        let (is_nullable, shared) = if let Some((any_ref, shared)) = any_ref {
+            (any_ref.is_nullable(), shared)
+        } else {
+            // TODO: propagating unshared may be incorrect here
+            // (https://github.com/WebAssembly/shared-everything-threads/issues/80)
+            (false, false)
+        };
         let heap_type = HeapType::Abstract {
-            shared: false, // TODO: handle shared--see https://github.com/WebAssembly/shared-everything-threads/issues/65.
+            shared,
             ty: AbstractHeapType::Extern,
         };
         let extern_ref = RefType::new(is_nullable, heap_type).unwrap();
@@ -4868,14 +4927,16 @@ where
     }
     fn visit_ref_i31_shared(&mut self) -> Self::Output {
         self.pop_operand(Some(ValType::I32))?;
-        self.push_operand(ValType::Ref(RefType::I31)) // TODO: handle shared--is this correct?
+        self.push_operand(ValType::Ref(
+            RefType::I31.shared().expect("i31 is abstract"),
+        ))
     }
     fn visit_i31_get_s(&mut self) -> Self::Output {
-        self.pop_operand(Some(ValType::Ref(RefType::I31REF)))?;
+        self.pop_maybe_shared_ref(AbstractHeapType::I31)?;
         self.push_operand(ValType::I32)
     }
     fn visit_i31_get_u(&mut self) -> Self::Output {
-        self.pop_operand(Some(ValType::Ref(RefType::I31REF)))?;
+        self.pop_maybe_shared_ref(AbstractHeapType::I31)?;
         self.push_operand(ValType::I32)
     }
     fn visit_try(&mut self, mut ty: BlockType) -> Self::Output {
