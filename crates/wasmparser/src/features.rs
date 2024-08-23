@@ -126,7 +126,7 @@ define_wasm_features! {
         /// The WebAssembly multi memory proposal.
         pub multi_memory: MULTI_MEMORY(1 << 12) = true;
         /// The WebAssembly exception handling proposal.
-        pub exceptions: EXCEPTIONS(1 << 13) = false;
+        pub exceptions: EXCEPTIONS(1 << 13) = true;
         /// The WebAssembly memory64 proposal.
         pub memory64: MEMORY64(1 << 14) = false;
         /// The WebAssembly extended_const proposal.
@@ -134,11 +134,11 @@ define_wasm_features! {
         /// The WebAssembly component model proposal.
         pub component_model: COMPONENT_MODEL(1 << 16) = true;
         /// The WebAssembly typed function references proposal.
-        pub function_references: FUNCTION_REFERENCES(1 << 17) = false;
+        pub function_references: FUNCTION_REFERENCES(1 << 17) = true;
         /// The WebAssembly memory control proposal.
         pub memory_control: MEMORY_CONTROL(1 << 18) = false;
         /// The WebAssembly gc proposal.
-        pub gc: GC(1 << 19) = false;
+        pub gc: GC(1 << 19) = true;
         /// The WebAssembly [custom-page-sizes
         /// proposal](https://github.com/WebAssembly/custom-page-sizes).
         pub custom_page_sizes: CUSTOM_PAGE_SIZES(1 << 20) = false;
@@ -157,8 +157,25 @@ define_wasm_features! {
         /// Support this feature as long as all leading browsers also support it
         /// https://github.com/WebAssembly/exception-handling/blob/main/proposals/exception-handling/legacy/Exceptions.md
         pub legacy_exceptions: LEGACY_EXCEPTIONS(1 << 25) = false;
+        /// Whether or not gc types are enabled.
+        ///
+        /// This feature does not correspond to any WebAssembly proposal nor
+        /// concept in the specification itself. This is intended to assist
+        /// embedders in disabling support for GC types at validation time. For
+        /// example if an engine wants to support all of WebAssembly except
+        /// a runtime garbage collector it could disable this feature.
+        ///
+        /// This features is enabled by default and is used to gate types such
+        /// as `externref` or `anyref`. Note that the requisite WebAssembly
+        /// proposal must also be enabled for types like `externref`, meaning
+        /// that it requires both `REFERENCE_TYPES` and `GC_TYPE` to be enabled.
+        ///
+        /// Note that the `funcref` and `exnref` types are not gated by this
+        /// feature. Those are expected to not require a full garbage collector
+        /// so are not gated by this.
+        pub gc_types: GC_TYPES(1 << 26) = true;
         /// Support for WasmFX/typed continuations proposal.
-        pub typed_continuations: TYPED_CONTINUATIONS(1 << 26) = false;
+        pub typed_continuations: TYPED_CONTINUATIONS(1 << 27) = false;
     }
 }
 
@@ -166,7 +183,7 @@ impl WasmFeatures {
     /// Returns the feature set associated with the 1.0 version of the
     /// WebAssembly specification or the "MVP" feature set.
     pub fn wasm1() -> WasmFeatures {
-        WasmFeatures::FLOATS
+        WasmFeatures::FLOATS | WasmFeatures::GC_TYPES
     }
 
     /// Returns the feature set associated with the 2.0 version of the
