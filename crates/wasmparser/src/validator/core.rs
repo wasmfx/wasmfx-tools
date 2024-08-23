@@ -344,6 +344,20 @@ impl ModuleState {
                 }
             }
 
+            fn validate_shared_everything_threads(&mut self, op: &str) -> Result<()> {
+                if self.features.shared_everything_threads() {
+                    Ok(())
+                } else {
+                    Err(BinaryReaderError::new(
+                        format!(
+                            "constant expression required: non-constant operator: {}",
+                            op
+                        ),
+                        self.offset,
+                    ))
+                }
+            }
+
             fn validate_global(&mut self, index: u32) -> Result<()> {
                 let module = &self.resources.module;
                 let global = module.global_at(index, self.offset)?;
@@ -478,6 +492,10 @@ impl ModuleState {
             (@visit $self:ident visit_ref_i31) => {{
                 $self.validate_gc("ref.i31")?;
                 $self.validator().visit_ref_i31()
+            }};
+            (@visit $self:ident visit_ref_i31_shared) => {{
+                $self.validate_shared_everything_threads("ref.i31_shared")?;
+                $self.validator().visit_ref_i31_shared()
             }};
 
             // `global.get` is a valid const expression for imported, immutable
@@ -713,10 +731,16 @@ impl Module {
             }
             CompositeInnerType::Array(t) => {
                 if !features.gc() {
-                    return Err(BinaryReaderError::new(
-                        "array indexed types not supported without the gc feature",
+                    bail!(
                         offset,
-                    ));
+                        "array indexed types not supported without the gc feature",
+                    );
+                }
+                if !features.gc_types() {
+                    bail!(
+                        offset,
+                        "cannot define array types when gc types are disabled",
+                    );
                 }
                 match &t.0.element_type {
                     StorageType::I8 | StorageType::I16 => {
@@ -727,10 +751,16 @@ impl Module {
             }
             CompositeInnerType::Struct(t) => {
                 if !features.gc() {
-                    return Err(BinaryReaderError::new(
-                        "struct indexed types not supported without the gc feature",
+                    bail!(
                         offset,
-                    ));
+                        "struct indexed types not supported without the gc feature",
+                    );
+                }
+                if !features.gc_types() {
+                    bail!(
+                        offset,
+                        "cannot define struct types when gc types are disabled",
+                    );
                 }
                 for ft in t.fields.iter() {
                     match &ft.element_type {

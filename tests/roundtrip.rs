@@ -600,8 +600,9 @@ impl TestState {
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
                 "testsuite" => {
-                    features = WasmFeatures::default();
-                    features.remove(WasmFeatures::COMPONENT_MODEL);
+                    features = WasmFeatures::wasm2();
+                    features |= WasmFeatures::TAIL_CALL;
+                    features |= WasmFeatures::EXTENDED_CONST;
 
                     // NB: when these proposals are merged upstream in the spec
                     // repo then this should be removed. Currently this hasn't
@@ -611,9 +612,11 @@ impl TestState {
                     features.remove(WasmFeatures::THREADS);
                 }
                 "missing-features" => {
-                    features = WasmFeatures::empty() | WasmFeatures::FLOATS;
+                    features =
+                        WasmFeatures::empty() | WasmFeatures::FLOATS | WasmFeatures::GC_TYPES;
                 }
                 "floats-disabled.wast" => features.remove(WasmFeatures::FLOATS),
+                "gc-types-disabled.wast" => features.remove(WasmFeatures::GC_TYPES),
                 "threads" => {
                     features.insert(WasmFeatures::THREADS);
                     features.remove(WasmFeatures::BULK_MEMORY);
@@ -834,9 +837,14 @@ fn error_matches(error: &str, message: &str) -> bool {
     }
 
     if message == "non-continuation type 0" {
-        return error.contains("type mismatch between label type and tag type length (at offset 0x29)")
-            || error.contains("type mismatch: instruction requires (ref null $type) but stack has (ref null $type) (at offset 0x1b)")
-            || error.contains("type mismatch: instruction requires (ref null $type) but stack has (ref null $type) (at offset 0x20)");
+        return error
+            .contains("type mismatch between label type and tag type length (at offset 0x29)")
+            || error.contains(
+                "type mismatch: expected (ref null $type), found (ref null $type) (at offset 0x1b)",
+            )
+            || error.contains(
+                "type mismatch: expected (ref null $type), found (ref null $type) (at offset 0x20)",
+            );
     }
 
     return false;

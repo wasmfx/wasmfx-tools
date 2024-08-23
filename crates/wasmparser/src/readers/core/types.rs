@@ -1550,7 +1550,7 @@ pub enum AbstractHeapType {
 }
 
 impl AbstractHeapType {
-    const fn as_str(&self, nullable: bool) -> &str {
+    pub(crate) const fn as_str(&self, nullable: bool) -> &str {
         use AbstractHeapType::*;
         match (nullable, self) {
             (_, Any) => "any",
@@ -1572,6 +1572,30 @@ impl AbstractHeapType {
             (_, Cont) => "cont",
             (true, NoCont) => "nullcont",
             (false, NoCont) => "nocont",
+        }
+    }
+
+    #[cfg(feature = "validate")]
+    pub(crate) fn is_subtype_of(&self, other: AbstractHeapType) -> bool {
+        use AbstractHeapType::*;
+
+        match (self, other) {
+            (a, b) if *a == b => true,
+            (Eq | I31 | Struct | Array | None, Any) => true,
+            (I31 | Struct | Array | None, Eq) => true,
+            (NoExtern, Extern) => true,
+            (NoFunc, Func) => true,
+            (None, I31 | Array | Struct) => true,
+            (NoExn, Exn) => true,
+            (NoCont, Cont) => true,
+            // Nothing else matches. (Avoid full wildcard matches so
+            // that adding/modifying variants is easier in the
+            // future.)
+            (
+                Func | Extern | Exn | Any | Eq | Array | I31 | Struct | None | NoFunc | NoExtern
+                | NoExn | Cont | NoCont,
+                _,
+            ) => false,
         }
     }
 }

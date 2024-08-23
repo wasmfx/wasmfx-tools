@@ -23,10 +23,10 @@
 // the various methods here.
 
 use crate::{
-    limits::MAX_WASM_FUNCTION_LOCALS, AbstractHeapType, ArrayType, BinaryReaderError, BlockType,
-    BrTable, Catch, ContType, FieldType, FuncType, GlobalType, HeapType, Ieee32, Ieee64, MemArg,
-    RefType, Result, ResumeTable, StorageType, StructType, SubType, TableType, TryTable,
-    UnpackedIndex, ValType, VisitOperator, WasmFeatures, WasmModuleResources, V128,
+    limits::MAX_WASM_FUNCTION_LOCALS, AbstractHeapType, BinaryReaderError, BlockType, BrTable,
+    Catch, ContType, FieldType, FuncType, GlobalType, HeapType, Ieee32, Ieee64, MemArg, RefType,
+    Result, ResumeTable, StorageType, StructType, SubType, TableType, TryTable, UnpackedIndex,
+    ValType, VisitOperator, WasmFeatures, WasmModuleResources, V128,
 };
 use crate::{prelude::*, CompositeInnerType, Ordering};
 use core::ops::{Deref, DerefMut};
@@ -166,13 +166,23 @@ pub struct OperatorValidatorAllocations {
 
 /// Type storage within the validator.
 ///
-/// This is used to manage the operand stack and notably isn't just `ValType` to
-/// handle unreachable code and the "bottom" type.
+/// This is used to manage the operand stack and notably isn't just `ValType`
+/// to handle unreachable code and the "bottom" type.
 #[derive(Debug, Copy, Clone)]
-enum MaybeType {
+enum MaybeType<T = ValType> {
+    /// A "bottom" type which represents unconstrained unreachable code. There
+    /// are no constraints on what this type may be.
     Bot,
-    HeapBot,
-    Type(ValType),
+    /// A "bottom" type for specifically heap types.
+    ///
+    /// This type is known to be a reference type, optionally the specific
+    /// abstract heap type listed. This type can be interpeted as either
+    /// `shared` or not-`shared`. Additionally it can be either nullable or
+    /// not. Currently no further refinements are required for wasm
+    /// instructions today, but this may grow in the future.
+    HeapBot(Option<AbstractHeapType>),
+    /// A known type with the type `T`.
+    Type(T),
 }
 
 // The validator is pretty performance-sensitive and `MaybeType` is the main
@@ -186,7 +196,14 @@ impl core::fmt::Display for MaybeType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             MaybeType::Bot => write!(f, "bot"),
-            MaybeType::HeapBot => write!(f, "heap-bot"),
+            MaybeType::HeapBot(ty) => {
+                write!(f, "(ref shared? ")?;
+                match ty {
+                    Some(ty) => write!(f, "{}bot", ty.as_str(true))?,
+                    None => write!(f, "bot")?,
+                }
+                write!(f, ")")
+            }
             MaybeType::Type(ty) => core::fmt::Display::fmt(ty, f),
         }
     }
@@ -202,6 +219,33 @@ impl From<RefType> for MaybeType {
     fn from(ty: RefType) -> MaybeType {
         let ty: ValType = ty.into();
         ty.into()
+    }
+}
+impl From<MaybeType<RefType>> for MaybeType<ValType> {
+    fn from(ty: MaybeType<RefType>) -> MaybeType<ValType> {
+        match ty {
+            MaybeType::Bot => MaybeType::Bot,
+            MaybeType::HeapBot(ty) => MaybeType::HeapBot(ty),
+            MaybeType::Type(t) => MaybeType::Type(t.into()),
+        }
+    }
+}
+
+impl MaybeType<RefType> {
+    fn as_non_null(&self) -> MaybeType<RefType> {
+        match self {
+            MaybeType::Bot => MaybeType::Bot,
+            MaybeType::HeapBot(ty) => MaybeType::HeapBot(*ty),
+            MaybeType::Type(ty) => MaybeType::Type(ty.as_non_null()),
+        }
+    }
+
+    fn is_maybe_shared(&self, resources: &impl WasmModuleResources) -> Option<bool> {
+        match self {
+            MaybeType::Bot => None,
+            MaybeType::HeapBot(_) => None,
+            MaybeType::Type(ty) => Some(resources.is_shared(*ty)),
+        }
     }
 }
 
@@ -336,7 +380,7 @@ impl OperatorValidator {
     pub fn peek_operand_at(&self, depth: usize) -> Option<Option<ValType>> {
         Some(match self.operands.iter().rev().nth(depth)? {
             MaybeType::Type(t) => Some(*t),
-            MaybeType::Bot | MaybeType::HeapBot => None,
+            MaybeType::Bot | MaybeType::HeapBot(..) => None,
         })
     }
 
@@ -576,10 +620,33 @@ where
         if let Some(expected) = expected {
             match (actual, expected) {
                 // The bottom type matches all expectations
-                (MaybeType::Bot, _)
+                (MaybeType::Bot, _) => {}
+
                 // The "heap bottom" type only matches other references types,
-                // but not any integer types.
-                | (MaybeType::HeapBot, ValType::Ref(_)) => {}
+                // but not any integer types. Note that if the heap bottom is
+                // known to have a specific abstract heap type then a subtype
+                // check is performed against hte expected type.
+                (MaybeType::HeapBot(actual_ty), ValType::Ref(expected)) => {
+                    if let Some(actual) = actual_ty {
+                        let expected_shared = self.resources.is_shared(expected);
+                        let actual = RefType::new(
+                            false,
+                            HeapType::Abstract {
+                                shared: expected_shared,
+                                ty: actual,
+                            },
+                        )
+                        .unwrap();
+                        if !self.resources.is_subtype(actual.into(), expected.into()) {
+                            bail!(
+                                self.offset,
+                                "type mismatch: expected {}, found {}",
+                                ty_to_str(expected.into()),
+                                ty_to_str(actual.into())
+                            );
+                        }
+                    }
+                }
 
                 // Use the `is_subtype` predicate to test if a found type matches
                 // the expectation.
@@ -596,7 +663,7 @@ where
 
                 // A "heap bottom" type cannot match any numeric types.
                 (
-                    MaybeType::HeapBot,
+                    MaybeType::HeapBot(..),
                     ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128,
                 ) => {
                     bail!(
@@ -611,10 +678,11 @@ where
     }
 
     /// Pop a reference type from the operand stack.
-    fn pop_ref(&mut self) -> Result<Option<RefType>> {
-        match self.pop_operand(None)? {
-            MaybeType::Bot | MaybeType::HeapBot => Ok(None),
-            MaybeType::Type(ValType::Ref(rt)) => Ok(Some(rt)),
+    fn pop_ref(&mut self, expected: Option<RefType>) -> Result<MaybeType<RefType>> {
+        match self.pop_operand(expected.map(|t| t.into()))? {
+            MaybeType::Bot => Ok(MaybeType::HeapBot(None)),
+            MaybeType::HeapBot(ty) => Ok(MaybeType::HeapBot(ty)),
+            MaybeType::Type(ValType::Ref(rt)) => Ok(MaybeType::Type(rt)),
             MaybeType::Type(ty) => bail!(
                 self.offset,
                 "type mismatch: expected ref but found {}",
@@ -628,13 +696,22 @@ where
     ///
     /// This function returns the popped reference type and its `shared`-ness,
     /// saving extra lookups for concrete types.
-    fn pop_maybe_shared_ref(
-        &mut self,
-        expected: AbstractHeapType,
-    ) -> Result<Option<(RefType, bool)>> {
-        let actual = match self.pop_ref()? {
-            Some(rt) => rt,
-            None => return Ok(None),
+    fn pop_maybe_shared_ref(&mut self, expected: AbstractHeapType) -> Result<MaybeType<RefType>> {
+        let actual = match self.pop_ref(None)? {
+            MaybeType::Bot => return Ok(MaybeType::Bot),
+            MaybeType::HeapBot(None) => return Ok(MaybeType::HeapBot(None)),
+            MaybeType::HeapBot(Some(actual)) => {
+                if !actual.is_subtype_of(expected) {
+                    bail!(
+                        self.offset,
+                        "type mismatch: expected subtype of {}, found {}",
+                        expected.as_str(false),
+                        actual.as_str(false),
+                    )
+                }
+                return Ok(MaybeType::HeapBot(Some(actual)));
+            }
+            MaybeType::Type(ty) => ty,
         };
         // Change our expectation based on whether we're dealing with an actual
         // shared or unshared type.
@@ -657,7 +734,7 @@ where
                 "type mismatch: expected subtype of {expected}, found {actual}",
             )
         }
-        Ok(Some((actual, is_actual_shared)))
+        Ok(MaybeType::Type(actual))
     }
 
     /// Fetches the type for the local at `idx`, returning an error if it's out
@@ -887,18 +964,8 @@ where
         let unpacked_index = UnpackedIndex::Module(type_index);
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
-        // If `None` is popped then that means a "bottom" type was popped which
-        // is always considered equivalent to the `hty` tag.
-        if let Some(rt) = self.pop_ref()? {
-            let expected = RefType::new(true, hty).expect("hty should be previously validated");
-            let expected = ValType::Ref(expected);
-            if !self.resources.is_subtype(ValType::Ref(rt), expected) {
-                bail!(
-                    self.offset,
-                    "type mismatch: funcref on stack does not match specified type",
-                );
-            }
-        }
+        let expected = RefType::new(true, hty).expect("hty should be previously validated");
+        self.pop_ref(Some(expected))?;
         self.func_type_at(type_index)
     }
 
@@ -1197,51 +1264,31 @@ where
 
     /// Common helper for `ref.test` and `ref.cast` downcasting/checking
     /// instructions. Returns the given `heap_type` as a `ValType`.
-    fn check_downcast(
-        &mut self,
-        nullable: bool,
-        mut heap_type: HeapType,
-        inst_name: &str,
-    ) -> Result<ValType> {
+    fn check_downcast(&mut self, nullable: bool, mut heap_type: HeapType) -> Result<RefType> {
         self.resources
             .check_heap_type(&mut heap_type, self.offset)?;
 
-        let sub_ty = RefType::new(nullable, heap_type)
-            .map(ValType::from)
-            .ok_or_else(|| {
-                BinaryReaderError::new("implementation limit: type index too large", self.offset)
-            })?;
-
-        let sup_ty = self.pop_ref()?.unwrap_or_else(|| {
-            sub_ty
-                .as_reference_type()
-                .expect("we created this as a reference just above")
-        });
-        let sup_ty = RefType::new(true, self.resources.top_type(&sup_ty.heap_type()))
+        let sub_ty = RefType::new(nullable, heap_type).ok_or_else(|| {
+            BinaryReaderError::new("implementation limit: type index too large", self.offset)
+        })?;
+        let sup_ty = RefType::new(true, self.resources.top_type(&heap_type))
             .expect("can't panic with non-concrete heap types");
 
-        if !self.resources.is_subtype(sub_ty, sup_ty.into()) {
-            bail!(
-                self.offset,
-                "{inst_name}'s heap type must be a sub type of the type on the stack: \
-                 {sub_ty} is not a sub type of {sup_ty}"
-            );
-        }
-
+        self.pop_ref(Some(sup_ty))?;
         Ok(sub_ty)
     }
 
     /// Common helper for both nullable and non-nullable variants of `ref.test`
     /// instructions.
     fn check_ref_test(&mut self, nullable: bool, heap_type: HeapType) -> Result<()> {
-        self.check_downcast(nullable, heap_type, "ref.test")?;
+        self.check_downcast(nullable, heap_type)?;
         self.push_operand(ValType::I32)
     }
 
     /// Common helper for both nullable and non-nullable variants of `ref.cast`
     /// instructions.
     fn check_ref_cast(&mut self, nullable: bool, heap_type: HeapType) -> Result<()> {
-        let sub_ty = self.check_downcast(nullable, heap_type, "ref.cast")?;
+        let sub_ty = self.check_downcast(nullable, heap_type)?;
         self.push_operand(sub_ty)
     }
 
@@ -1266,10 +1313,8 @@ where
         struct_type_index: u32,
         field_index: u32,
     ) -> Result<()> {
-        let ty = self
-            .struct_field_at(struct_type_index, field_index)?
-            .element_type;
-        let field_ty = match ty {
+        let field = self.mutable_struct_field_at(struct_type_index, field_index)?;
+        let field_ty = match field.element_type {
             StorageType::Val(ValType::I32) => ValType::I32,
             StorageType::Val(ValType::I64) => ValType::I64,
             _ => bail!(
@@ -1287,8 +1332,8 @@ where
     /// Common helper for checking the types of arrays accessed with atomic RMW
     /// instructions, which only allow `i32` and `i64`.
     fn check_array_atomic_rmw(&mut self, op: &'static str, type_index: u32) -> Result<()> {
-        let ty = self.array_type_at(type_index)?.0.element_type;
-        let elem_ty = match ty {
+        let field = self.mutable_array_type_at(type_index)?;
+        let elem_ty = match field.element_type {
             StorageType::Val(ValType::I32) => ValType::I32,
             StorageType::Val(ValType::I64) => ValType::I64,
             _ => bail!(
@@ -1346,16 +1391,42 @@ where
             })
     }
 
-    fn array_type_at(&self, at: u32) -> Result<&'resources ArrayType> {
+    fn mutable_struct_field_at(
+        &self,
+        struct_type_index: u32,
+        field_index: u32,
+    ) -> Result<FieldType> {
+        let field = self.struct_field_at(struct_type_index, field_index)?;
+        if !field.mutable {
+            bail!(
+                self.offset,
+                "invalid struct modification: struct field is immutable"
+            )
+        }
+        Ok(field)
+    }
+
+    fn array_type_at(&self, at: u32) -> Result<FieldType> {
         let sub_ty = self.sub_type_at(at)?;
         if let CompositeInnerType::Array(array_ty) = &sub_ty.composite_type.inner {
-            Ok(array_ty)
+            Ok(array_ty.0)
         } else {
             bail!(
                 self.offset,
                 "expected array type at index {at}, found {sub_ty}"
             )
         }
+    }
+
+    fn mutable_array_type_at(&self, at: u32) -> Result<FieldType> {
+        let field = self.array_type_at(at)?;
+        if !field.mutable {
+            bail!(
+                self.offset,
+                "invalid array modification: array is immutable"
+            )
+        }
+        Ok(field)
     }
 
     fn func_type_at(&self, at: u32) -> Result<&'resources FuncType> {
@@ -1854,8 +1925,8 @@ where
         let ty = match (ty1, ty2) {
             // All heap-related types aren't allowed with the `select`
             // instruction
-            (MaybeType::HeapBot, _)
-            | (_, MaybeType::HeapBot)
+            (MaybeType::HeapBot(..), _)
+            | (_, MaybeType::HeapBot(..))
             | (MaybeType::Type(ValType::Ref(_)), _)
             | (_, MaybeType::Type(ValType::Ref(_))) => {
                 bail!(
@@ -2825,18 +2896,12 @@ where
     }
 
     fn visit_ref_as_non_null(&mut self) -> Self::Output {
-        let ty = match self.pop_ref()? {
-            Some(ty) => MaybeType::Type(ValType::Ref(ty.as_non_null())),
-            None => MaybeType::HeapBot,
-        };
+        let ty = self.pop_ref(None)?.as_non_null();
         self.push_operand(ty)?;
         Ok(())
     }
     fn visit_br_on_null(&mut self, relative_depth: u32) -> Self::Output {
-        let ref_ty = match self.pop_ref()? {
-            None => MaybeType::HeapBot,
-            Some(ty) => MaybeType::Type(ValType::Ref(ty.as_non_null())),
-        };
+        let ref_ty = self.pop_ref(None)?.as_non_null();
         let (ft, kind) = self.jump(relative_depth)?;
         let label_types = self.label_types(ft, kind)?;
         self.pop_push_label_types(label_types)?;
@@ -2844,41 +2909,27 @@ where
         Ok(())
     }
     fn visit_br_on_non_null(&mut self, relative_depth: u32) -> Self::Output {
-        let ty = self.pop_ref()?;
         let (ft, kind) = self.jump(relative_depth)?;
 
         let mut label_types = self.label_types(ft, kind)?;
-        match (label_types.next_back(), ty) {
-            (None, _) => bail!(
+        let expected = match label_types.next_back() {
+            None => bail!(
                 self.offset,
                 "type mismatch: br_on_non_null target has no label types",
             ),
-            (Some(ValType::Ref(_)), None) => {}
-            (Some(rt1 @ ValType::Ref(_)), Some(rt0)) => {
-                // Switch rt0, our popped type, to a non-nullable type and
-                // perform the match because if the branch is taken it's a
-                // non-null value.
-                let ty = rt0.as_non_null();
-                if !self.resources.is_subtype(ty.into(), rt1) {
-                    bail!(
-                        self.offset,
-                        "type mismatch: expected {} but found {}",
-                        ty_to_str(rt0.into()),
-                        ty_to_str(rt1)
-                    )
-                }
-            }
-            (Some(_), _) => bail!(
+            Some(ValType::Ref(ty)) => ty,
+            Some(_) => bail!(
                 self.offset,
                 "type mismatch: br_on_non_null target does not end with heap type",
             ),
-        }
+        };
+        self.pop_ref(Some(expected.nullable()))?;
 
         self.pop_push_label_types(label_types)?;
         Ok(())
     }
     fn visit_ref_is_null(&mut self) -> Self::Output {
-        self.pop_ref()?;
+        self.pop_ref(None)?;
         self.push_operand(ValType::I32)?;
         Ok(())
     }
@@ -2907,18 +2958,20 @@ where
     fn visit_ref_eq(&mut self) -> Self::Output {
         let a = self.pop_maybe_shared_ref(AbstractHeapType::Eq)?;
         let b = self.pop_maybe_shared_ref(AbstractHeapType::Eq)?;
-        match (a, b) {
-            (Some((_, is_a_shared)), Some((_, is_b_shared))) => {
+        let a_is_shared = a.is_maybe_shared(&self.resources);
+        let b_is_shared = b.is_maybe_shared(&self.resources);
+        match (a_is_shared, b_is_shared) {
+            // One or both of the types are from unreachable code; assume
+            // the shared-ness matches.
+            (None, Some(_)) | (Some(_), None) | (None, None) => {}
+
+            (Some(is_a_shared), Some(is_b_shared)) => {
                 if is_a_shared != is_b_shared {
                     bail!(
                         self.offset,
                         "type mismatch: expected `ref.eq` types to match `shared`-ness"
                     );
                 }
-            }
-            _ => {
-                // One or both of the types are from unreachable code; assume
-                // the shared-ness matches.
             }
         }
         self.push_operand(ValType::I32)
@@ -4025,9 +4078,10 @@ where
         }
 
         // Check that the continuation is available on the stack.
-        match self.pop_ref()? {
-            None => {} // bot case
-            Some(rt) => {
+        match self.pop_ref(None)? {
+            MaybeType::Bot => {} // bot case
+            MaybeType::HeapBot(_) => {}
+            MaybeType::Type(rt) => {
                 let expected = ValType::Ref(
                     RefType::new(false, src_hty).expect("hty should be previously validated"),
                 );
@@ -4073,13 +4127,10 @@ where
         let _ = self.cont_type_of_heap_type(hty);
 
         let expected = RefType::new(true, hty).expect("hty should be previously validated");
-        match self.pop_ref()? {
-            None => {}
-            Some(rt)
-                if self
-                    .resources
-                    .is_subtype(ValType::Ref(rt), ValType::Ref(expected)) =>
-            {
+        match self.pop_ref(Some(expected))? {
+            MaybeType::Bot => {}
+            MaybeType::HeapBot(_) => {}
+            MaybeType::Type(_) => {
                 let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
                 // ft := ts1 -> ts2
                 self.check_resume_table(resumetable, ctft)?;
@@ -4094,14 +4145,6 @@ where
                     self.push_operand(ty)?;
                 }
             }
-            Some(rt) => {
-                bail!(
-                    self.offset,
-                    "type mismatch: instruction requires {} but stack has {}",
-                    ty_to_str(ValType::Ref(expected)),
-                    ty_to_str(ValType::Ref(rt))
-                )
-            }
         }
         Ok(())
     }
@@ -4115,11 +4158,11 @@ where
         let mut hty = HeapType::Concrete(unpacked_index);
         self.resources.check_heap_type(&mut hty, self.offset)?;
         let _ = self.cont_type_of_heap_type(hty);
-        let expected =
-            ValType::Ref(RefType::new(true, hty).expect("hty should be previously validated"));
-        match self.pop_ref()? {
-            None => {}
-            Some(rt) if self.resources.is_subtype(ValType::Ref(rt), expected) => {
+        let expected = RefType::new(true, hty).expect("hty should be previously validated");
+        match self.pop_ref(Some(expected))? {
+            MaybeType::Bot => {}
+            MaybeType::HeapBot(_) => {}
+            MaybeType::Type(_) => {
                 // ft := ts1 -> ts2
                 let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
                 self.check_resume_table(resumetable, &ctft)?;
@@ -4136,14 +4179,6 @@ where
                 for &ty in ctft.results() {
                     self.push_operand(ty)?;
                 }
-            }
-            Some(rt) => {
-                bail!(
-                    self.offset,
-                    "type mismatch: instruction requires {} but stack has {}",
-                    ty_to_str(expected),
-                    ty_to_str(ValType::Ref(rt))
-                )
             }
         }
 
@@ -4218,7 +4253,7 @@ where
         if field_ty.element_type.is_packed() {
             bail!(
                 self.offset,
-                "can only use struct.get with non-packed storage types"
+                "can only use struct `get` with non-packed storage types"
             )
         }
         self.pop_concrete_ref(true, struct_type_index)?;
@@ -4303,10 +4338,7 @@ where
         Ok(())
     }
     fn visit_struct_set(&mut self, struct_type_index: u32, field_index: u32) -> Self::Output {
-        let field_ty = self.struct_field_at(struct_type_index, field_index)?;
-        if !field_ty.mutable {
-            bail!(self.offset, "invalid struct.set: struct field is immutable")
-        }
+        let field_ty = self.mutable_struct_field_at(struct_type_index, field_index)?;
         self.pop_operand(Some(field_ty.element_type.unpack()))?;
         self.pop_concrete_ref(true, struct_type_index)?;
         Ok(())
@@ -4383,10 +4415,8 @@ where
         struct_type_index: u32,
         field_index: u32,
     ) -> Self::Output {
-        let field_ty = self
-            .struct_field_at(struct_type_index, field_index)?
-            .element_type;
-        let is_valid_type = match field_ty {
+        let field = self.mutable_struct_field_at(struct_type_index, field_index)?;
+        let is_valid_type = match field.element_type {
             StorageType::Val(ValType::I32) | StorageType::Val(ValType::I64) => true,
             StorageType::Val(v) => self
                 .resources
@@ -4399,7 +4429,7 @@ where
                 "invalid type: `struct.atomic.rmw.xchg` only allows `i32`, `i64` and subtypes of `anyref`"
             );
         }
-        let field_ty = field_ty.unpack();
+        let field_ty = field.element_type.unpack();
         self.pop_operand(Some(field_ty))?;
         self.pop_concrete_ref(true, struct_type_index)?;
         self.push_operand(field_ty)?;
@@ -4411,10 +4441,8 @@ where
         struct_type_index: u32,
         field_index: u32,
     ) -> Self::Output {
-        let field_ty = self
-            .struct_field_at(struct_type_index, field_index)?
-            .element_type;
-        let is_valid_type = match field_ty {
+        let field = self.mutable_struct_field_at(struct_type_index, field_index)?;
+        let is_valid_type = match field.element_type {
             StorageType::Val(ValType::I32) | StorageType::Val(ValType::I64) => true,
             StorageType::Val(v) => self
                 .resources
@@ -4427,7 +4455,7 @@ where
                 "invalid type: `struct.atomic.rmw.cmpxchg` only allows `i32`, `i64` and subtypes of `eqref`"
             );
         }
-        let field_ty = field_ty.unpack();
+        let field_ty = field.element_type.unpack();
         self.pop_operand(Some(field_ty))?;
         self.pop_operand(Some(field_ty))?;
         self.pop_concrete_ref(true, struct_type_index)?;
@@ -4437,12 +4465,12 @@ where
     fn visit_array_new(&mut self, type_index: u32) -> Self::Output {
         let array_ty = self.array_type_at(type_index)?;
         self.pop_operand(Some(ValType::I32))?;
-        self.pop_operand(Some(array_ty.0.element_type.unpack()))?;
+        self.pop_operand(Some(array_ty.element_type.unpack()))?;
         self.push_concrete_ref(false, type_index)
     }
     fn visit_array_new_default(&mut self, type_index: u32) -> Self::Output {
         let ty = self.array_type_at(type_index)?;
-        let val_ty = ty.0.element_type.unpack();
+        let val_ty = ty.element_type.unpack();
         if !val_ty.is_defaultable() {
             bail!(
                 self.offset,
@@ -4454,7 +4482,7 @@ where
     }
     fn visit_array_new_fixed(&mut self, type_index: u32, n: u32) -> Self::Output {
         let array_ty = self.array_type_at(type_index)?;
-        let elem_ty = array_ty.0.element_type.unpack();
+        let elem_ty = array_ty.element_type.unpack();
         for _ in 0..n {
             self.pop_operand(Some(elem_ty))?;
         }
@@ -4462,7 +4490,7 @@ where
     }
     fn visit_array_new_data(&mut self, type_index: u32, data_index: u32) -> Self::Output {
         let array_ty = self.array_type_at(type_index)?;
-        let elem_ty = array_ty.0.element_type.unpack();
+        let elem_ty = array_ty.element_type.unpack();
         match elem_ty {
             ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => {}
             ValType::Ref(_) => bail!(
@@ -4481,7 +4509,7 @@ where
     }
     fn visit_array_new_elem(&mut self, type_index: u32, elem_index: u32) -> Self::Output {
         let array_ty = self.array_type_at(type_index)?;
-        let array_ref_ty = match array_ty.0.element_type.unpack() {
+        let array_ref_ty = match array_ty.element_type.unpack() {
             ValType::Ref(rt) => rt,
             ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => bail!(
                 self.offset,
@@ -4505,7 +4533,7 @@ where
     }
     fn visit_array_get(&mut self, type_index: u32) -> Self::Output {
         let array_ty = self.array_type_at(type_index)?;
-        let elem_ty = array_ty.0.element_type;
+        let elem_ty = array_ty.element_type;
         if elem_ty.is_packed() {
             bail!(
                 self.offset,
@@ -4519,7 +4547,7 @@ where
     fn visit_array_atomic_get(&mut self, _ordering: Ordering, type_index: u32) -> Self::Output {
         self.visit_array_get(type_index)?;
         // The `atomic` version has some additional type restrictions.
-        let elem_ty = self.array_type_at(type_index)?.0.element_type;
+        let elem_ty = self.array_type_at(type_index)?.element_type;
         let is_valid_type = match elem_ty {
             StorageType::Val(ValType::I32) | StorageType::Val(ValType::I64) => true,
             StorageType::Val(v) => self
@@ -4537,7 +4565,7 @@ where
     }
     fn visit_array_get_s(&mut self, type_index: u32) -> Self::Output {
         let array_ty = self.array_type_at(type_index)?;
-        let elem_ty = array_ty.0.element_type;
+        let elem_ty = array_ty.element_type;
         if !elem_ty.is_packed() {
             bail!(
                 self.offset,
@@ -4552,14 +4580,14 @@ where
         self.visit_array_get_s(type_index)?;
         // This instruction has the same type restrictions as the non-`atomic` version.
         debug_assert!(matches!(
-            self.array_type_at(type_index)?.0.element_type,
+            self.array_type_at(type_index)?.element_type,
             StorageType::I8 | StorageType::I16
         ));
         Ok(())
     }
     fn visit_array_get_u(&mut self, type_index: u32) -> Self::Output {
         let array_ty = self.array_type_at(type_index)?;
-        let elem_ty = array_ty.0.element_type;
+        let elem_ty = array_ty.element_type;
         if !elem_ty.is_packed() {
             bail!(
                 self.offset,
@@ -4574,17 +4602,14 @@ where
         self.visit_array_get_u(type_index)?;
         // This instruction has the same type restrictions as the non-`atomic` version.
         debug_assert!(matches!(
-            self.array_type_at(type_index)?.0.element_type,
+            self.array_type_at(type_index)?.element_type,
             StorageType::I8 | StorageType::I16
         ));
         Ok(())
     }
     fn visit_array_set(&mut self, type_index: u32) -> Self::Output {
-        let array_ty = self.array_type_at(type_index)?;
-        if !array_ty.0.mutable {
-            bail!(self.offset, "invalid array.set: array is immutable")
-        }
-        self.pop_operand(Some(array_ty.0.element_type.unpack()))?;
+        let array_ty = self.mutable_array_type_at(type_index)?;
+        self.pop_operand(Some(array_ty.element_type.unpack()))?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_concrete_ref(true, type_index)?;
         Ok(())
@@ -4592,7 +4617,7 @@ where
     fn visit_array_atomic_set(&mut self, _ordering: Ordering, type_index: u32) -> Self::Output {
         self.visit_array_set(type_index)?;
         // The `atomic` version has some additional type restrictions.
-        let elem_ty = self.array_type_at(type_index)?.0.element_type;
+        let elem_ty = self.array_type_at(type_index)?.element_type;
         let is_valid_type = match elem_ty {
             StorageType::I8 | StorageType::I16 => true,
             StorageType::Val(ValType::I32) | StorageType::Val(ValType::I64) => true,
@@ -4613,26 +4638,17 @@ where
         self.push_operand(ValType::I32)
     }
     fn visit_array_fill(&mut self, array_type_index: u32) -> Self::Output {
-        let array_ty = self.array_type_at(array_type_index)?;
-        if !array_ty.0.mutable {
-            bail!(self.offset, "invalid array.fill: array is immutable");
-        }
+        let array_ty = self.mutable_array_type_at(array_type_index)?;
         self.pop_operand(Some(ValType::I32))?;
-        self.pop_operand(Some(array_ty.0.element_type.unpack()))?;
+        self.pop_operand(Some(array_ty.element_type.unpack()))?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_concrete_ref(true, array_type_index)?;
         Ok(())
     }
     fn visit_array_copy(&mut self, type_index_dst: u32, type_index_src: u32) -> Self::Output {
-        let array_ty_dst = self.array_type_at(type_index_dst)?;
-        if !array_ty_dst.0.mutable {
-            bail!(
-                self.offset,
-                "invalid array.copy: destination array is immutable"
-            );
-        }
+        let array_ty_dst = self.mutable_array_type_at(type_index_dst)?;
         let array_ty_src = self.array_type_at(type_index_src)?;
-        match (array_ty_dst.0.element_type, array_ty_src.0.element_type) {
+        match (array_ty_dst.element_type, array_ty_src.element_type) {
             (StorageType::I8, StorageType::I8) => {}
             (StorageType::I8, ty) => bail!(
                 self.offset,
@@ -4670,11 +4686,8 @@ where
         array_type_index: u32,
         array_data_index: u32,
     ) -> Self::Output {
-        let array_ty = self.array_type_at(array_type_index)?;
-        if !array_ty.0.mutable {
-            bail!(self.offset, "invalid array.init_data: array is immutable");
-        }
-        let val_ty = array_ty.0.element_type.unpack();
+        let array_ty = self.mutable_array_type_at(array_type_index)?;
+        let val_ty = array_ty.element_type.unpack();
         match val_ty {
             ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => {}
             ValType::Ref(_) => bail!(
@@ -4694,11 +4707,8 @@ where
         Ok(())
     }
     fn visit_array_init_elem(&mut self, type_index: u32, elem_index: u32) -> Self::Output {
-        let array_ty = self.array_type_at(type_index)?;
-        if !array_ty.0.mutable {
-            bail!(self.offset, "invalid array.init_data: array is immutable");
-        }
-        let array_ref_ty = match array_ty.0.element_type.unpack() {
+        let array_ty = self.mutable_array_type_at(type_index)?;
+        let array_ref_ty = match array_ty.element_type.unpack() {
             ValType::Ref(rt) => rt,
             ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => bail!(
                 self.offset,
@@ -4742,8 +4752,8 @@ where
         _ordering: Ordering,
         type_index: u32,
     ) -> Self::Output {
-        let elem_ty = self.array_type_at(type_index)?.0.element_type;
-        let is_valid_type = match elem_ty {
+        let field = self.mutable_array_type_at(type_index)?;
+        let is_valid_type = match field.element_type {
             StorageType::Val(ValType::I32) | StorageType::Val(ValType::I64) => true,
             StorageType::Val(v) => self
                 .resources
@@ -4756,7 +4766,7 @@ where
                 "invalid type: `array.atomic.rmw.xchg` only allows `i32`, `i64` and subtypes of `anyref`"
             );
         }
-        let elem_ty = elem_ty.unpack();
+        let elem_ty = field.element_type.unpack();
         self.pop_operand(Some(elem_ty))?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_concrete_ref(true, type_index)?;
@@ -4768,8 +4778,8 @@ where
         _ordering: Ordering,
         type_index: u32,
     ) -> Self::Output {
-        let elem_ty = self.array_type_at(type_index)?.0.element_type;
-        let is_valid_type = match elem_ty {
+        let field = self.mutable_array_type_at(type_index)?;
+        let is_valid_type = match field.element_type {
             StorageType::Val(ValType::I32) | StorageType::Val(ValType::I64) => true,
             StorageType::Val(v) => self
                 .resources
@@ -4782,7 +4792,7 @@ where
                 "invalid type: `array.atomic.rmw.cmpxchg` only allows `i32`, `i64` and subtypes of `eqref`"
             );
         }
-        let elem_ty = elem_ty.unpack();
+        let elem_ty = field.element_type.unpack();
         self.pop_operand(Some(elem_ty))?;
         self.pop_operand(Some(elem_ty))?;
         self.pop_operand(Some(ValType::I32))?;
@@ -4791,35 +4801,37 @@ where
         Ok(())
     }
     fn visit_any_convert_extern(&mut self) -> Self::Output {
-        let extern_ref = self.pop_maybe_shared_ref(AbstractHeapType::Extern)?;
-        let (is_nullable, shared) = if let Some((extern_ref, shared)) = extern_ref {
-            (extern_ref.is_nullable(), shared)
-        } else {
-            // TODO: propagating unshared may be incorrect here
-            // (https://github.com/WebAssembly/shared-everything-threads/issues/80)
-            (false, false)
+        let any_ref = match self.pop_maybe_shared_ref(AbstractHeapType::Extern)? {
+            MaybeType::Bot | MaybeType::HeapBot(_) => {
+                MaybeType::HeapBot(Some(AbstractHeapType::Any))
+            }
+            MaybeType::Type(ty) => {
+                let shared = self.resources.is_shared(ty);
+                let heap_type = HeapType::Abstract {
+                    shared,
+                    ty: AbstractHeapType::Any,
+                };
+                let any_ref = RefType::new(ty.is_nullable(), heap_type).unwrap();
+                MaybeType::Type(any_ref)
+            }
         };
-        let heap_type = HeapType::Abstract {
-            shared,
-            ty: AbstractHeapType::Any,
-        };
-        let any_ref = RefType::new(is_nullable, heap_type).unwrap();
         self.push_operand(any_ref)
     }
     fn visit_extern_convert_any(&mut self) -> Self::Output {
-        let any_ref = self.pop_maybe_shared_ref(AbstractHeapType::Any)?;
-        let (is_nullable, shared) = if let Some((any_ref, shared)) = any_ref {
-            (any_ref.is_nullable(), shared)
-        } else {
-            // TODO: propagating unshared may be incorrect here
-            // (https://github.com/WebAssembly/shared-everything-threads/issues/80)
-            (false, false)
+        let extern_ref = match self.pop_maybe_shared_ref(AbstractHeapType::Any)? {
+            MaybeType::Bot | MaybeType::HeapBot(_) => {
+                MaybeType::HeapBot(Some(AbstractHeapType::Extern))
+            }
+            MaybeType::Type(ty) => {
+                let shared = self.resources.is_shared(ty);
+                let heap_type = HeapType::Abstract {
+                    shared,
+                    ty: AbstractHeapType::Extern,
+                };
+                let extern_ref = RefType::new(ty.is_nullable(), heap_type).unwrap();
+                MaybeType::Type(extern_ref)
+            }
         };
-        let heap_type = HeapType::Abstract {
-            shared,
-            ty: AbstractHeapType::Extern,
-        };
-        let extern_ref = RefType::new(is_nullable, heap_type).unwrap();
         self.push_operand(extern_ref)
     }
     fn visit_ref_test_non_null(&mut self, heap_type: HeapType) -> Self::Output {
