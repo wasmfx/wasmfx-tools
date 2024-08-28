@@ -88,6 +88,10 @@ jobs:
             # skip testing crates that require wasmtime since wasmtime has a
             # more aggressive msrv than wasm-tools
             flags: --exclude fuzz-stats --exclude wit-component --exclude wasm-mutate-stats
+          # this is the rust nightly that oss-fuzz currently uses so we don't
+          # want this to break.
+          - os: ubuntu-latest
+            rust: nightly-2024-02-12
     steps:
     - uses: actions/checkout@v4
       with:
@@ -229,6 +233,8 @@ jobs:
       - run: cargo check --no-default-features -p wasmparser --target x86_64-unknown-none --features validate,serde,no-hash-maps
       - run: cargo check --no-default-features -p wasmparser --features std
       - run: cargo check --no-default-features -p wasmparser --features validate
+      - run: cargo check --no-default-features -p wasmparser --features features
+      - run: cargo check --no-default-features -p wasmparser --features features,validate
       - run: cargo check --no-default-features -p wasmparser --features no-hash-maps
       - run: cargo check --no-default-features -p wasmparser --features serde
       - run: cargo check --no-default-features -p wasmparser --features serde,no-hash-maps
