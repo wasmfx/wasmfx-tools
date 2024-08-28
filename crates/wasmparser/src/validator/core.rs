@@ -1156,7 +1156,7 @@ impl Module {
             ));
         }
         let ty = self.func_type_at(ty.func_type_idx, types, offset)?;
-        if !ty.results().is_empty() && !features.contains(WasmFeatures::TYPED_CONTINUATIONS) {
+        if !ty.results().is_empty() && !features.typed_continuations() {
             return Err(BinaryReaderError::new(
                 "invalid exception type: non-empty tag result type",
                 offset,
