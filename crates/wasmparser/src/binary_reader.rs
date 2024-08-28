@@ -389,7 +389,7 @@ impl<'a> BinaryReader<'a> {
         }
         let end = self.position;
         Ok(ResumeTable {
-            reader: BinaryReader::new(&self.buffer[start..end], start, self.features),
+            reader: BinaryReader::new(&self.buffer[start..end], start),
             cnt: cnt as u32,
         })
     }
