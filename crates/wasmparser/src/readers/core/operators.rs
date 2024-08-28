@@ -290,10 +290,10 @@ impl<'a> IntoIterator for OperatorsReader<'a> {
     ///
     /// # Examples
     /// ```
-    /// # use wasmparser::{Operator, CodeSectionReader, Result, BinaryReader, WasmFeatures};
+    /// # use wasmparser::{Operator, CodeSectionReader, Result, BinaryReader};
     /// # let data: &[u8] = &[
     /// #     0x01, 0x03, 0x00, 0x01, 0x0b];
-    /// let reader = BinaryReader::new(data, 0, WasmFeatures::all());
+    /// let reader = BinaryReader::new(data, 0);
     /// let code_reader = CodeSectionReader::new(reader).unwrap();
     /// for body in code_reader {
     ///     let body = body.expect("function body");
@@ -346,10 +346,10 @@ impl<'a> Iterator for OperatorsIteratorWithOffsets<'a> {
     ///
     /// # Examples
     /// ```
-    /// use wasmparser::{Operator, CodeSectionReader, Result, BinaryReader, WasmFeatures};
+    /// use wasmparser::{Operator, CodeSectionReader, Result, BinaryReader};
     /// # let data: &[u8] = &[
     /// #     0x01, 0x03, 0x00, /* offset = 23 */ 0x01, 0x0b];
-    /// let reader = BinaryReader::new(data, 20, WasmFeatures::all());
+    /// let reader = BinaryReader::new(data, 20);
     /// let code_reader = CodeSectionReader::new(reader).unwrap();
     /// for body in code_reader {
     ///     let body = body.expect("function body");
