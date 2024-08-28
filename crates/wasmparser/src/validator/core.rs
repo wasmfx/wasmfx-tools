@@ -1156,7 +1156,7 @@ impl Module {
             ));
         }
         let ty = self.func_type_at(ty.func_type_idx, types, offset)?;
-        if !ty.results().is_empty() && !features.contains(WasmFeatures::TYPED_CONTINUATIONS) {
+        if !ty.results().is_empty() && !features.typed_continuations() {
             return Err(BinaryReaderError::new(
                 "invalid exception type: non-empty tag result type",
                 offset,
@@ -1363,9 +1363,8 @@ impl WasmModuleResources for OperatorValidatorResources<'_> {
         self.module.types.get(*type_index as usize).copied()
     }
 
-    fn type_of_function(&self, at: u32) -> Option<&FuncType> {
-        let type_index = self.module.functions.get(at as usize)?;
-        Some(self.sub_type_at(*type_index)?.composite_type.unwrap_func())
+    fn type_index_of_function(&self, at: u32) -> Option<u32> {
+        self.module.functions.get(at as usize).copied()
     }
 
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<()> {
@@ -1467,9 +1466,8 @@ impl WasmModuleResources for ValidatorResources {
         self.0.types.get(type_index as usize).copied()
     }
 
-    fn type_of_function(&self, at: u32) -> Option<&FuncType> {
-        let type_index = *self.0.functions.get(at as usize)?;
-        Some(self.sub_type_at(type_index)?.composite_type.unwrap_func())
+    fn type_index_of_function(&self, at: u32) -> Option<u32> {
+        self.0.functions.get(at as usize).copied()
     }
 
     fn check_heap_type(&self, t: &mut HeapType, offset: usize) -> Result<()> {
