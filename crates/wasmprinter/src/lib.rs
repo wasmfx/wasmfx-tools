@@ -2773,7 +2773,11 @@ impl Printer<'_, '_> {
             write!(self.result, " ({place})")?;
         }
         self.result.write_str(" ")?;
-        self.print_bytes(section.data())?;
+        if self.config.print_skeleton {
+            self.result.write_str("...")?;
+        } else {
+            self.print_bytes(section.data())?;
+        }
         self.end_group()?;
         Ok(())
     }

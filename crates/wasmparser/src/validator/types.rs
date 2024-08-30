@@ -299,7 +299,6 @@ impl TypeData for SubType {
             CompositeInnerType::Struct(ty) => 1 + 2 * ty.fields.len() as u32,
             CompositeInnerType::Cont(_) => 1, // TODO(dhil): Changes to the `ContType` structure needs to be reflected here.
         };
-        // TODO: handle shared?
         TypeInfo::core(size)
     }
 }
