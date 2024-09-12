@@ -257,7 +257,7 @@ pub(crate) trait InternRecGroup {
                     CompositeInnerType::Func(_) => (),
                     _ => {
                         return Err(BinaryReaderError::new(
-                            format!("non-function type {}", id.index()),
+                            crate::validator::format!("non-function type {}", id.index()),
                             offset,
                         ))
                     }
