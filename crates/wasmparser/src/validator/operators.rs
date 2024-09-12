@@ -169,23 +169,31 @@ pub struct OperatorValidatorAllocations {
 
 /// Type storage within the validator.
 ///
-/// This is used to manage the operand stack and notably isn't just `ValType`
-/// to handle unreachable code and the "bottom" type.
+/// When managing the operand stack in unreachable code, the validator may not
+/// fully know an operand's type. this unknown state is known as the `bottom`
+/// type in the WebAssembly specification. Validating further instructions may
+/// give us more information; either partial (`PartialRef`) or fully known.
 #[derive(Debug, Copy, Clone)]
 enum MaybeType<T = ValType> {
-    /// A "bottom" type which represents unconstrained unreachable code. There
-    /// are no constraints on what this type may be.
-    Bot,
-    /// A "bottom" type for specifically heap types.
+    /// The operand has no available type information due to unreachable code.
     ///
-    /// This type is known to be a reference type, optionally the specific
-    /// abstract heap type listed. This type can be interpeted as either
-    /// `shared` or not-`shared`. Additionally it can be either nullable or
-    /// not. Currently no further refinements are required for wasm
-    /// instructions today, but this may grow in the future.
-    HeapBot(Option<AbstractHeapType>),
-    /// A known type with the type `T`.
-    Type(T),
+    /// This state represents "unknown" and corresponds to the `bottom` type in
+    /// the WebAssembly specification. There are no constraints on what this
+    /// type may be and it can match any other type during validation.
+    Bottom,
+    /// The operand is known to be a reference and we may know its abstract
+    /// type.
+    ///
+    /// This state is not fully `Known`, however, because its type can be
+    /// interpreted as either:
+    /// - `shared` or not-`shared`
+    /// -  nullable or not nullable
+    ///
+    /// No further refinements are required for WebAssembly instructions today
+    /// but this may grow in the future.
+    UnknownRef(Option<AbstractHeapType>),
+    /// The operand is known to have type `T`.
+    Known(T),
 }
 
 // The validator is pretty performance-sensitive and `MaybeType` is the main
@@ -198,8 +206,8 @@ const _: () = {
 impl core::fmt::Display for MaybeType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            MaybeType::Bot => write!(f, "bot"),
-            MaybeType::HeapBot(ty) => {
+            MaybeType::Bottom => write!(f, "bot"),
+            MaybeType::UnknownRef(ty) => {
                 write!(f, "(ref shared? ")?;
                 match ty {
                     Some(ty) => write!(f, "{}bot", ty.as_str(true))?,
@@ -207,14 +215,14 @@ impl core::fmt::Display for MaybeType {
                 }
                 write!(f, ")")
             }
-            MaybeType::Type(ty) => core::fmt::Display::fmt(ty, f),
+            MaybeType::Known(ty) => core::fmt::Display::fmt(ty, f),
         }
     }
 }
 
 impl From<ValType> for MaybeType {
     fn from(ty: ValType) -> MaybeType {
-        MaybeType::Type(ty)
+        MaybeType::Known(ty)
     }
 }
 
@@ -227,9 +235,9 @@ impl From<RefType> for MaybeType {
 impl From<MaybeType<RefType>> for MaybeType<ValType> {
     fn from(ty: MaybeType<RefType>) -> MaybeType<ValType> {
         match ty {
-            MaybeType::Bot => MaybeType::Bot,
-            MaybeType::HeapBot(ty) => MaybeType::HeapBot(ty),
-            MaybeType::Type(t) => MaybeType::Type(t.into()),
+            MaybeType::Bottom => MaybeType::Bottom,
+            MaybeType::UnknownRef(ty) => MaybeType::UnknownRef(ty),
+            MaybeType::Known(t) => MaybeType::Known(t.into()),
         }
     }
 }
@@ -237,17 +245,17 @@ impl From<MaybeType<RefType>> for MaybeType<ValType> {
 impl MaybeType<RefType> {
     fn as_non_null(&self) -> MaybeType<RefType> {
         match self {
-            MaybeType::Bot => MaybeType::Bot,
-            MaybeType::HeapBot(ty) => MaybeType::HeapBot(*ty),
-            MaybeType::Type(ty) => MaybeType::Type(ty.as_non_null()),
+            MaybeType::Bottom => MaybeType::Bottom,
+            MaybeType::UnknownRef(ty) => MaybeType::UnknownRef(*ty),
+            MaybeType::Known(ty) => MaybeType::Known(ty.as_non_null()),
         }
     }
 
     fn is_maybe_shared(&self, resources: &impl WasmModuleResources) -> Option<bool> {
         match self {
-            MaybeType::Bot => None,
-            MaybeType::HeapBot(_) => None,
-            MaybeType::Type(ty) => Some(resources.is_shared(*ty)),
+            MaybeType::Bottom => None,
+            MaybeType::UnknownRef(_) => None,
+            MaybeType::Known(ty) => Some(resources.is_shared(*ty)),
         }
     }
 }
@@ -396,8 +404,8 @@ impl OperatorValidator {
     /// A `depth` of 0 will refer to the last operand on the stack.
     pub fn peek_operand_at(&self, depth: usize) -> Option<Option<ValType>> {
         Some(match self.operands.iter().rev().nth(depth)? {
-            MaybeType::Type(t) => Some(*t),
-            MaybeType::Bot | MaybeType::HeapBot(..) => None,
+            MaybeType::Known(t) => Some(*t),
+            MaybeType::Bottom | MaybeType::UnknownRef(..) => None,
         })
     }
 
@@ -496,7 +504,7 @@ where
 
         if cfg!(debug_assertions) {
             match maybe_ty {
-                MaybeType::Type(ValType::Ref(r)) => match r.heap_type() {
+                MaybeType::Known(ValType::Ref(r)) => match r.heap_type() {
                     HeapType::Concrete(index) => {
                         debug_assert!(
                             matches!(index, UnpackedIndex::Id(_)),
@@ -588,15 +596,15 @@ where
         // pop it. If we shouldn't have popped it then it's passed to the slow
         // path to get pushed back onto the stack.
         let popped = match self.operands.pop() {
-            Some(MaybeType::Type(actual_ty)) => {
+            Some(MaybeType::Known(actual_ty)) => {
                 if Some(actual_ty) == expected {
                     if let Some(control) = self.control.last() {
                         if self.operands.len() >= control.height {
-                            return Ok(MaybeType::Type(actual_ty));
+                            return Ok(MaybeType::Known(actual_ty));
                         }
                     }
                 }
-                Some(MaybeType::Type(actual_ty))
+                Some(MaybeType::Known(actual_ty))
             }
             other => other,
         };
@@ -619,7 +627,7 @@ where
             None => return Err(self.err_beyond_end(self.offset)),
         };
         let actual = if self.operands.len() == control.height && control.unreachable {
-            MaybeType::Bot
+            MaybeType::Bottom
         } else {
             if self.operands.len() == control.height {
                 let desc = match expected {
@@ -637,13 +645,13 @@ where
         if let Some(expected) = expected {
             match (actual, expected) {
                 // The bottom type matches all expectations
-                (MaybeType::Bot, _) => {}
+                (MaybeType::Bottom, _) => {}
 
                 // The "heap bottom" type only matches other references types,
                 // but not any integer types. Note that if the heap bottom is
                 // known to have a specific abstract heap type then a subtype
                 // check is performed against hte expected type.
-                (MaybeType::HeapBot(actual_ty), ValType::Ref(expected)) => {
+                (MaybeType::UnknownRef(actual_ty), ValType::Ref(expected)) => {
                     if let Some(actual) = actual_ty {
                         let expected_shared = self.resources.is_shared(expected);
                         let actual = RefType::new(
@@ -667,7 +675,7 @@ where
 
                 // Use the `is_subtype` predicate to test if a found type matches
                 // the expectation.
-                (MaybeType::Type(actual), expected) => {
+                (MaybeType::Known(actual), expected) => {
                     if !self.resources.is_subtype(actual, expected) {
                         bail!(
                             self.offset,
@@ -680,7 +688,7 @@ where
 
                 // A "heap bottom" type cannot match any numeric types.
                 (
-                    MaybeType::HeapBot(..),
+                    MaybeType::UnknownRef(..),
                     ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128,
                 ) => {
                     bail!(
@@ -697,10 +705,10 @@ where
     /// Pop a reference type from the operand stack.
     fn pop_ref(&mut self, expected: Option<RefType>) -> Result<MaybeType<RefType>> {
         match self.pop_operand(expected.map(|t| t.into()))? {
-            MaybeType::Bot => Ok(MaybeType::HeapBot(None)),
-            MaybeType::HeapBot(ty) => Ok(MaybeType::HeapBot(ty)),
-            MaybeType::Type(ValType::Ref(rt)) => Ok(MaybeType::Type(rt)),
-            MaybeType::Type(ty) => bail!(
+            MaybeType::Bottom => Ok(MaybeType::UnknownRef(None)),
+            MaybeType::UnknownRef(ty) => Ok(MaybeType::UnknownRef(ty)),
+            MaybeType::Known(ValType::Ref(rt)) => Ok(MaybeType::Known(rt)),
+            MaybeType::Known(ty) => bail!(
                 self.offset,
                 "type mismatch: expected ref but found {}",
                 ty_to_str(ty)
@@ -715,9 +723,9 @@ where
     /// saving extra lookups for concrete types.
     fn pop_maybe_shared_ref(&mut self, expected: AbstractHeapType) -> Result<MaybeType<RefType>> {
         let actual = match self.pop_ref(None)? {
-            MaybeType::Bot => return Ok(MaybeType::Bot),
-            MaybeType::HeapBot(None) => return Ok(MaybeType::HeapBot(None)),
-            MaybeType::HeapBot(Some(actual)) => {
+            MaybeType::Bottom => return Ok(MaybeType::Bottom),
+            MaybeType::UnknownRef(None) => return Ok(MaybeType::UnknownRef(None)),
+            MaybeType::UnknownRef(Some(actual)) => {
                 if !actual.is_subtype_of(expected) {
                     bail!(
                         self.offset,
@@ -726,9 +734,9 @@ where
                         actual.as_str(false),
                     )
                 }
-                return Ok(MaybeType::HeapBot(Some(actual)));
+                return Ok(MaybeType::UnknownRef(Some(actual)));
             }
-            MaybeType::Type(ty) => ty,
+            MaybeType::Known(ty) => ty,
         };
         // Change our expectation based on whether we're dealing with an actual
         // shared or unshared type.
@@ -751,7 +759,7 @@ where
                 "type mismatch: expected subtype of {expected}, found {actual}",
             )
         }
-        Ok(MaybeType::Type(actual))
+        Ok(MaybeType::Known(actual))
     }
 
     /// Fetches the type for the local at `idx`, returning an error if it's out
@@ -1217,66 +1225,66 @@ where
         Ok(())
     }
 
-    fn cont_type_of_heap_type(&self, hty: HeapType) -> Result<ContType> {
-        match hty {
-            HeapType::Concrete(unpacked_index) => {
-                match UnpackedIndex::as_core_type_id(&unpacked_index) {
-                    None => Err(format_err!(
-                        self.offset,
-                        "cannot convert heap type to continuation type. Has the heap type ({:?}) been canonicalised?", hty)),
-                    Some(id) => self.cont_type_at(id),
-                }
-            }
-            _ => Err(format_err!(
-                self.offset,
-                "cannot convert heap type to continuation type. The heap type was ({:?})",
-                hty
-            )),
-        }
-    }
+    // fn cont_type_of_heap_type(&self, hty: HeapType) -> Result<ContType> {
+    //     match hty {
+    //         HeapType::Concrete(unpacked_index) => {
+    //             match UnpackedIndex::as_core_type_id(&unpacked_index) {
+    //                 None => Err(format_err!(
+    //                     self.offset,
+    //                     "cannot convert heap type to continuation type. Has the heap type ({:?}) been canonicalised?", hty)),
+    //                 Some(id) => self.cont_type_at(id),
+    //             }
+    //         }
+    //         _ => Err(format_err!(
+    //             self.offset,
+    //             "cannot convert heap type to continuation type. The heap type was ({:?})",
+    //             hty
+    //         )),
+    //     }
+    // }
 
-    fn func_repr_cont_type_of_heap_type(&self, hty: HeapType) -> Result<&'resources FuncType> {
-        match hty {
-            HeapType::Concrete(unpacked_index) => self.func_repr_cont_type_at(unpacked_index),
-            _ => Err(format_err!(
-                self.offset,
-                "cannot convert heap type to function type. The heap type was ({:?})",
-                hty
-            )),
-        }
-    }
+    // fn func_repr_cont_type_of_heap_type(&self, hty: HeapType) -> Result<&'resources FuncType> {
+    //     match hty {
+    //         HeapType::Concrete(unpacked_index) => self.func_repr_cont_type_at(unpacked_index),
+    //         _ => Err(format_err!(
+    //             self.offset,
+    //             "cannot convert heap type to function type. The heap type was ({:?})",
+    //             hty
+    //         )),
+    //     }
+    // }
 
-    fn cont_type_at(&self, id: crate::types::CoreTypeId) -> Result<ContType> {
-        self.resources.cont_type_at(id).ok_or_else(|| {
-            format_err!(
-                self.offset,
-                "non-continuation type {}",
-                crate::validator::types::TypeIdentifier::index(&id)
-            )
-        })
-    }
+    // fn cont_type_at(&self, id: crate::types::CoreTypeId) -> Result<ContType> {
+    //     self.resources.cont_type_at(id).ok_or_else(|| {
+    //         format_err!(
+    //             self.offset,
+    //             "non-continuation type {}",
+    //             crate::validator::types::TypeIdentifier::index(&id)
+    //         )
+    //     })
+    // }
 
     /// Retrieves the function type representation of the continuation
     /// type stored at the given type index.
-    fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<&'resources FuncType> {
-        match at {
-            UnpackedIndex::Id(id) => {
-                let ct = self.cont_type_at(id)?;
-                let unpacked_index = ct.0;
-                self.resources
-                    .func_type_at_id(UnpackedIndex::as_core_type_id(&unpacked_index).unwrap())
-                    .ok_or_else(|| {
-                        format_err!(
-                            self.offset,
-                            "unknown function type: type index ({:?}) out of bounds",
-                            id
-                        )
-                    })
-            }
-            UnpackedIndex::RecGroup(_) => todo!(),
-            UnpackedIndex::Module(_) => unreachable!(),
-        }
-    }
+    // fn func_repr_cont_type_at(&self, at: UnpackedIndex) -> Result<&'resources FuncType> {
+    //     match at {
+    //         UnpackedIndex::Id(id) => {
+    //             let ct = self.cont_type_at(id)?;
+    //             let unpacked_index = ct.0;
+    //             self.resources
+    //                 .func_type_at_id(UnpackedIndex::as_core_type_id(&unpacked_index).unwrap())
+    //                 .ok_or_else(|| {
+    //                     format_err!(
+    //                         self.offset,
+    //                         "unknown function type: type index ({:?}) out of bounds",
+    //                         id
+    //                     )
+    //                 })
+    //         }
+    //         UnpackedIndex::RecGroup(_) => todo!(),
+    //         UnpackedIndex::Module(_) => unreachable!(),
+    //     }
+    // }
 
     /// Common helper for `ref.test` and `ref.cast` downcasting/checking
     /// instructions. Returns the given `heap_type` as a `ValType`.
@@ -1475,6 +1483,31 @@ where
         }
     }
 
+    fn cont_type_at(&self, at: u32) -> Result<&ContType> {
+        let sub_ty = self.sub_type_at(at)?;
+        if let CompositeInnerType::Cont(cont_ty) = &sub_ty.composite_type.inner {
+            if self.inner.shared && !sub_ty.composite_type.shared {
+                bail!(
+                    self.offset,
+                    "shared functions cannot access unshared functions",
+                );
+            }
+            Ok(cont_ty)
+        } else {
+            bail!(self.offset, "non-continuation type {at}")
+        }
+    }
+
+    fn func_repr_cont_type_at(&self, at: u32) -> Result<&'resources FuncType> {
+        let cont_ty = self.cont_type_at(at)?;
+        Ok(self
+            .resources
+            .func_type_at_id(
+                UnpackedIndex::as_core_type_id(&cont_ty.0).expect("expected core type id"),
+            )
+            .unwrap())
+    }
+
     fn tag_at(&self, at: u32) -> Result<&'resources FuncType> {
         self.resources
             .tag_at(at)
@@ -1576,6 +1609,41 @@ where
             let tagtype = self.tag_at(tag)?;
             let block = self.jump(relative_depth)?;
 
+            // Retrieve the continuation reference type (i.e. (cont $ft)).
+            match self.label_types(block.0, block.1)?.last() {
+                Some(ValType::Ref(rt)) if rt.is_concrete_type_ref() => {
+                    let z = rt.type_index().unwrap().unpack().as_core_type_id().expect("expected canonicalised index");
+                    if let Some(cont_ty) = self.resources.cont_type_at(z) {
+                        let y = cont_ty.0.as_core_type_id().expect("expected canonicalised index");
+                        if let Some(ctft2) = self.resources.func_type_at_id(y) {
+                            // Now we must check that (ts2' -> ts2) <: $ft
+                            // This method should be exposed by resources to make this correct
+                            for (&tagty, &ct2ty) in tagtype.results().iter().zip(ctft2.params()) {
+                                // Note: according to spec we should check for equality here
+                                if !self.resources.is_subtype(ct2ty, tagty) {
+                                    bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                                }
+                            }
+                            for (&ctty, &ct2ty) in ctft.results().iter().zip(ctft2.results()) {
+                                // Note: according to spec we should check for equality here
+                                if !self.resources.is_subtype(ctty, ct2ty) {
+                                    bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
+                                }
+                            }
+                        } else {
+                            bail!(self.offset, "non-function type {}", crate::validator::types::TypeIdentifier::index(&y))
+                        }
+                    } else {
+                        bail!(self.offset, "non-continuation type {}", crate::validator::types::TypeIdentifier::index(&z))
+                    }
+                }
+                Some(ty) => {
+                    bail!(self.offset, "type mismatch: {}", ty_to_str(ty))
+                }
+                _ => bail!(self.offset,
+                           "type mismatch: instruction requires continuation reference type but label has none")
+            }
+
             // label_types(offset, block.0, block.1) := ts1''* (ref null? (cont $ft))
             if tagtype.params().len() != self.label_types(block.0, block.1)?.len() - 1 {
                 bail!(
@@ -1583,6 +1651,7 @@ where
                     "type mismatch between label type and tag type length"
                 ) // TODO(dhil): tidy up
             }
+
             let labeltys = self
                 .label_types(block.0, block.1)?
                 .take(tagtype.params().len());
@@ -1594,35 +1663,16 @@ where
                     // TODO(dhil): tidy up
                 }
             }
-
-            // Retrieve the continuation reference type (i.e. (cont $ft)).
-            match self.label_types(block.0, block.1)?.last() {
-                Some(ValType::Ref(rt)) if rt.is_concrete_type_ref() => {
-                    let z = rt.type_index().unwrap().unpack();
-                    let ctft2 = self.func_repr_cont_type_at(z)?;
-                    // Now we must check that (ts2' -> ts2) <: $ft
-                    // This method should be exposed by resources to make this correct
-                    for (&tagty, &ct2ty) in tagtype.results().iter().zip(ctft2.params()) {
-                        // Note: according to spec we should check for equality here
-                        if !self.resources.is_subtype(ct2ty, tagty) {
-                            bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
-                        }
-                    }
-                    for (&ctty, &ct2ty) in ctft.results().iter().zip(ctft2.results()) {
-                        // Note: according to spec we should check for equality here
-                        if !self.resources.is_subtype(ctty, ct2ty) {
-                            bail!(self.offset, "type mismatch in continuation type") // TODO(dhil): tidy up
-                        }
-                    }
-                }
-                Some(ty) => {
-                    bail!(self.offset, "type mismatch: {}", ty_to_str(ty))
-                }
-                _ => bail!(self.offset,
-                    "type mismatch: instruction requires continuation reference type but label has none")
-            }
         }
         Ok(())
+    }
+
+    fn check_data_segment(&self, data_index: u32) -> Result<()> {
+        match self.resources.data_count() {
+            None => bail!(self.offset, "data count section required"),
+            Some(count) if data_index < count => Ok(()),
+            Some(_) => bail!(self.offset, "unknown data segment {data_index}"),
+        }
     }
 }
 
@@ -1846,12 +1896,8 @@ where
         for ty in ty.clone().params().iter().rev() {
             self.pop_operand(Some(*ty))?;
         }
-        if ty.results().len() > 0 {
-            bail!(
-                self.offset,
-                "result type expected to be empty for exception"
-            );
-        }
+        // this should be validated when the tag was defined in the module
+        debug_assert!(ty.results().is_empty());
         self.unreachable()?;
         Ok(())
     }
@@ -1973,10 +2019,10 @@ where
         let ty = match (ty1, ty2) {
             // All heap-related types aren't allowed with the `select`
             // instruction
-            (MaybeType::HeapBot(..), _)
-            | (_, MaybeType::HeapBot(..))
-            | (MaybeType::Type(ValType::Ref(_)), _)
-            | (_, MaybeType::Type(ValType::Ref(_))) => {
+            (MaybeType::UnknownRef(..), _)
+            | (_, MaybeType::UnknownRef(..))
+            | (MaybeType::Known(ValType::Ref(_)), _)
+            | (_, MaybeType::Known(ValType::Ref(_))) => {
                 bail!(
                     self.offset,
                     "type mismatch: select only takes integral types"
@@ -1985,11 +2031,11 @@ where
 
             // If one operand is the "bottom" type then whatever the other
             // operand is is the result of the `select`
-            (MaybeType::Bot, t) | (t, MaybeType::Bot) => t,
+            (MaybeType::Bottom, t) | (t, MaybeType::Bottom) => t,
 
             // Otherwise these are two integral types and they must match for
             // `select` to typecheck.
-            (t @ MaybeType::Type(t1), MaybeType::Type(t2)) => {
+            (t @ MaybeType::Known(t1), MaybeType::Known(t2)) => {
                 if t1 != t2 {
                     bail!(
                         self.offset,
@@ -3910,22 +3956,14 @@ where
     }
     fn visit_memory_init(&mut self, segment: u32, mem: u32) -> Self::Output {
         let ty = self.check_memory_index(mem)?;
-        match self.resources.data_count() {
-            None => bail!(self.offset, "data count section required"),
-            Some(count) if segment < count => {}
-            Some(_) => bail!(self.offset, "unknown data segment {}", segment),
-        }
+        self.check_data_segment(segment)?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_operand(Some(ty))?;
         Ok(())
     }
     fn visit_data_drop(&mut self, segment: u32) -> Self::Output {
-        match self.resources.data_count() {
-            None => bail!(self.offset, "data count section required"),
-            Some(count) if segment < count => {}
-            Some(_) => bail!(self.offset, "unknown data segment {}", segment),
-        }
+        self.check_data_segment(segment)?;
         Ok(())
     }
     fn visit_memory_copy(&mut self, dst: u32, src: u32) -> Self::Output {
@@ -3973,13 +4011,7 @@ where
         Ok(())
     }
     fn visit_elem_drop(&mut self, segment: u32) -> Self::Output {
-        if segment >= self.resources.element_count() {
-            bail!(
-                self.offset,
-                "unknown elem segment {}: segment index out of bounds",
-                segment
-            );
-        }
+        self.element_type_at(segment)?;
         Ok(())
     }
     fn visit_table_copy(&mut self, dst_table: u32, src_table: u32) -> Self::Output {
@@ -4073,28 +4105,17 @@ where
 
     // Typed continuations operators.
     fn visit_cont_new(&mut self, type_index: u32) -> Self::Output {
-        let unpacked_index = UnpackedIndex::Module(type_index);
-        let mut c_hty = HeapType::Concrete(unpacked_index);
-        self.resources.check_heap_type(&mut c_hty, self.offset)?;
-        let f_idx = self.cont_type_of_heap_type(c_hty)?.0;
-        let f_hty = f_idx.pack().expect("hty should be previously validated");
-        let expected_rt = RefType::concrete(true, f_hty);
-        self.pop_operand(Some(ValType::Ref(expected_rt)))?;
-        let result =
-            ValType::Ref(RefType::new(false, c_hty).expect("hty should be previously validated"));
-        self.push_operand(result)?;
+        let cont_ty = self.cont_type_at(type_index)?;
+        let rt = RefType::concrete(true, cont_ty.0.pack().expect("type index too large"));
+        self.pop_ref(Some(rt))?;
+        self.push_concrete_ref(false, type_index)?;
         Ok(())
     }
     fn visit_cont_bind(&mut self, src_index: u32, dst_index: u32) -> Self::Output {
-        let src_unpacked_index = UnpackedIndex::Module(src_index);
-        let mut src_hty = HeapType::Concrete(src_unpacked_index);
-        self.resources.check_heap_type(&mut src_hty, self.offset)?;
-        let src_cont = self.func_repr_cont_type_of_heap_type(src_hty)?;
-
-        let dst_unpacked_index = UnpackedIndex::Module(dst_index);
-        let mut dst_hty = HeapType::Concrete(dst_unpacked_index);
-        self.resources.check_heap_type(&mut dst_hty, self.offset)?;
-        let dst_cont = self.func_repr_cont_type_of_heap_type(dst_hty)?;
+        self.cont_type_at(src_index)?;
+        self.cont_type_at(dst_index)?;
+        let src_cont = self.func_repr_cont_type_at(src_index)?;
+        let dst_cont = self.func_repr_cont_type_at(dst_index)?;
 
         // Verify that the source domain is at least as large as the
         // target domain.
@@ -4126,21 +4147,21 @@ where
         }
 
         // Check that the continuation is available on the stack.
-        match self.pop_ref(None)? {
-            MaybeType::Bot => {} // bot case
-            MaybeType::HeapBot(_) => {}
-            MaybeType::Type(rt) => {
-                let expected = ValType::Ref(
-                    RefType::new(false, src_hty).expect("hty should be previously validated"),
-                );
-                if !self.resources.is_subtype(expected, ValType::Ref(rt)) {
-                    bail!(
-                        self.offset,
-                        "type mismatch: instruction requires {} but stack has {}",
-                        ty_to_str(expected),
-                        ty_to_str(ValType::Ref(rt))
-                    );
-                }
+        match self.pop_concrete_ref(true, src_index)? {
+            MaybeType::Bottom => {}        // bot case
+            MaybeType::UnknownRef(_) => {} // TODO(dhil): check that the abstract heap type is a continuation.
+            MaybeType::Known(_rt) => {
+                // let expected = ValType::Ref(
+                //     RefType::concrete(false, ).expect("hty should be previously validated"),
+                // );
+                // if !self.resources.is_subtype(expected, ValType::Ref(rt)) {
+                //     bail!(
+                //         self.offset,
+                //         "type mismatch: instruction requires {} but stack has {}",
+                //         ty_to_str(expected),
+                //         ty_to_str(ValType::Ref(rt))
+                //     );
+                // }
 
                 // Check that the prefix is available on the stack.
                 for &ty in src_prefix.rev() {
@@ -4150,11 +4171,7 @@ where
         }
 
         // Construct the result type.
-        let result =
-            ValType::Ref(RefType::new(false, dst_hty).expect("hty should be previously validated"));
-
-        // Push the continuation reference.
-        self.push_operand(result)?;
+        self.push_concrete_ref(false, dst_index)?;
 
         Ok(())
     }
@@ -4169,30 +4186,20 @@ where
         Ok(())
     }
     fn visit_resume(&mut self, type_index: u32, resumetable: ResumeTable) -> Self::Output {
-        let unpacked_index = UnpackedIndex::Module(type_index);
-        let mut hty = HeapType::Concrete(unpacked_index);
-        self.resources.check_heap_type(&mut hty, self.offset)?;
-        let _ = self.cont_type_of_heap_type(hty);
+        self.cont_type_at(type_index)?;
+        self.pop_concrete_ref(true, type_index)?;
+        let ctft = self.func_repr_cont_type_at(type_index)?;
+        // ft := ts1 -> ts2
+        self.check_resume_table(resumetable, ctft)?;
 
-        let expected = RefType::new(true, hty).expect("hty should be previously validated");
-        match self.pop_ref(Some(expected))? {
-            MaybeType::Bot => {}
-            MaybeType::HeapBot(_) => {}
-            MaybeType::Type(_) => {
-                let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
-                // ft := ts1 -> ts2
-                self.check_resume_table(resumetable, ctft)?;
+        // Check that ts1 are available on the stack.
+        for &ty in ctft.params().iter().rev() {
+            self.pop_operand(Some(ty))?;
+        }
 
-                // Check that ts1 are available on the stack.
-                for &ty in ctft.params().iter().rev() {
-                    self.pop_operand(Some(ty))?;
-                }
-
-                // Make ts2 available on the stack.
-                for &ty in ctft.results() {
-                    self.push_operand(ty)?;
-                }
-            }
+        // Make ts2 available on the stack.
+        for &ty in ctft.results() {
+            self.push_operand(ty)?;
         }
         Ok(())
     }
@@ -4202,32 +4209,24 @@ where
         tag_index: u32,
         resumetable: ResumeTable,
     ) -> Self::Output {
-        let unpacked_index = UnpackedIndex::Module(type_index);
-        let mut hty = HeapType::Concrete(unpacked_index);
-        self.resources.check_heap_type(&mut hty, self.offset)?;
-        let _ = self.cont_type_of_heap_type(hty);
-        let expected = RefType::new(true, hty).expect("hty should be previously validated");
-        match self.pop_ref(Some(expected))? {
-            MaybeType::Bot => {}
-            MaybeType::HeapBot(_) => {}
-            MaybeType::Type(_) => {
-                // ft := ts1 -> ts2
-                let ctft = self.func_repr_cont_type_of_heap_type(hty)?;
-                self.check_resume_table(resumetable, &ctft)?;
+        self.cont_type_at(type_index)?;
+        self.pop_concrete_ref(true, type_index)?;
+        let ctft = self.func_repr_cont_type_at(type_index)?;
 
-                // tagtype := ts1' -> []
-                let tagtype = &self.tag_at(tag_index)?;
+        // tagtype := ts1' -> []
+        let tagtype = &self.tag_at(tag_index)?;
 
-                // Check that ts1' are available on the stack.
-                for &tagty in tagtype.params().iter().rev() {
-                    self.pop_operand(Some(tagty))?;
-                }
+        // Validate the resume table.
+        self.check_resume_table(resumetable, &ctft)?;
 
-                // Make ts2 available on the stack.
-                for &ty in ctft.results() {
-                    self.push_operand(ty)?;
-                }
-            }
+        // Check that ts1' are available on the stack.
+        for &tagty in tagtype.params().iter().rev() {
+            self.pop_operand(Some(tagty))?;
+        }
+
+        // Make ts2 available on the stack.
+        for &ty in ctft.results() {
+            self.push_operand(ty)?;
         }
 
         Ok(())
@@ -4546,11 +4545,7 @@ where
                 "type mismatch: array.new_data can only create arrays with numeric and vector elements"
             ),
         }
-        match self.resources.data_count() {
-            None => bail!(self.offset, "data count section required"),
-            Some(count) if data_index < count => {}
-            Some(_) => bail!(self.offset, "unknown data segment {}", data_index),
-        }
+        self.check_data_segment(data_index)?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_operand(Some(ValType::I32))?;
         self.push_concrete_ref(false, type_index)
@@ -4743,11 +4738,7 @@ where
                 "invalid array.init_data: array type is not numeric or vector"
             ),
         }
-        match self.resources.data_count() {
-            None => bail!(self.offset, "data count section required"),
-            Some(count) if array_data_index < count => {}
-            Some(_) => bail!(self.offset, "unknown data segment {}", array_data_index),
-        }
+        self.check_data_segment(array_data_index)?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_operand(Some(ValType::I32))?;
         self.pop_operand(Some(ValType::I32))?;
@@ -4850,34 +4841,34 @@ where
     }
     fn visit_any_convert_extern(&mut self) -> Self::Output {
         let any_ref = match self.pop_maybe_shared_ref(AbstractHeapType::Extern)? {
-            MaybeType::Bot | MaybeType::HeapBot(_) => {
-                MaybeType::HeapBot(Some(AbstractHeapType::Any))
+            MaybeType::Bottom | MaybeType::UnknownRef(_) => {
+                MaybeType::UnknownRef(Some(AbstractHeapType::Any))
             }
-            MaybeType::Type(ty) => {
+            MaybeType::Known(ty) => {
                 let shared = self.resources.is_shared(ty);
                 let heap_type = HeapType::Abstract {
                     shared,
                     ty: AbstractHeapType::Any,
                 };
                 let any_ref = RefType::new(ty.is_nullable(), heap_type).unwrap();
-                MaybeType::Type(any_ref)
+                MaybeType::Known(any_ref)
             }
         };
         self.push_operand(any_ref)
     }
     fn visit_extern_convert_any(&mut self) -> Self::Output {
         let extern_ref = match self.pop_maybe_shared_ref(AbstractHeapType::Any)? {
-            MaybeType::Bot | MaybeType::HeapBot(_) => {
-                MaybeType::HeapBot(Some(AbstractHeapType::Extern))
+            MaybeType::Bottom | MaybeType::UnknownRef(_) => {
+                MaybeType::UnknownRef(Some(AbstractHeapType::Extern))
             }
-            MaybeType::Type(ty) => {
+            MaybeType::Known(ty) => {
                 let shared = self.resources.is_shared(ty);
                 let heap_type = HeapType::Abstract {
                     shared,
                     ty: AbstractHeapType::Extern,
                 };
                 let extern_ref = RefType::new(ty.is_nullable(), heap_type).unwrap();
-                MaybeType::Type(extern_ref)
+                MaybeType::Known(extern_ref)
             }
         };
         self.push_operand(extern_ref)

@@ -32,6 +32,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
 use wasm_encoder::reencode::{Reencode, ReencodeComponent, RoundtripReencoder};
 use wasmparser::*;
+use wast::component::{Component, ComponentKind};
 use wast::core::{Module, ModuleKind};
 use wast::lexer::Lexer;
 use wast::parser::ParseBuffer;
@@ -286,7 +287,7 @@ impl TestState {
 
     fn test_wast_directive(&self, test: &Path, directive: WastDirective, idx: usize) -> Result<()> {
         match directive {
-            WastDirective::Wat(mut module) => {
+            WastDirective::Module(mut module) | WastDirective::ModuleDefinition(mut module) => {
                 let actual = module.encode()?;
                 self.bump_ntests(); // testing encode
 
@@ -302,8 +303,11 @@ impl TestState {
                     QuoteWat::Wat(Wat::Module(Module {
                         kind: ModuleKind::Binary(_),
                         ..
+                    }))
+                    | QuoteWat::Wat(Wat::Component(Component {
+                        kind: ComponentKind::Binary(_),
+                        ..
                     })) => false,
-
                     _ => true,
                 };
 
@@ -355,7 +359,7 @@ impl TestState {
                         message,
                     ),
                     Err(e) => {
-                        if error_matches(&format!("{:?}", e), message) {
+                        if error_matches(test, &format!("{:?}", e), message) {
                             self.bump_ntests();
                             return Ok(());
                         }
@@ -372,7 +376,8 @@ impl TestState {
 
             // This test suite doesn't actually execute any wasm code, so ignore
             // all of these assertions.
-            WastDirective::Register { .. }
+            WastDirective::ModuleInstance { .. }
+            | WastDirective::Register { .. }
             | WastDirective::Invoke(_)
             | WastDirective::AssertTrap { .. }
             | WastDirective::AssertReturn { .. }
@@ -600,16 +605,9 @@ impl TestState {
         for part in test.iter().filter_map(|t| t.to_str()) {
             match part {
                 "testsuite" => {
-                    features = WasmFeatures::wasm2();
-                    features |= WasmFeatures::TAIL_CALL;
-                    features |= WasmFeatures::EXTENDED_CONST;
-
-                    // NB: when these proposals are merged upstream in the spec
-                    // repo then this should be removed. Currently this hasn't
-                    // happened so this is required to get tests passing for
-                    // when these proposals are enabled by default.
-                    features.remove(WasmFeatures::MULTI_MEMORY);
-                    features.remove(WasmFeatures::THREADS);
+                    features = WasmFeatures::WASM2
+                        | WasmFeatures::TAIL_CALL
+                        | WasmFeatures::EXTENDED_CONST;
                 }
                 "missing-features" => {
                     features =
@@ -626,14 +624,7 @@ impl TestState {
                 "exception-handling" => features.insert(WasmFeatures::EXCEPTIONS),
                 "legacy-exceptions" => features.insert(WasmFeatures::LEGACY_EXCEPTIONS),
                 "tail-call" => features.insert(WasmFeatures::TAIL_CALL),
-                "memory64" => features.insert(
-                    WasmFeatures::MEMORY64
-                        | WasmFeatures::GC
-                        | WasmFeatures::REFERENCE_TYPES
-                        | WasmFeatures::MULTI_MEMORY
-                        | WasmFeatures::FUNCTION_REFERENCES
-                        | WasmFeatures::EXCEPTIONS,
-                ),
+                "memory64" => features.insert(WasmFeatures::MEMORY64 | WasmFeatures::WASM3),
                 "component-model" => features.insert(WasmFeatures::COMPONENT_MODEL),
                 "shared-everything-threads" => {
                     features.insert(WasmFeatures::COMPONENT_MODEL);
@@ -671,10 +662,17 @@ impl TestState {
     }
 }
 
-fn error_matches(error: &str, message: &str) -> bool {
+fn error_matches(test: &Path, error: &str, message: &str) -> bool {
     if error.contains(message) {
         return true;
     }
+    // we are in control over all tsets in `tests/local/*` so all the error
+    // messages there should exactly match the `assert_invalid` or such. No need
+    // for fuzzy matching on error messages.
+    if test.starts_with("tests/local") {
+        return false;
+    }
+
     if message == "unknown operator"
         || message == "unexpected token"
         || message == "wrong number of lane literals"
