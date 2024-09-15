@@ -5,7 +5,8 @@
       "type": "module",
       "line": 4,
       "name": "control",
-      "filename": "control-lwt.0.wasm"
+      "filename": "control-lwt.0.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -16,7 +17,8 @@
       "type": "module",
       "line": 46,
       "name": "example",
-      "filename": "control-lwt.1.wasm"
+      "filename": "control-lwt.1.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -27,7 +29,8 @@
       "type": "module",
       "line": 105,
       "name": "queue",
-      "filename": "control-lwt.2.wasm"
+      "filename": "control-lwt.2.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -38,7 +41,8 @@
       "type": "module",
       "line": 165,
       "name": "scheduler",
-      "filename": "control-lwt.3.wasm"
+      "filename": "control-lwt.3.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -48,7 +52,8 @@
     {
       "type": "module",
       "line": 319,
-      "filename": "control-lwt.4.wasm"
+      "filename": "control-lwt.4.wasm",
+      "module_type": "binary"
     },
     {
       "type": "action",
