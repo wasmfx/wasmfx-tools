@@ -5,7 +5,8 @@
       "type": "module",
       "line": 4,
       "name": "actor",
-      "filename": "actor.0.wasm"
+      "filename": "actor.0.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -16,7 +17,8 @@
       "type": "module",
       "line": 20,
       "name": "chain",
-      "filename": "actor.1.wasm"
+      "filename": "actor.1.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -27,7 +29,8 @@
       "type": "module",
       "line": 66,
       "name": "queue",
-      "filename": "actor.2.wasm"
+      "filename": "actor.2.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -38,7 +41,8 @@
       "type": "module",
       "line": 182,
       "name": "mailboxes",
-      "filename": "actor.3.wasm"
+      "filename": "actor.3.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -49,7 +53,8 @@
       "type": "module",
       "line": 245,
       "name": "scheduler",
-      "filename": "actor.4.wasm"
+      "filename": "actor.4.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -59,7 +64,8 @@
     {
       "type": "module",
       "line": 376,
-      "filename": "actor.5.wasm"
+      "filename": "actor.5.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_return",

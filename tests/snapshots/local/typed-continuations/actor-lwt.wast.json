@@ -5,7 +5,8 @@
       "type": "module",
       "line": 4,
       "name": "actor",
-      "filename": "actor-lwt.0.wasm"
+      "filename": "actor-lwt.0.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -16,7 +17,8 @@
       "type": "module",
       "line": 20,
       "name": "chain",
-      "filename": "actor-lwt.1.wasm"
+      "filename": "actor-lwt.1.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -27,7 +29,8 @@
       "type": "module",
       "line": 66,
       "name": "lwt",
-      "filename": "actor-lwt.2.wasm"
+      "filename": "actor-lwt.2.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -38,7 +41,8 @@
       "type": "module",
       "line": 76,
       "name": "queue",
-      "filename": "actor-lwt.3.wasm"
+      "filename": "actor-lwt.3.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -49,7 +53,8 @@
       "type": "module",
       "line": 135,
       "name": "scheduler",
-      "filename": "actor-lwt.4.wasm"
+      "filename": "actor-lwt.4.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -60,7 +65,8 @@
       "type": "module",
       "line": 169,
       "name": "mailboxes",
-      "filename": "actor-lwt.5.wasm"
+      "filename": "actor-lwt.5.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -71,7 +77,8 @@
       "type": "module",
       "line": 229,
       "name": "actor-as-lwt",
-      "filename": "actor-lwt.6.wasm"
+      "filename": "actor-lwt.6.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -82,7 +89,8 @@
       "type": "module",
       "line": 328,
       "name": "actor-scheduler",
-      "filename": "actor-lwt.7.wasm"
+      "filename": "actor-lwt.7.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -92,7 +100,8 @@
     {
       "type": "module",
       "line": 346,
-      "filename": "actor-lwt.8.wasm"
+      "filename": "actor-lwt.8.wasm",
+      "module_type": "binary"
     },
     {
       "type": "action",

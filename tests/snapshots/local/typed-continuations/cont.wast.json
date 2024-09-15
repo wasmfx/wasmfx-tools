@@ -4,7 +4,8 @@
     {
       "type": "module",
       "line": 3,
-      "filename": "cont.0.wasm"
+      "filename": "cont.0.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_suspension",
@@ -118,75 +119,77 @@
       "type": "assert_invalid",
       "line": 137,
       "filename": "cont.1.wasm",
-      "text": "non-continuation type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-continuation type 0"
     },
     {
       "type": "assert_invalid",
       "line": 145,
       "filename": "cont.2.wasm",
-      "text": "non-continuation type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-continuation type 0"
     },
     {
       "type": "assert_invalid",
       "line": 154,
       "filename": "cont.3.wasm",
-      "text": "non-continuation type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-continuation type 0"
     },
     {
       "type": "assert_invalid",
       "line": 164,
       "filename": "cont.4.wasm",
-      "text": "non-continuation type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-continuation type 0"
     },
     {
       "type": "assert_invalid",
       "line": 173,
       "filename": "cont.5.wasm",
-      "text": "non-continuation type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-continuation type 0"
     },
     {
       "type": "assert_invalid",
       "line": 182,
       "filename": "cont.6.wasm",
-      "text": "non-continuation type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-continuation type 0"
     },
     {
       "type": "assert_invalid",
       "line": 195,
       "filename": "cont.7.wasm",
-      "text": "non-continuation type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-continuation type 0"
     },
     {
       "type": "assert_invalid",
       "line": 209,
       "filename": "cont.8.wasm",
-      "text": "non-function type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-function type 0"
     },
     {
       "type": "assert_invalid",
       "line": 214,
       "filename": "cont.9.wasm",
-      "text": "non-function type 0",
-      "module_type": "binary"
+      "module_type": "binary",
+      "text": "non-function type 0"
     },
     {
       "type": "module",
       "line": 222,
-      "filename": "cont.10.wasm"
+      "filename": "cont.10.wasm",
+      "module_type": "binary"
     },
     {
       "type": "module",
       "line": 233,
       "name": "state",
-      "filename": "cont.11.wasm"
+      "filename": "cont.11.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_return",
@@ -207,7 +210,8 @@
       "type": "module",
       "line": 286,
       "name": "generator",
-      "filename": "cont.12.wasm"
+      "filename": "cont.12.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -338,7 +342,8 @@
       "type": "module",
       "line": 342,
       "name": "scheduler",
-      "filename": "cont.13.wasm"
+      "filename": "cont.13.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -348,7 +353,8 @@
     {
       "type": "module",
       "line": 426,
-      "filename": "cont.14.wasm"
+      "filename": "cont.14.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_return",
@@ -449,7 +455,8 @@
       "type": "module",
       "line": 515,
       "name": "concurrent-generator",
-      "filename": "cont.15.wasm"
+      "filename": "cont.15.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_return",
@@ -478,7 +485,8 @@
     {
       "type": "module",
       "line": 572,
-      "filename": "cont.16.wasm"
+      "filename": "cont.16.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_return",
@@ -518,7 +526,8 @@
     {
       "type": "module",
       "line": 604,
-      "filename": "cont.17.wasm"
+      "filename": "cont.17.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_return",
@@ -562,12 +571,14 @@
     {
       "type": "module",
       "line": 643,
-      "filename": "cont.18.wasm"
+      "filename": "cont.18.wasm",
+      "module_type": "binary"
     },
     {
       "type": "module",
       "line": 659,
-      "filename": "cont.19.wasm"
+      "filename": "cont.19.wasm",
+      "module_type": "binary"
     },
     {
       "type": "assert_return",

@@ -5,7 +5,8 @@
       "type": "module",
       "line": 2,
       "name": "pipes",
-      "filename": "fun-pipes.0.wasm"
+      "filename": "fun-pipes.0.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -15,7 +16,8 @@
     {
       "type": "module",
       "line": 37,
-      "filename": "fun-pipes.1.wasm"
+      "filename": "fun-pipes.1.wasm",
+      "module_type": "binary"
     },
     {
       "type": "action",

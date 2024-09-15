@@ -5,7 +5,8 @@
       "type": "module",
       "line": 4,
       "name": "lwt",
-      "filename": "static-lwt.0.wasm"
+      "filename": "static-lwt.0.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -16,7 +17,8 @@
       "type": "module",
       "line": 9,
       "name": "example",
-      "filename": "static-lwt.1.wasm"
+      "filename": "static-lwt.1.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -27,7 +29,8 @@
       "type": "module",
       "line": 40,
       "name": "queue",
-      "filename": "static-lwt.2.wasm"
+      "filename": "static-lwt.2.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -38,7 +41,8 @@
       "type": "module",
       "line": 98,
       "name": "scheduler",
-      "filename": "static-lwt.3.wasm"
+      "filename": "static-lwt.3.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -48,7 +52,8 @@
     {
       "type": "module",
       "line": 125,
-      "filename": "static-lwt.4.wasm"
+      "filename": "static-lwt.4.wasm",
+      "module_type": "binary"
     },
     {
       "type": "action",

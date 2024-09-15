@@ -5,7 +5,8 @@
       "type": "module",
       "line": 4,
       "name": "generator",
-      "filename": "generators.0.wasm"
+      "filename": "generators.0.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -16,7 +17,8 @@
       "type": "module",
       "line": 9,
       "name": "examples",
-      "filename": "generators.1.wasm"
+      "filename": "generators.1.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -27,7 +29,8 @@
       "type": "module",
       "line": 86,
       "name": "manager",
-      "filename": "generators.2.wasm"
+      "filename": "generators.2.wasm",
+      "module_type": "binary"
     },
     {
       "type": "register",
@@ -37,7 +40,8 @@
     {
       "type": "module",
       "line": 115,
-      "filename": "generators.3.wasm"
+      "filename": "generators.3.wasm",
+      "module_type": "binary"
     },
     {
       "type": "action",
