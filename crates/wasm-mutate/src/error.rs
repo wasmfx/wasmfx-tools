@@ -56,6 +56,25 @@ impl From<wasmparser::BinaryReaderError> for Error {
     }
 }
 
+impl<E> From<wasm_encoder::reencode::Error<E>> for Error
+where
+    E: Into<Error> + std::fmt::Display,
+{
+    fn from(e: wasm_encoder::reencode::Error<E>) -> Self {
+        match e {
+            wasm_encoder::reencode::Error::ParseError(e) => Error::parse(e),
+            wasm_encoder::reencode::Error::UserError(e) => e.into(),
+            other => Error::other(other.to_string()),
+        }
+    }
+}
+
+impl From<std::convert::Infallible> for Error {
+    fn from(i: std::convert::Infallible) -> Error {
+        match i {}
+    }
+}
+
 /// The kind of error.
 #[derive(thiserror::Error, Debug)]
 pub enum ErrorKind {
@@ -82,3 +101,6 @@ pub enum ErrorKind {
 
 /// A `Result` type that is either `Ok(T)` or `Err(wasm_mutate::Error)`.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+/// A `Result` type for use with `wasm_encoder::reencode`
+pub type ReencodeResult<T, E = Error> = Result<T, wasm_encoder::reencode::Error<E>>;

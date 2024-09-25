@@ -6,6 +6,13 @@
   (type (;4;) (func (result (ref null $cont))))
   (type (;5;) (func (param (ref $cont))))
   (import "spectest" "print_i32" (func $log (;0;) (type 2)))
+  (table $queue (;0;) 0 (ref null $cont))
+  (global $qdelta (;0;) i32 i32.const 10)
+  (global $qback (;1;) (mut i32) i32.const 0)
+  (global $qfront (;2;) (mut i32) i32.const 0)
+  (export "queue-empty" (func $queue-empty))
+  (export "dequeue" (func $dequeue))
+  (export "enqueue" (func $enqueue))
   (func $queue-empty (;1;) (type 3) (result i32)
     global.get $qfront
     global.get $qback
@@ -65,11 +72,4 @@
     i32.add
     global.set $qback
   )
-  (table $queue (;0;) 0 (ref null $cont))
-  (global $qdelta (;0;) i32 i32.const 10)
-  (global $qback (;1;) (mut i32) i32.const 0)
-  (global $qfront (;2;) (mut i32) i32.const 0)
-  (export "queue-empty" (func $queue-empty))
-  (export "dequeue" (func $dequeue))
-  (export "enqueue" (func $enqueue))
 )

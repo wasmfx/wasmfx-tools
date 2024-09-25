@@ -8,6 +8,7 @@
   (import "queue" "queue-empty" (func $queue-empty (;0;) (type 2)))
   (import "queue" "dequeue" (func $dequeue (;1;) (type 3)))
   (import "queue" "enqueue" (func $enqueue (;2;) (type 4)))
+  (export "run" (func $run))
   (func $run (;3;) (type $func)
     loop $l
       call $queue-empty
@@ -23,5 +24,4 @@
       br $l
     end
   )
-  (export "run" (func $run))
 )

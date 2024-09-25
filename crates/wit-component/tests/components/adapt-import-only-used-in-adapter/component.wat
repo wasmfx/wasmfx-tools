@@ -12,12 +12,12 @@
     (type (;0;) (func (param i32 i32)))
     (type (;1;) (func))
     (import "$root" "foo" (func (;0;) (type 0)))
-    (func (;1;) (type 1)
-      unreachable
-    )
     (memory (;0;) 1)
     (export "bar" (func 1))
     (export "memory" (memory 0))
+    (func (;1;) (type 1)
+      unreachable
+    )
     (@producers
       (processed-by "wit-component" "$CARGO_PKG_VERSION")
       (processed-by "my-fake-bindgen" "123.45")
@@ -27,6 +27,8 @@
     (type (;0;) (func (param i32 i32)))
     (type (;1;) (func (param i32 i32 i32 i32) (result i32)))
     (import "foo:foo/adapter-imports" "foo" (func $foo (;0;) (type 0)))
+    (export "adapter-bar" (func 1))
+    (export "cabi_export_realloc" (func 2))
     (func (;1;) (type 0) (param i32 i32)
       i32.const 0
       i32.const 0
@@ -35,11 +37,13 @@
     (func (;2;) (type 1) (param i32 i32 i32 i32) (result i32)
       unreachable
     )
-    (export "adapter-bar" (func 1))
-    (export "cabi_export_realloc" (func 2))
   )
   (core module (;2;)
     (type (;0;) (func (param i32 i32)))
+    (table (;0;) 2 2 funcref)
+    (export "0" (func $indirect-$root-foo))
+    (export "1" (func $indirect-foo:foo/adapter-imports-foo))
+    (export "$imports" (table 0))
     (func $indirect-$root-foo (;0;) (type 0) (param i32 i32)
       local.get 0
       local.get 1
@@ -52,10 +56,6 @@
       i32.const 1
       call_indirect (type 0)
     )
-    (table (;0;) 2 2 funcref)
-    (export "0" (func $indirect-$root-foo))
-    (export "1" (func $indirect-foo:foo/adapter-imports-foo))
-    (export "$imports" (table 0))
     (@producers
       (processed-by "wit-component" "$CARGO_PKG_VERSION")
     )
@@ -88,26 +88,26 @@
       (with "foo:foo/adapter-imports" (instance 3))
     )
   )
-  (alias core export 4 "cabi_export_realloc" (core func (;2;)))
   (alias core export 0 "$imports" (core table (;0;)))
-  (core func (;3;) (canon lower (func 0) (memory 0) string-encoding=utf8))
+  (core func (;2;) (canon lower (func 0) (memory 0) string-encoding=utf8))
   (alias export 0 "foo" (func (;1;)))
-  (core func (;4;) (canon lower (func 1) (memory 0) string-encoding=utf8))
+  (core func (;3;) (canon lower (func 1) (memory 0) string-encoding=utf8))
   (core instance (;5;)
     (export "$imports" (table 0))
-    (export "0" (func 3))
-    (export "1" (func 4))
+    (export "0" (func 2))
+    (export "1" (func 3))
   )
   (core instance (;6;) (instantiate 3
       (with "" (instance 5))
     )
   )
   (type (;2;) (func))
-  (alias core export 2 "bar" (core func (;5;)))
-  (func (;2;) (type 2) (canon lift (core func 5)))
+  (alias core export 2 "bar" (core func (;4;)))
+  (func (;2;) (type 2) (canon lift (core func 4)))
   (export (;3;) "bar" (func 2))
-  (alias core export 4 "adapter-bar" (core func (;6;)))
-  (func (;4;) (type 1) (canon lift (core func 6) (memory 0) (realloc 2) string-encoding=utf8))
+  (alias core export 4 "adapter-bar" (core func (;5;)))
+  (alias core export 4 "cabi_export_realloc" (core func (;6;)))
+  (func (;4;) (type 1) (canon lift (core func 5) (memory 0) (realloc 6) string-encoding=utf8))
   (export (;5;) "adapter-bar" (func 4))
   (@producers
     (processed-by "wit-component" "$CARGO_PKG_VERSION")

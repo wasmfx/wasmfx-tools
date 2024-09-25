@@ -8,17 +8,17 @@ interface i1 {
 interface i2 {
   use i1.{t};
 }
-
-world into {
-  export i2;
+interface i3 {
+  use i2.{t};
 }
 
-// This world cannot be merged into `into` because it would change the meaning
-// of `into`. Previously in `into` i2's export of `i2` would refer to the
-// implicit import of `i1`, but here the export of `i2` refers to the export of
-// `i1`.
-world %from {
+world into {
   export i1;
   export i2;
 }
 
+world %from {
+  export x: interface {
+    use i3.{t};
+  }
+}

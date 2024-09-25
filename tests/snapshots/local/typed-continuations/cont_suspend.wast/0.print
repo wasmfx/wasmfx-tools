@@ -4,6 +4,9 @@
   (type (;2;) (func (param i32)))
   (type (;3;) (func (result i32)))
   (import "spectest" "print_i32" (func $print (;0;) (type 2)))
+  (tag $h (;0;) (type $ft))
+  (export "f" (func $f))
+  (export "run" (func 2))
   (func $f (;1;) (type $ft)
     suspend $h
     i32.const 2
@@ -24,7 +27,4 @@
     i32.const 42
     return
   )
-  (tag $h (;0;) (type $ft))
-  (export "f" (func $f))
-  (export "run" (func 2))
 )

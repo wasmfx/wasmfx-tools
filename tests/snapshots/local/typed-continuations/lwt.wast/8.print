@@ -10,6 +10,8 @@
   (import "scheduler" "ytk" (func $scheduler-ytk (;4;) (type 2)))
   (import "spectest" "print_i32" (func $log (;5;) (type 3)))
   (import "example" "main" (func $main (;6;) (type $func)))
+  (export "run" (func 7))
+  (elem (;0;) declare func $main)
   (func (;7;) (type $func)
     i32.const -1
     call $log
@@ -39,6 +41,4 @@
     i32.const -6
     call $log
   )
-  (export "run" (func 7))
-  (elem (;0;) declare func $main)
 )

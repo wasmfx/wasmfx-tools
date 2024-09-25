@@ -8,6 +8,9 @@
   (type $k4 (;6;) (cont $f4))
   (type $k6 (;7;) (cont $f6))
   (type (;8;) (func (result i32 i32 i32 i32 i32 i32)))
+  (tag $e (;0;) (type 8) (result i32 i32 i32 i32 i32 i32))
+  (export "run" (func 1))
+  (elem (;0;) declare func $f)
   (func $f (;0;) (type $f0) (result i32 i32 i32 i32 i32 i32 i32)
     i32.const 0
     suspend $e
@@ -36,7 +39,4 @@
     local.get $k2
     resume $k2
   )
-  (tag $e (;0;) (type 8) (result i32 i32 i32 i32 i32 i32))
-  (export "run" (func 1))
-  (elem (;0;) declare func $f)
 )

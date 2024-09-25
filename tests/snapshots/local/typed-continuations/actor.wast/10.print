@@ -7,6 +7,8 @@
   (import "spectest" "print_i32" (func $log (;0;) (type $i-func)))
   (import "scheduler" "run" (func $act (;1;) (type 4)))
   (import "chain" "chain" (func $chain (;2;) (type $i-func)))
+  (export "run-chain" (func $run-chain))
+  (elem (;0;) declare func $chain)
   (func $run-chain (;3;) (type $i-func) (param $n i32)
     local.get $n
     ref.func $chain
@@ -14,6 +16,4 @@
     cont.bind $i-cont $cont
     call $act
   )
-  (export "run-chain" (func $run-chain))
-  (elem (;0;) declare func $chain)
 )

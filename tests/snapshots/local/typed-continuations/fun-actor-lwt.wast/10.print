@@ -3,6 +3,16 @@
   (type (;1;) (func (param i32) (result i32)))
   (type (;2;) (func (result i32)))
   (type (;3;) (func (param i32 i32)))
+  (memory (;0;) 1)
+  (tag $too-many-mailboxes (;0;) (type 0))
+  (tag $too-many-messages (;1;) (type 0))
+  (global $msize (;0;) (mut i32) i32.const 0)
+  (global $mmax (;1;) i32 i32.const 1024)
+  (export "init" (func $init))
+  (export "empty-mb" (func $empty-mb))
+  (export "new-mb" (func $new-mb))
+  (export "send-to-mb" (func $send-to-mb))
+  (export "recv-from-mb" (func $recv-from-mb))
   (func $init (;0;) (type 0)
     i32.const 0
     i32.const -1
@@ -69,14 +79,4 @@
     i32.store
     local.get $v
   )
-  (memory (;0;) 1)
-  (tag $too-many-mailboxes (;0;) (type 0))
-  (tag $too-many-messages (;1;) (type 0))
-  (global $msize (;0;) (mut i32) i32.const 0)
-  (global $mmax (;1;) i32 i32.const 1024)
-  (export "init" (func $init))
-  (export "empty-mb" (func $empty-mb))
-  (export "new-mb" (func $new-mb))
-  (export "send-to-mb" (func $send-to-mb))
-  (export "recv-from-mb" (func $recv-from-mb))
 )

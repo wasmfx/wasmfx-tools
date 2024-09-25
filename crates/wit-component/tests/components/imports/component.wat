@@ -49,12 +49,12 @@
     (import "baz" "baz1" (func (;5;) (type 3)))
     (import "baz" "baz2" (func (;6;) (type 0)))
     (import "baz" "baz3" (func (;7;) (type 1)))
-    (func (;8;) (type 4) (param i32 i32 i32 i32) (result i32)
-      unreachable
-    )
     (memory (;0;) 1)
     (export "memory" (memory 0))
     (export "cabi_realloc" (func 8))
+    (func (;8;) (type 4) (param i32 i32 i32 i32) (result i32)
+      unreachable
+    )
     (@producers
       (processed-by "wit-component" "$CARGO_PKG_VERSION")
       (processed-by "my-fake-bindgen" "123.45")
@@ -62,6 +62,10 @@
   )
   (core module (;1;)
     (type (;0;) (func (param i32 i32)))
+    (table (;0;) 2 2 funcref)
+    (export "0" (func $indirect-bar-bar1))
+    (export "1" (func $indirect-baz-baz1))
+    (export "$imports" (table 0))
     (func $indirect-bar-bar1 (;0;) (type 0) (param i32 i32)
       local.get 0
       local.get 1
@@ -74,10 +78,6 @@
       i32.const 1
       call_indirect (type 0)
     )
-    (table (;0;) 2 2 funcref)
-    (export "0" (func $indirect-bar-bar1))
-    (export "1" (func $indirect-baz-baz1))
-    (export "$imports" (table 0))
     (@producers
       (processed-by "wit-component" "$CARGO_PKG_VERSION")
     )
@@ -128,9 +128,9 @@
     )
   )
   (alias core export 4 "memory" (core memory (;0;)))
-  (alias core export 4 "cabi_realloc" (core func (;8;)))
   (alias core export 0 "$imports" (core table (;0;)))
   (alias export 0 "bar1" (func (;6;)))
+  (alias core export 4 "cabi_realloc" (core func (;8;)))
   (core func (;9;) (canon lower (func 6) (memory 0) string-encoding=utf8))
   (alias export 1 "baz1" (func (;7;)))
   (core func (;10;) (canon lower (func 7) (memory 0) string-encoding=utf8))

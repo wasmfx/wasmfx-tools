@@ -9,6 +9,8 @@
   (import "example" "thread1" (func $thread1 (;3;) (type $func)))
   (import "example" "thread2" (func $thread2 (;4;) (type $func)))
   (import "example" "thread3" (func $thread3 (;5;) (type $func)))
+  (export "run" (func 6))
+  (elem (;0;) declare func $thread1 $thread2 $thread3)
   (func (;6;) (type $func)
     ref.func $thread1
     cont.new $cont
@@ -25,6 +27,4 @@
     i32.const -2
     call $log
   )
-  (export "run" (func 6))
-  (elem (;0;) declare func $thread1 $thread2 $thread3)
 )

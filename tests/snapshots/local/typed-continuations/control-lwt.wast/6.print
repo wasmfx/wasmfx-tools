@@ -19,6 +19,12 @@
   (import "queue" "enqueue" (func $enqueue (;3;) (type $cont-func)))
   (import "control" "control" (tag $control (;0;) (type 11) (param (ref $cont-cont))))
   (import "control" "prompt" (func $prompt (;4;) (type 12)))
+  (export "sync" (func $sync))
+  (export "kt" (func $kt))
+  (export "tk" (func $tk))
+  (export "ykt" (func $ykt))
+  (export "ytk" (func $ytk))
+  (elem (;0;) declare func $handle-yield-sync $handle-yield $handle-fork-sync $handle-fork-kt $handle-fork-tk $handle-fork-ykt $handle-fork-ytk $yield $fork-sync $fork-kt $fork-tk $fork-ykt $fork-ytk)
   (func $scheduler (;5;) (type 12) (param $nextk (ref null $cont))
     loop $loop
       local.get $nextk
@@ -157,10 +163,4 @@
     cont.bind $func-cont-func-cont $cont
     call $scheduler
   )
-  (export "sync" (func $sync))
-  (export "kt" (func $kt))
-  (export "tk" (func $tk))
-  (export "ykt" (func $ykt))
-  (export "ytk" (func $ytk))
-  (elem (;0;) declare func $handle-yield-sync $handle-yield $handle-fork-sync $handle-fork-kt $handle-fork-tk $handle-fork-ykt $handle-fork-ytk $yield $fork-sync $fork-kt $fork-tk $fork-ykt $fork-ytk)
 )

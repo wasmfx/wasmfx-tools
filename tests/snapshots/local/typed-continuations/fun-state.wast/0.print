@@ -7,6 +7,10 @@
   (type (;5;) (func (param (ref $gk) i32) (result i32)))
   (type (;6;) (func (result i32 (ref $sk))))
   (type (;7;) (func (param i32 (ref $sk)) (result i32)))
+  (tag $get (;0;) (type $sf) (result i32))
+  (tag $set (;1;) (type 4) (param i32))
+  (export "run" (func 3))
+  (elem (;0;) declare func $f)
   (func $getting (;0;) (type 5) (param $k (ref $gk)) (param $s i32) (result i32)
     block $on_get (result (ref $gk))
       block $on_set (type 6) (result i32 (ref $sk))
@@ -51,8 +55,4 @@
     cont.new $sk
     call $setting
   )
-  (tag $get (;0;) (type $sf) (result i32))
-  (tag $set (;1;) (type 4) (param i32))
-  (export "run" (func 3))
-  (elem (;0;) declare func $f)
 )
