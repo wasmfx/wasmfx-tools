@@ -11,6 +11,11 @@
   (import "queue" "queue-empty" (func $queue-empty (;0;) (type 3)))
   (import "queue" "dequeue" (func $dequeue (;1;) (type 4)))
   (import "queue" "enqueue" (func $enqueue (;2;) (type 5)))
+  (export "sync" (func $sync))
+  (export "kt" (func $kt))
+  (export "tk" (func $tk))
+  (export "ykt" (func $ykt))
+  (export "ytk" (func $ytk))
   (func $sync (;3;) (type 5) (param $nextk (ref null $cont))
     loop $l
       local.get $nextk
@@ -140,9 +145,4 @@
       br $l
     end
   )
-  (export "sync" (func $sync))
-  (export "kt" (func $kt))
-  (export "tk" (func $tk))
-  (export "ykt" (func $ykt))
-  (export "ytk" (func $ytk))
 )

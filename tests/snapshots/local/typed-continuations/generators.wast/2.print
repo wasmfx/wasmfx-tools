@@ -7,6 +7,11 @@
   (type (;5;) (func (param i32 (ref $cont)) (result i32)))
   (import "generator" "yield" (tag $yield (;0;) (type 2) (param i32)))
   (import "spectest" "print_i32" (func $log (;0;) (type 2)))
+  (export "naturals" (func $naturals))
+  (export "one-two-three" (func $one-two-three))
+  (export "fibonacci" (func $fibonacci))
+  (export "print-first" (func $print-first))
+  (export "sum-first" (func $sum-first))
   (func $naturals (;1;) (type $func)
     (local $n i32)
     loop $l
@@ -89,9 +94,4 @@
     end
     unreachable
   )
-  (export "naturals" (func $naturals))
-  (export "one-two-three" (func $one-two-three))
-  (export "fibonacci" (func $fibonacci))
-  (export "print-first" (func $print-first))
-  (export "sum-first" (func $sum-first))
 )

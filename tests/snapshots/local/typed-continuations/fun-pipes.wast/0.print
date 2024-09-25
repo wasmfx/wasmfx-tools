@@ -8,6 +8,11 @@
   (type (;6;) (func (param (ref $consumer) (ref $producer))))
   (type (;7;) (func (result i32 (ref $producer))))
   (type (;8;) (func (param (ref $producer) (ref $consumer))))
+  (tag $send (;0;) (type 4) (param i32))
+  (tag $receive (;1;) (type $pfun) (result i32))
+  (export "send" (tag 0))
+  (export "receive" (tag 1))
+  (export "pipe" (func $pipe))
   (func $piper (;0;) (type 5) (param $n i32) (param $p (ref $producer)) (param $c (ref $consumer))
     block $on-receive (result (ref $consumer))
       local.get $n
@@ -40,9 +45,4 @@
     local.get $c
     call $piper
   )
-  (tag $send (;0;) (type 4) (param i32))
-  (tag $receive (;1;) (type $pfun) (result i32))
-  (export "send" (tag 0))
-  (export "receive" (tag 1))
-  (export "pipe" (func $pipe))
 )

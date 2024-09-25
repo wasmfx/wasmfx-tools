@@ -28,6 +28,8 @@
   (import "actor" "spawn" (tag $spawn (;3;) (type 11) (param (ref $cont)) (result i32)))
   (import "actor" "send" (tag $send (;4;) (type 9) (param i32 i32)))
   (import "actor" "recv" (tag $recv (;5;) (type 8) (result i32)))
+  (export "act" (func $act))
+  (elem (;0;) declare func $actk)
   (func $actk (;9;) (type $ic-func) (param $mine i32) (param $nextk (ref $cont))
     (local $ik (ref $i-cont)) (local $k (ref $cont)) (local $you (ref $cont)) (local $yours i32)
     loop $l
@@ -91,6 +93,4 @@
     local.get $k
     call $actk
   )
-  (export "act" (func $act))
-  (elem (;0;) declare func $actk)
 )

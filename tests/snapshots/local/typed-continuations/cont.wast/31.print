@@ -5,6 +5,15 @@
   (type (;3;) (func (result i32)))
   (type (;4;) (func (result (ref null $cont))))
   (type (;5;) (func (result (ref $cont) (ref $cont))))
+  (table $queue (;0;) 0 (ref null $cont))
+  (tag $yield (;0;) (type $proc))
+  (tag $spawn (;1;) (type 2) (param (ref $cont)))
+  (global $qdelta (;0;) i32 i32.const 10)
+  (global $qback (;1;) (mut i32) i32.const 0)
+  (global $qfront (;2;) (mut i32) i32.const 0)
+  (export "yield" (tag 0))
+  (export "spawn" (tag 1))
+  (export "scheduler" (func $scheduler))
   (func $queue-empty (;0;) (type 3) (result i32)
     global.get $qfront
     global.get $qback
@@ -86,13 +95,4 @@
       br $l
     end
   )
-  (table $queue (;0;) 0 (ref null $cont))
-  (tag $yield (;0;) (type $proc))
-  (tag $spawn (;1;) (type 2) (param (ref $cont)))
-  (global $qdelta (;0;) i32 i32.const 10)
-  (global $qback (;1;) (mut i32) i32.const 0)
-  (global $qfront (;2;) (mut i32) i32.const 0)
-  (export "yield" (tag 0))
-  (export "spawn" (tag 1))
-  (export "scheduler" (func $scheduler))
 )

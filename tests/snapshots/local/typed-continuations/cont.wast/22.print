@@ -4,6 +4,10 @@
   (type (;2;) (func (result i32)))
   (type (;3;) (func (param i32 (ref $k)) (result i32)))
   (type (;4;) (func (result i32 (ref $k))))
+  (tag $get (;0;) (type 2) (result i32))
+  (tag $set (;1;) (type $f) (param i32) (result i32))
+  (export "run" (func 2))
+  (elem (;0;) declare func $f)
   (func $runner (;0;) (type 3) (param $s i32) (param $k (ref $k)) (result i32)
     loop $loop
       block $on_get (result (ref $k))
@@ -41,8 +45,4 @@
     cont.new $k
     call $runner
   )
-  (tag $get (;0;) (type 2) (result i32))
-  (tag $set (;1;) (type $f) (param i32) (result i32))
-  (export "run" (func 2))
-  (elem (;0;) declare func $f)
 )

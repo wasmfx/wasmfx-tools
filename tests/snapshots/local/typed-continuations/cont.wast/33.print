@@ -9,6 +9,10 @@
   (import "scheduler" "spawn" (tag $spawn (;1;) (type 4) (param (ref $cont))))
   (import "scheduler" "scheduler" (func $scheduler (;0;) (type 4)))
   (import "spectest" "print_i32" (func $log (;1;) (type $pproc)))
+  (global $width (;0;) (mut i32) i32.const 0)
+  (global $depth (;1;) (mut i32) i32.const 0)
+  (export "run" (func 6))
+  (elem (;0;) declare func $main $thread1 $thread2 $thread3)
   (func $main (;2;) (type $proc)
     i32.const 0
     call $log
@@ -104,8 +108,4 @@
     i32.const -2
     call $log
   )
-  (global $width (;0;) (mut i32) i32.const 0)
-  (global $depth (;1;) (mut i32) i32.const 0)
-  (export "run" (func 6))
-  (elem (;0;) declare func $main $thread1 $thread2 $thread3)
 )

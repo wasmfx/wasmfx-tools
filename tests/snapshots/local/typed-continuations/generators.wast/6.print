@@ -15,6 +15,8 @@
   (import "examples" "sum-first" (func $sum-first (;5;) (type 4)))
   (import "manager" "init" (func $init (;6;) (type 5)))
   (import "manager" "next" (func $next (;7;) (type 6)))
+  (export "main" (func $main))
+  (elem (;0;) declare func $naturals $fibonacci $one-two-three)
   (func $print-with-next (;8;) (type 7) (param $n i32) (param $gen i32)
     loop $l
       local.get $n
@@ -88,6 +90,4 @@
     call $sum-first
     call $log
   )
-  (export "main" (func $main))
-  (elem (;0;) declare func $naturals $fibonacci $one-two-three)
 )

@@ -18,7 +18,7 @@ use crate::{
         },
         OperatorAndByteOffset,
     },
-    WasmMutate,
+    Error, WasmMutate,
 };
 
 /// This mutator selects a random `loop` construction in a function and tries to unroll it.
@@ -70,13 +70,10 @@ impl LoopUnrollWriter {
                 newfunc.instruction(&Instruction::Block(map_block_type(*ty)?));
                 for (idx, (op, _)) in chunk.iter().enumerate() {
                     match op {
-                        Operator::Block { .. } => {
-                            current_depth += 1;
-                        }
-                        Operator::Loop { .. } => {
-                            current_depth += 1;
-                        }
-                        Operator::If { .. } => {
+                        Operator::Block { .. }
+                        | Operator::Loop { .. }
+                        | Operator::If { .. }
+                        | Operator::TryTable { .. } => {
                             current_depth += 1;
                         }
                         Operator::End { .. } => {
@@ -112,6 +109,14 @@ impl LoopUnrollWriter {
                             }
 
                             to_fix.insert(idx, Instruction::BrTable(jmpfix.into(), def));
+                        }
+
+                        Operator::BrOnCast { .. }
+                        | Operator::BrOnCastFail { .. }
+                        | Operator::BrOnNull { .. }
+                        | Operator::BrOnNonNull { .. } => {
+                            log::info!("unsupported operator {op:?}");
+                            return Err(Error::no_mutations_applicable());
                         }
                         _ => {}
                     }

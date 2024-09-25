@@ -6,11 +6,11 @@
   (import "scheduler" "run" (func $scheduler (;0;) (type 2)))
   (import "spectest" "print_i32" (func $log (;1;) (type 3)))
   (import "example" "run" (func $run-example (;2;) (type $func)))
+  (export "run" (func 3))
+  (elem (;0;) declare func $run-example)
   (func (;3;) (type $func)
     ref.func $run-example
     cont.new $cont
     call $scheduler
   )
-  (export "run" (func 3))
-  (elem (;0;) declare func $run-example)
 )

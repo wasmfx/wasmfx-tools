@@ -25,6 +25,8 @@
   (import "actor" "spawn" (tag $spawn (;3;) (type 10) (param (ref $cont)) (result i32)))
   (import "actor" "send" (tag $send (;4;) (type 9) (param i32 i32)))
   (import "actor" "recv" (tag $recv (;5;) (type 8) (result i32)))
+  (export "act" (func $act))
+  (elem (;0;) declare func $act-nullary $act-res)
   (func $act-res (;6;) (type 11) (param $mine i32) (param $res i32) (param $ik (ref $i-cont))
     (local $yours i32) (local $k (ref $cont)) (local $you (ref $cont))
     block $on_self (result (ref $i-cont))
@@ -140,6 +142,4 @@
     local.get $k
     call $act-nullary
   )
-  (export "act" (func $act))
-  (elem (;0;) declare func $act-nullary $act-res)
 )

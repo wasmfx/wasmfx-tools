@@ -6,6 +6,8 @@
   (type (;4;) (func (param (ref $cont))))
   (import "actor-scheduler" "run-actor" (func $run-actor (;0;) (type 4)))
   (import "chain" "chain" (func $chain (;1;) (type $i-func)))
+  (export "run-chain" (func $run-chain))
+  (elem (;0;) declare func $chain)
   (func $run-chain (;2;) (type $i-func) (param $n i32)
     local.get $n
     ref.func $chain
@@ -13,6 +15,4 @@
     cont.bind $i-cont $cont
     call $run-actor
   )
-  (export "run-chain" (func $run-chain))
-  (elem (;0;) declare func $chain)
 )

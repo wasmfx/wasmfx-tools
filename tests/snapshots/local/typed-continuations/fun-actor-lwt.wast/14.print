@@ -6,6 +6,8 @@
   (type $f-func (;4;) (func (param (ref $func))))
   (import "actor-as-lwt" "act" (func $act (;0;) (type $cont-func)))
   (import "scheduler" "run" (func $scheduler (;1;) (type $cont-func)))
+  (export "run-actor" (func $run-actor))
+  (elem (;0;) declare func $act $scheduler)
   (func $run-actor (;2;) (type $cont-func) (param $k (ref $cont))
     local.get $k
     ref.func $act
@@ -13,6 +15,4 @@
     cont.bind $cont-cont $cont
     call $scheduler
   )
-  (export "run-actor" (func $run-actor))
-  (elem (;0;) declare func $act $scheduler)
 )

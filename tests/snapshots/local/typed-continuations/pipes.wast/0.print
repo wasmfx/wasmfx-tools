@@ -6,6 +6,11 @@
   (type (;4;) (func (param i32)))
   (type (;5;) (func (param (ref $producer) (ref $consumer))))
   (type (;6;) (func (result i32 (ref $producer))))
+  (tag $send (;0;) (type 4) (param i32))
+  (tag $receive (;1;) (type $pfun) (result i32))
+  (export "send" (tag 0))
+  (export "receive" (tag 1))
+  (export "pipe" (func $piper))
   (func $piper (;0;) (type 5) (param $p (ref $producer)) (param $c (ref $consumer))
     (local $n i32) (local $consuming i32)
     i32.const -1
@@ -38,9 +43,4 @@
       br $l
     end
   )
-  (tag $send (;0;) (type 4) (param i32))
-  (tag $receive (;1;) (type $pfun) (result i32))
-  (export "send" (tag 0))
-  (export "receive" (tag 1))
-  (export "pipe" (func $piper))
 )

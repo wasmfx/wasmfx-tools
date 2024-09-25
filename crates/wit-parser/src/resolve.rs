@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+use std::collections::hash_map;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -5,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use id_arena::{Arena, Id};
 use indexmap::{IndexMap, IndexSet};
+use semver::Version;
 #[cfg(feature = "serde")]
 use serde_derive::Serialize;
 
@@ -18,6 +21,8 @@ use crate::{
     TypeIdVisitor, TypeOwner, UnresolvedPackage, UnresolvedPackageGroup, World, WorldId, WorldItem,
     WorldKey, WorldSpan,
 };
+
+mod clone;
 
 /// Representation of a fully resolved set of WIT packages.
 ///
@@ -689,13 +694,15 @@ package {name} is defined in two different locations:\n\
         // ids within `self`.
         for id in moved_worlds {
             let id = remap.map_world(id, None)?;
-            let pkg = self.worlds[id].package.as_mut().unwrap();
-            *pkg = remap.packages[pkg.index()];
+            if let Some(pkg) = self.worlds[id].package.as_mut() {
+                *pkg = remap.packages[pkg.index()];
+            }
         }
         for id in moved_interfaces {
             let id = remap.map_interface(id, None)?;
-            let pkg = self.interfaces[id].package.as_mut().unwrap();
-            *pkg = remap.packages[pkg.index()];
+            if let Some(pkg) = self.interfaces[id].package.as_mut() {
+                *pkg = remap.packages[pkg.index()];
+            }
         }
         for id in moved_types {
             let id = remap.map_type(id, None)?;
@@ -747,6 +754,8 @@ package {name} is defined in two different locations:\n\
         let from_world = &self.worlds[from];
         let into_world = &self.worlds[into];
 
+        log::trace!("merging {} into {}", from_world.name, into_world.name);
+
         // First walk over all the imports of `from` world and figure out what
         // to do with them.
         //
@@ -755,47 +764,93 @@ package {name} is defined in two different locations:\n\
         // same. Otherwise queue up a new import since if `from` has more
         // imports than `into` then it's fine to add new imports.
         for (name, from_import) in from_world.imports.iter() {
+            let name_str = self.name_world_key(name);
             match into_world.imports.get(name) {
                 Some(into_import) => {
-                    let name = self.name_world_key(name);
+                    log::trace!("info/from shared import on `{name_str}`");
                     self.merge_world_item(from_import, into_import)
-                        .with_context(|| format!("failed to merge world import {name}"))?;
+                        .with_context(|| format!("failed to merge world import {name_str}"))?;
                 }
                 None => {
+                    log::trace!("new import: `{name_str}`");
                     new_imports.push((name.clone(), from_import.clone()));
                 }
+            }
+        }
+
+        // Build a set of interfaces which are required to be imported because
+        // of `into`'s exports. This set is then used below during
+        // `ensure_can_add_world_export`.
+        //
+        // This is the set of interfaces which exports depend on that are
+        // themselves not exports.
+        let mut must_be_imported = HashMap::new();
+        for (key, export) in into_world.exports.iter() {
+            for dep in self.world_item_direct_deps(export) {
+                if into_world.exports.contains_key(&WorldKey::Interface(dep)) {
+                    continue;
+                }
+                self.foreach_interface_dep(dep, &mut |id| {
+                    must_be_imported.insert(id, key.clone());
+                });
             }
         }
 
         // Next walk over exports of `from` and process these similarly to
         // imports.
         for (name, from_export) in from_world.exports.iter() {
+            let name_str = self.name_world_key(name);
             match into_world.exports.get(name) {
                 Some(into_export) => {
-                    let name = self.name_world_key(name);
+                    log::trace!("info/from shared export on `{name_str}`");
                     self.merge_world_item(from_export, into_export)
-                        .with_context(|| format!("failed to merge world export {name}"))?;
+                        .with_context(|| format!("failed to merge world export {name_str}"))?;
                 }
                 None => {
+                    log::trace!("new export `{name_str}`");
                     // See comments in `ensure_can_add_world_export` for why
                     // this is slightly different than imports.
-                    self.ensure_can_add_world_export(into_world, name, from_export)
-                        .with_context(|| {
-                            format!("failed to add export `{}`", self.name_world_key(name))
-                        })?;
+                    self.ensure_can_add_world_export(
+                        into_world,
+                        name,
+                        from_export,
+                        &must_be_imported,
+                    )
+                    .with_context(|| {
+                        format!("failed to add export `{}`", self.name_world_key(name))
+                    })?;
                     new_exports.push((name.clone(), from_export.clone()));
                 }
             }
         }
 
+        // For all the new imports and exports they may need to be "cloned" to
+        // be able to belong to the new world. For example:
+        //
+        // * Anonymous interfaces have a `package` field which points to the
+        //   package of the containing world, but `from` and `into` may not be
+        //   in the same package.
+        //
+        // * Type imports have an `owner` field that point to `from`, but they
+        //   now need to point to `into` instead.
+        //
+        // Cloning is no trivial task, however, so cloning is delegated to a
+        // submodule to perform a "deep" clone and copy items into new arena
+        // entries as necessary.
+        let mut cloner = clone::Cloner::new(self, TypeOwner::World(from), TypeOwner::World(into));
+        cloner.register_world_type_overlap(from, into);
+        for (name, item) in new_imports.iter_mut().chain(&mut new_exports) {
+            cloner.world_item(name, item);
+        }
+
         // Insert any new imports and new exports found first.
-        let into = &mut self.worlds[into];
+        let into_world = &mut self.worlds[into];
         for (name, import) in new_imports {
-            let prev = into.imports.insert(name, import);
+            let prev = into_world.imports.insert(name, import);
             assert!(prev.is_none());
         }
         for (name, export) in new_exports {
-            let prev = into.exports.insert(name, export);
+            let prev = into_world.exports.insert(name, export);
             assert!(prev.is_none());
         }
 
@@ -855,72 +910,97 @@ package {name} is defined in two different locations:\n\
     /// This method ensures that the world export of `name` and `item` can be
     /// added to the world `into` without changing the meaning of `into`.
     ///
-    /// This is somewhat tricky due to how exports/imports are elaborated today
-    /// but the basic idea is that the transitive dependencies of an `export`
-    /// will be implicitly `import`ed if they're not otherwise listed as
-    /// exports. That means that if a transitive dependency of a preexisting
-    /// export is added as a new export it might change the meaning of an
-    /// existing import if it was otherwise already hooked up to an import.
+    /// All dependencies of world exports must either be:
     ///
-    /// This method rules out this situation.
+    /// * An export themselves
+    /// * An import with all transitive dependencies of the import also imported
+    ///
+    /// It's not possible to depend on an import which then also depends on an
+    /// export at some point, for example. This method ensures that if `name`
+    /// and `item` are added that this property is upheld.
     fn ensure_can_add_world_export(
         &self,
         into: &World,
         name: &WorldKey,
         item: &WorldItem,
+        must_be_imported: &HashMap<InterfaceId, WorldKey>,
     ) -> Result<()> {
         assert!(!into.exports.contains_key(name));
-        let interface = match name {
-            // Top-level exports always depend on imports, so these are always
-            // allowed to be added.
-            WorldKey::Name(_) => return Ok(()),
+        let name = self.name_world_key(name);
 
-            // This is the case we're worried about. Here if the key is an
-            // interface then the item must also be an interface.
-            WorldKey::Interface(key) => {
-                match item {
-                    WorldItem::Interface { id, .. } => assert_eq!(id, key),
-                    _ => unreachable!(),
-                }
-                *key
+        // First make sure that all of this item's dependencies are either
+        // exported or the entire chain of imports rooted at that dependency are
+        // all imported.
+        for dep in self.world_item_direct_deps(item) {
+            if into.exports.contains_key(&WorldKey::Interface(dep)) {
+                continue;
             }
-        };
+            self.ensure_not_exported(into, dep)
+                .with_context(|| format!("failed validating export of `{name}`"))?;
+        }
 
-        // For `interface` to be added as a new export of `into` then it must be
-        // the case that no previous export of `into` depends on `interface`.
-        // Test that by walking all interface exports and seeing if any types
-        // refer to this interface.
-        for (export_name, export) in into.exports.iter() {
-            let export_interface = match export_name {
-                WorldKey::Name(_) => continue,
-                WorldKey::Interface(key) => {
-                    match export {
-                        WorldItem::Interface { id, .. } => assert_eq!(id, key),
-                        _ => unreachable!(),
-                    }
-                    *key
-                }
-            };
-            assert!(export_interface != interface);
-            let iface = &self.interfaces[export_interface];
-            for (name, ty) in iface.types.iter() {
-                let other_ty = match self.types[*ty].kind {
-                    TypeDefKind::Type(Type::Id(ty)) => ty,
-                    _ => continue,
-                };
-                if self.types[other_ty].owner != TypeOwner::Interface(interface) {
-                    continue;
-                }
-
-                let export_name = self.name_world_key(export_name);
+        // Second make sure that this item, if it's an interface, will not alter
+        // the meaning of the preexisting world by ensuring that it's not in the
+        // set of "must be imported" items.
+        if let WorldItem::Interface { id, .. } = item {
+            if let Some(export) = must_be_imported.get(&id) {
+                let export_name = self.name_world_key(export);
                 bail!(
-                    "export `{export_name}` has a type `{name}` which could \
-                     change meaning if this world export were added"
-                )
+                    "export `{export_name}` depends on `{name}` \
+                     previously as an import which will change meaning \
+                     if `{name}` is added as an export"
+                );
             }
         }
 
         Ok(())
+    }
+
+    fn ensure_not_exported(&self, world: &World, id: InterfaceId) -> Result<()> {
+        let key = WorldKey::Interface(id);
+        let name = self.name_world_key(&key);
+        if world.exports.contains_key(&key) {
+            bail!(
+                "world exports `{name}` but it's also transitively used by an \
+                     import \
+                   which means that this is not valid"
+            )
+        }
+        for dep in self.interface_direct_deps(id) {
+            self.ensure_not_exported(world, dep)
+                .with_context(|| format!("failed validating transitive import dep `{name}`"))?;
+        }
+        Ok(())
+    }
+
+    /// Returns an iterator of all the direct interface dependencies of this
+    /// `item`.
+    ///
+    /// Note that this doesn't include transitive dependencies, that must be
+    /// followed manually.
+    fn world_item_direct_deps(&self, item: &WorldItem) -> impl Iterator<Item = InterfaceId> + '_ {
+        let mut interface = None;
+        let mut ty = None;
+        match item {
+            WorldItem::Function(_) => {}
+            WorldItem::Type(id) => ty = Some(*id),
+            WorldItem::Interface { id, .. } => interface = Some(*id),
+        }
+
+        interface
+            .into_iter()
+            .flat_map(move |id| self.interface_direct_deps(id))
+            .chain(ty.and_then(|t| self.type_interface_dep(t)))
+    }
+
+    /// Invokes `f` with `id` and all transitive interface dependencies of `id`.
+    ///
+    /// Note that `f` may be called with the same id multiple times.
+    fn foreach_interface_dep(&self, id: InterfaceId, f: &mut dyn FnMut(InterfaceId)) {
+        f(id);
+        for dep in self.interface_direct_deps(id) {
+            self.foreach_interface_dep(dep, f);
+        }
     }
 
     /// Returns the ID of the specified `interface`.
@@ -946,24 +1026,7 @@ package {name} is defined in two different locations:\n\
     /// bindings in a context that is importing the original world. This
     /// is intended to be used as part of language tooling when depending on
     /// other components.
-    pub fn importize(&mut self, world_id: WorldId) -> Result<()> {
-        // Collect the set of interfaces which are depended on by exports. Also
-        // all imported types are assumed to stay so collect any interfaces
-        // they depend on.
-        let mut live_through_exports = IndexSet::default();
-        for (_, export) in self.worlds[world_id].exports.iter() {
-            if let WorldItem::Interface { id, .. } = export {
-                self.collect_interface_deps(*id, &mut live_through_exports);
-            }
-        }
-        for (_, import) in self.worlds[world_id].imports.iter() {
-            if let WorldItem::Type(ty) = import {
-                if let Some(dep) = self.type_interface_dep(*ty) {
-                    self.collect_interface_deps(dep, &mut live_through_exports);
-                }
-            }
-        }
-
+    pub fn importize(&mut self, world_id: WorldId, out_world_name: Option<String>) -> Result<()> {
         // Rename the world to avoid having it get confused with the original
         // name of the world. Add `-importized` to it for now. Precisely how
         // this new world is created may want to be updated over time if this
@@ -971,59 +1034,44 @@ package {name} is defined in two different locations:\n\
         let world = &mut self.worlds[world_id];
         let pkg = &mut self.packages[world.package.unwrap()];
         pkg.worlds.shift_remove(&world.name);
-        world.name.push_str("-importized");
-        pkg.worlds.insert(world.name.clone(), world_id);
+        if let Some(name) = out_world_name {
+            world.name = name.clone();
+            pkg.worlds.insert(name, world_id);
+        } else {
+            world.name.push_str("-importized");
+            pkg.worlds.insert(world.name.clone(), world_id);
+        }
 
-        // Trim all unnecessary imports first.
-        world.imports.retain(|name, item| match (name, item) {
-            // Remove imports which can't be used by import such as:
-            //
-            // * `import foo: interface { .. }`
-            // * `import foo: func();`
-            (WorldKey::Name(_), WorldItem::Interface { .. } | WorldItem::Function(_)) => false,
-
-            // Coarsely say that all top-level types are required to avoid
-            // calculating precise liveness of them right now.
-            (WorldKey::Name(_), WorldItem::Type(_)) => true,
-
-            // Only retain interfaces if they're needed somehow transitively
-            // for the exports.
-            (WorldKey::Interface(id), _) => live_through_exports.contains(id),
+        // Trim all non-type definitions from imports. Types can be used by
+        // exported functions, for example, so they're preserved.
+        world.imports.retain(|_, item| match item {
+            WorldItem::Type(_) => true,
+            _ => false,
         });
 
-        // After all unnecessary imports are gone remove all exports and move
-        // them all to imports, failing if there's an overlap.
         for (name, export) in mem::take(&mut world.exports) {
             match (name.clone(), world.imports.insert(name, export)) {
                 // no previous item? this insertion was ok
                 (_, None) => {}
 
                 // cannot overwrite an import with an export
-                (WorldKey::Name(name), _) => {
+                (WorldKey::Name(name), Some(_)) => {
                     bail!("world export `{name}` conflicts with import of same name");
                 }
 
-                // interface overlap is ok and is always allowed.
-                (WorldKey::Interface(id), Some(WorldItem::Interface { id: other, .. })) => {
-                    assert_eq!(id, other);
-                }
-
+                // Exports already don't overlap each other and the only imports
+                // preserved above were types so this shouldn't be reachable.
                 (WorldKey::Interface(_), _) => unreachable!(),
             }
         }
 
+        // Fill out any missing transitive interface imports by elaborating this
+        // world which does that for us.
+        self.elaborate_world(world_id)?;
+
         #[cfg(debug_assertions)]
         self.assert_valid();
         Ok(())
-    }
-
-    fn collect_interface_deps(&self, interface: InterfaceId, deps: &mut IndexSet<InterfaceId>) {
-        if !deps.insert(interface) {
-            return;
-        }
-        for dep in self.interface_direct_deps(interface) {
-            self.collect_interface_deps(dep, deps);
-        }
     }
 
     /// Returns the ID of the specified `name` within the `pkg`.
@@ -1378,14 +1426,23 @@ package {name} is defined in two different locations:\n\
         let mut world_types = Vec::new();
         for (id, world) in self.worlds.iter() {
             log::debug!("validating world {}", &world.name);
-            assert!(self.packages.get(world.package.unwrap()).is_some());
-            assert!(package_worlds[world.package.unwrap().index()].contains(&id));
+            if let Some(package) = world.package {
+                assert!(self.packages.get(package).is_some());
+                assert!(package_worlds[package.index()].contains(&id));
+            }
+            assert!(world.includes.is_empty());
 
             let mut types = HashSet::new();
             for (name, item) in world.imports.iter().chain(world.exports.iter()) {
                 log::debug!("validating world item: {}", self.name_world_key(name));
                 match item {
-                    WorldItem::Interface { .. } => {}
+                    WorldItem::Interface { id, .. } => {
+                        // anonymous interfaces must belong to the same package
+                        // as the world's package.
+                        if matches!(name, WorldKey::Name(_)) {
+                            assert_eq!(self.interfaces[*id].package, world.package);
+                        }
+                    }
                     WorldItem::Function(f) => {
                         assert!(!matches!(name, WorldKey::Interface(_)));
                         assert_eq!(f.name, name.clone().unwrap_name());
@@ -1395,12 +1452,7 @@ package {name} is defined in two different locations:\n\
                         assert!(types.insert(*ty));
                         let ty = &self.types[*ty];
                         assert_eq!(ty.name, Some(name.clone().unwrap_name()));
-
-                        // TODO: `Resolve::merge_worlds` doesn't uphold this
-                        // invariant, and that should be fixed.
-                        if false {
-                            assert_eq!(ty.owner, TypeOwner::World(id));
-                        }
+                        assert_eq!(ty.owner, TypeOwner::World(id));
                     }
                 }
             }
@@ -1534,11 +1586,24 @@ package {name} is defined in two different locations:\n\
                 WorldItem::Interface { id, .. } => {
                     for dep in self.interface_direct_deps(*id) {
                         let dep_key = WorldKey::Interface(dep);
-                        if !world.exports.contains_key(&dep_key) {
-                            self.assert_interface_and_all_deps_imported_and_not_exported(
-                                world, key, dep,
-                            );
+                        if world.exports.contains_key(&dep_key) {
+                            continue;
                         }
+                        self.foreach_interface_dep(dep, &mut |dep| {
+                            let dep_key = WorldKey::Interface(dep);
+                            assert!(
+                                world.imports.contains_key(&dep_key),
+                                "world should import {} (required by {})",
+                                self.name_world_key(&dep_key),
+                                self.name_world_key(key),
+                            );
+                            assert!(
+                                !world.exports.contains_key(&dep_key),
+                                "world should not export {} (required by {})",
+                                self.name_world_key(&dep_key),
+                                self.name_world_key(key),
+                            );
+                        });
                     }
                 }
 
@@ -1605,30 +1670,6 @@ package {name} is defined in two different locations:\n\
         }
     }
 
-    fn assert_interface_and_all_deps_imported_and_not_exported(
-        &self,
-        world: &World,
-        key: &WorldKey,
-        id: InterfaceId,
-    ) {
-        let dep_key = WorldKey::Interface(id);
-        assert!(
-            world.imports.contains_key(&dep_key),
-            "world should import {} (required by {})",
-            self.name_world_key(&dep_key),
-            self.name_world_key(key),
-        );
-        assert!(
-            !world.exports.contains_key(&dep_key),
-            "world should not export {} (required by {})",
-            self.name_world_key(&dep_key),
-            self.name_world_key(key),
-        );
-        for dep in self.interface_direct_deps(id) {
-            self.assert_interface_and_all_deps_imported_and_not_exported(world, key, dep);
-        }
-    }
-
     fn include_stability(&self, stability: &Stability, pkg_id: &PackageId) -> Result<bool> {
         Ok(match stability {
             Stability::Unknown => true,
@@ -1660,6 +1701,477 @@ package {name} is defined in two different locations:\n\
                 self.features.contains(feature) || self.all_features
             }
         })
+    }
+
+    /// Performs the "elaboration process" necessary for the `world_id`
+    /// specified to ensure that all of its transitive imports are listed.
+    ///
+    /// This function will take the unordered lists of the specified world's
+    /// imports and exports and "elaborate" them to ensure that they're
+    /// topographically sorted where all transitively required interfaces by
+    /// imports, or exports, are listed. This will additionally validate that
+    /// the exports are all valid and present, specifically with the restriction
+    /// noted on `elaborate_world_exports`.
+    ///
+    /// The world is mutated in-place in this `Resolve`.
+    fn elaborate_world(&mut self, world_id: WorldId) -> Result<()> {
+        // First process all imports. This is easier than exports since the only
+        // requirement here is that all interfaces need to be added with a
+        // topological order between them.
+        let mut new_imports = IndexMap::new();
+        let world = &self.worlds[world_id];
+        for (name, item) in world.imports.iter() {
+            match item {
+                // Interfaces get their dependencies added first followed by the
+                // interface itself.
+                WorldItem::Interface { id, stability } => {
+                    self.elaborate_world_import(&mut new_imports, name.clone(), *id, &stability);
+                }
+
+                // Functions are added as-is since their dependence on types in
+                // the world should already be satisfied.
+                WorldItem::Function(_) => {
+                    let prev = new_imports.insert(name.clone(), item.clone());
+                    assert!(prev.is_none());
+                }
+
+                // Types may depend on an interface, in which case a (possibly)
+                // recursive addition of that interface happens here. Afterwards
+                // the type itself can be added safely.
+                WorldItem::Type(id) => {
+                    if let Some(dep) = self.type_interface_dep(*id) {
+                        self.elaborate_world_import(
+                            &mut new_imports,
+                            WorldKey::Interface(dep),
+                            dep,
+                            &self.types[*id].stability,
+                        );
+                    }
+                    let prev = new_imports.insert(name.clone(), item.clone());
+                    assert!(prev.is_none());
+                }
+            }
+        }
+
+        // Exports are trickier than imports, notably to uphold the invariant
+        // required by `elaborate_world_exports`. To do this the exports are
+        // partitioned into interfaces/functions. All functions are added to
+        // the new exports list during this loop but interfaces are all deferred
+        // to be handled in the `elaborate_world_exports` function.
+        let mut new_exports = IndexMap::new();
+        let mut export_interfaces = IndexMap::new();
+        for (name, item) in world.exports.iter() {
+            match item {
+                WorldItem::Interface { id, stability } => {
+                    let prev = export_interfaces.insert(*id, (name.clone(), stability));
+                    assert!(prev.is_none());
+                }
+                WorldItem::Function(_) => {
+                    let prev = new_exports.insert(name.clone(), item.clone());
+                    assert!(prev.is_none());
+                }
+                WorldItem::Type(_) => unreachable!(),
+            }
+        }
+
+        self.elaborate_world_exports(&export_interfaces, &mut new_imports, &mut new_exports)?;
+
+        // And with all that done the world is updated in-place with
+        // imports/exports.
+        log::trace!("imports = {:?}", new_imports);
+        log::trace!("exports = {:?}", new_exports);
+        let world = &mut self.worlds[world_id];
+        world.imports = new_imports;
+        world.exports = new_exports;
+
+        Ok(())
+    }
+
+    fn elaborate_world_import(
+        &self,
+        imports: &mut IndexMap<WorldKey, WorldItem>,
+        key: WorldKey,
+        id: InterfaceId,
+        stability: &Stability,
+    ) {
+        if imports.contains_key(&key) {
+            return;
+        }
+        for dep in self.interface_direct_deps(id) {
+            self.elaborate_world_import(imports, WorldKey::Interface(dep), dep, stability);
+        }
+        let prev = imports.insert(
+            key,
+            WorldItem::Interface {
+                id,
+                stability: stability.clone(),
+            },
+        );
+        assert!(prev.is_none());
+    }
+
+    /// This function adds all of the interfaces in `export_interfaces` to the
+    /// list of exports of the `world` specified.
+    ///
+    /// This method is more involved than adding imports because it is fallible.
+    /// Chiefly what can happen is that the dependencies of all exports must be
+    /// satisfied by other exports or imports, but not both. For example given a
+    /// situation such as:
+    ///
+    /// ```wit
+    /// interface a {
+    ///     type t = u32
+    /// }
+    /// interface b {
+    ///     use a.{t}
+    /// }
+    /// interface c {
+    ///     use a.{t}
+    ///     use b.{t as t2}
+    /// }
+    /// ```
+    ///
+    /// where `c` depends on `b` and `a` where `b` depends on `a`, then the
+    /// purpose of this method is to reject this world:
+    ///
+    /// ```wit
+    /// world foo {
+    ///     export a
+    ///     export c
+    /// }
+    /// ```
+    ///
+    /// The reasoning here is unfortunately subtle and is additionally the
+    /// subject of WebAssembly/component-model#208. Effectively the `c`
+    /// interface depends on `b`, but it's not listed explicitly as an import,
+    /// so it's then implicitly added as an import. This then transitively
+    /// depends on `a` so it's also added as an import. At this point though `c`
+    /// also depends on `a`, and it's also exported, so naively it should depend
+    /// on the export and not implicitly add an import. This means though that
+    /// `c` has access to two copies of `a`, one imported and one exported. This
+    /// is not valid, especially in the face of resource types.
+    ///
+    /// Overall this method is tasked with rejecting the above world by walking
+    /// over all the exports and adding their dependencies. Each dependency is
+    /// recorded with whether it's required to be imported, and then if an
+    /// export is added for something that's required to be an error then the
+    /// operation fails.
+    fn elaborate_world_exports(
+        &self,
+        export_interfaces: &IndexMap<InterfaceId, (WorldKey, &Stability)>,
+        imports: &mut IndexMap<WorldKey, WorldItem>,
+        exports: &mut IndexMap<WorldKey, WorldItem>,
+    ) -> Result<()> {
+        let mut required_imports = HashSet::new();
+        for (id, (key, stability)) in export_interfaces.iter() {
+            let name = self.name_world_key(&key);
+            let ok = add_world_export(
+                self,
+                imports,
+                exports,
+                export_interfaces,
+                &mut required_imports,
+                *id,
+                key,
+                true,
+                stability,
+            );
+            if !ok {
+                bail!(
+                    // FIXME: this is not a great error message and basically no
+                    // one will know what to do when it gets printed. Improving
+                    // this error message, however, is a chunk of work that may
+                    // not be best spent doing this at this time, so I'm writing
+                    // this comment instead.
+                    //
+                    // More-or-less what should happen here is that a "path"
+                    // from this interface to the conflicting interface should
+                    // be printed. It should be explained why an import is being
+                    // injected, why that's conflicting with an export, and
+                    // ideally with a suggestion of "add this interface to the
+                    // export list to fix this error".
+                    //
+                    // That's a lot of info that's not easy to get at without
+                    // more refactoring, so it's left to a future date in the
+                    // hopes that most folks won't actually run into this for
+                    // the time being.
+                    "interface `{name}` transitively depends on an interface in \
+                     incompatible ways",
+                );
+            }
+        }
+        return Ok(());
+
+        fn add_world_export(
+            resolve: &Resolve,
+            imports: &mut IndexMap<WorldKey, WorldItem>,
+            exports: &mut IndexMap<WorldKey, WorldItem>,
+            export_interfaces: &IndexMap<InterfaceId, (WorldKey, &Stability)>,
+            required_imports: &mut HashSet<InterfaceId>,
+            id: InterfaceId,
+            key: &WorldKey,
+            add_export: bool,
+            stability: &Stability,
+        ) -> bool {
+            if exports.contains_key(key) {
+                if add_export {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            // If this is an import and it's already in the `required_imports`
+            // set then we can skip it as we've already visited this interface.
+            if !add_export && required_imports.contains(&id) {
+                return true;
+            }
+            let ok = resolve.interface_direct_deps(id).all(|dep| {
+                let key = WorldKey::Interface(dep);
+                let add_export = add_export && export_interfaces.contains_key(&dep);
+                add_world_export(
+                    resolve,
+                    imports,
+                    exports,
+                    export_interfaces,
+                    required_imports,
+                    dep,
+                    &key,
+                    add_export,
+                    stability,
+                )
+            });
+            if !ok {
+                return false;
+            }
+            let item = WorldItem::Interface {
+                id,
+                stability: stability.clone(),
+            };
+            if add_export {
+                if required_imports.contains(&id) {
+                    return false;
+                }
+                exports.insert(key.clone(), item);
+            } else {
+                required_imports.insert(id);
+                imports.insert(key.clone(), item);
+            }
+            true
+        }
+    }
+
+    /// Remove duplicate imports from a world if they import from the same
+    /// interface with semver-compatible versions.
+    ///
+    /// This will merge duplicate interfaces present at multiple versions in
+    /// both a world by selecting the larger version of the two interfaces. This
+    /// requires that the interfaces are indeed semver-compatible and it means
+    /// that some imports might be removed and replaced. Note that this is only
+    /// done within a single semver track, for example the world imports 0.2.0
+    /// and 0.2.1 then the result afterwards will be that it imports
+    /// 0.2.1. If, however, 0.3.0 where imported then the final result would
+    /// import both 0.2.0 and 0.3.0.
+    pub fn merge_world_imports_based_on_semver(&mut self, world_id: WorldId) -> Result<()> {
+        let world = &self.worlds[world_id];
+
+        // The first pass here is to build a map of "semver tracks" where they
+        // key is per-interface and the value is the maximal version found in
+        // that semver-compatible-track plus the interface which is the maximal
+        // version.
+        //
+        // At the same time a `to_remove` set is maintained to remember what
+        // interfaces are being removed from `from` and `into`. All of
+        // `to_remove` are placed with a known other version.
+        let mut semver_tracks = HashMap::new();
+        let mut to_remove = HashSet::new();
+        for (key, _) in world.imports.iter() {
+            let iface_id = match key {
+                WorldKey::Interface(id) => *id,
+                WorldKey::Name(_) => continue,
+            };
+            let (track, version) = match self.semver_track(iface_id) {
+                Some(track) => track,
+                None => continue,
+            };
+            log::debug!(
+                "{} is on track {}/{}",
+                self.id_of(iface_id).unwrap(),
+                track.0,
+                track.1,
+            );
+            match semver_tracks.entry(track.clone()) {
+                hash_map::Entry::Vacant(e) => {
+                    e.insert((version, iface_id));
+                }
+                hash_map::Entry::Occupied(mut e) => match version.cmp(&e.get().0) {
+                    Ordering::Greater => {
+                        to_remove.insert(e.get().1);
+                        e.insert((version, iface_id));
+                    }
+                    Ordering::Equal => {}
+                    Ordering::Less => {
+                        to_remove.insert(iface_id);
+                    }
+                },
+            }
+        }
+
+        // Build a map of "this interface is replaced with this interface" using
+        // the results of the loop above.
+        let mut replacements = HashMap::new();
+        for id in to_remove {
+            let (track, _) = self.semver_track(id).unwrap();
+            let (_, latest) = semver_tracks[&track];
+            let prev = replacements.insert(id, latest);
+            assert!(prev.is_none());
+        }
+
+        // Validate that `merge_world_item` succeeds for merging all removed
+        // interfaces with their replacement. This is a double-check that the
+        // semver version is actually correct and all items present in the old
+        // interface are in the new.
+        for (to_replace, replace_with) in replacements.iter() {
+            self.merge_world_item(
+                &WorldItem::Interface {
+                    id: *to_replace,
+                    stability: Default::default(),
+                },
+                &WorldItem::Interface {
+                    id: *replace_with,
+                    stability: Default::default(),
+                },
+            )
+            .with_context(|| {
+                let old_name = self.id_of(*to_replace).unwrap();
+                let new_name = self.id_of(*replace_with).unwrap();
+                format!(
+                    "failed to upgrade `{old_name}` to `{new_name}`, was \
+                     this semver-compatible update not semver compatible?"
+                )
+            })?;
+        }
+
+        for (to_replace, replace_with) in replacements.iter() {
+            log::debug!(
+                "REPLACE {} => {}",
+                self.id_of(*to_replace).unwrap(),
+                self.id_of(*replace_with).unwrap(),
+            );
+        }
+
+        // Finally perform the actual transformation of the imports/exports.
+        // Here all imports are removed if they're replaced and otherwise all
+        // imports have their dependencies updated, possibly transitively, to
+        // point to the new interfaces in `replacements`.
+        //
+        // Afterwards exports are additionally updated, but only their
+        // dependencies on imports which were remapped. Exports themselves are
+        // not deduplicated and/or removed.
+        for (key, item) in mem::take(&mut self.worlds[world_id].imports) {
+            if let WorldItem::Interface { id, .. } = item {
+                if replacements.contains_key(&id) {
+                    continue;
+                }
+            }
+
+            self.update_interface_deps_of_world_item(&item, &replacements);
+
+            let prev = self.worlds[world_id].imports.insert(key, item);
+            assert!(prev.is_none());
+        }
+        for (key, item) in mem::take(&mut self.worlds[world_id].exports) {
+            self.update_interface_deps_of_world_item(&item, &replacements);
+            let prev = self.worlds[world_id].exports.insert(key, item);
+            assert!(prev.is_none());
+        }
+
+        // Run through `elaborate_world` to reorder imports as appropriate and
+        // fill anything back in if it's actually required by exports. For now
+        // this doesn't tamper with exports at all. Also note that this is
+        // applied to all worlds in this `Resolve` because interfaces were
+        // modified directly.
+        let ids = self.worlds.iter().map(|(id, _)| id).collect::<Vec<_>>();
+        for world_id in ids {
+            self.elaborate_world(world_id).with_context(|| {
+                let name = &self.worlds[world_id].name;
+                format!(
+                    "failed to elaborate world `{name}` after deduplicating imports \
+                     based on semver"
+                )
+            })?;
+        }
+
+        #[cfg(debug_assertions)]
+        self.assert_valid();
+
+        Ok(())
+    }
+
+    fn update_interface_deps_of_world_item(
+        &mut self,
+        item: &WorldItem,
+        replacements: &HashMap<InterfaceId, InterfaceId>,
+    ) {
+        match *item {
+            WorldItem::Type(t) => self.update_interface_dep_of_type(t, &replacements),
+            WorldItem::Interface { id, .. } => {
+                let types = self.interfaces[id]
+                    .types
+                    .values()
+                    .copied()
+                    .collect::<Vec<_>>();
+                for ty in types {
+                    self.update_interface_dep_of_type(ty, &replacements);
+                }
+            }
+            WorldItem::Function(_) => {}
+        }
+    }
+
+    /// Returns the "semver track" of an interface plus the interface's version.
+    ///
+    /// This function returns `None` if the interface `id` has a package without
+    /// a version. If the version is present, however, the first element of the
+    /// tuple returned is a "semver track" for the specific interface. The
+    /// version listed in `PackageName` will be modified so all
+    /// semver-compatible versions are listed the same way.
+    ///
+    /// The second element in the returned tuple is this interface's package's
+    /// version.
+    fn semver_track(&self, id: InterfaceId) -> Option<((PackageName, String), &Version)> {
+        let iface = &self.interfaces[id];
+        let pkg = &self.packages[iface.package?];
+        let version = pkg.name.version.as_ref()?;
+        let mut name = pkg.name.clone();
+        name.version = Some(PackageName::version_compat_track(version));
+        Some(((name, iface.name.clone()?), version))
+    }
+
+    /// If `ty` is a definition where it's a `use` from another interface, then
+    /// change what interface it's using from according to the pairs in the
+    /// `replacements` map.
+    fn update_interface_dep_of_type(
+        &mut self,
+        ty: TypeId,
+        replacements: &HashMap<InterfaceId, InterfaceId>,
+    ) {
+        let to_replace = match self.type_interface_dep(ty) {
+            Some(id) => id,
+            None => return,
+        };
+        let replace_with = match replacements.get(&to_replace) {
+            Some(id) => id,
+            None => return,
+        };
+        let dep = match self.types[ty].kind {
+            TypeDefKind::Type(Type::Id(id)) => id,
+            _ => return,
+        };
+        let name = self.types[dep].name.as_ref().unwrap();
+        // Note the infallible name indexing happening here. This should be
+        // previously validated with `merge_world_item` to succeed.
+        let replacement_id = self.interfaces[*replace_with].types[name];
+        self.types[ty].kind = TypeDefKind::Type(Type::Id(replacement_id));
     }
 }
 
@@ -1873,6 +2385,16 @@ impl Remap {
             let new_id = resolve.worlds.alloc(world);
             assert_eq!(self.worlds.len(), id.index());
             self.worlds.push(Some(new_id));
+
+            resolve.elaborate_world(new_id).with_context(|| {
+                Error::new(
+                    span.span,
+                    format!(
+                        "failed to elaborate world imports/exports of `{}`",
+                        resolve.worlds[new_id].name
+                    ),
+                )
+            })?;
         }
 
         // As with interfaces, now update the ids of world-owned types.
@@ -1978,6 +2500,9 @@ impl Remap {
                 }
             }
         }
+
+        #[cfg(debug_assertions)]
+        resolve.assert_valid();
 
         Ok(())
     }
@@ -2319,28 +2844,17 @@ impl Remap {
         pkg_id: &PackageId,
         spans: &WorldSpan,
     ) -> Result<()> {
-        // NB: this function is more more complicated than the prior versions
-        // of merging an item because this is the location that elaboration of
-        // imports/exports of a world are fully resolved. With full transitive
-        // knowledge of all interfaces a worlds imports, for example, are
-        // expanded fully to ensure that all transitive items are necessarily
-        // imported.
         assert_eq!(world.imports.len(), spans.imports.len());
         assert_eq!(world.exports.len(), spans.exports.len());
 
-        // First up, process all the `imports` of the world. Note that this
-        // starts by gutting the list of imports stored in `world` to get
-        // rebuilt iteratively below.
-        //
-        // Here each import of an interface is recorded and then additionally
-        // explicitly named imports of interfaces are recorded as well for
-        // determining names later on.
-        let mut import_funcs = Vec::new();
-        let mut import_types = Vec::new();
-        for ((mut name, mut item), span) in mem::take(&mut world.imports)
-            .into_iter()
-            .zip(&spans.imports)
-        {
+        // Rewrite imports/exports with their updated versions. Note that this
+        // may involve updating the key of the imports/exports maps so this
+        // starts by emptying them out and then everything is re-inserted.
+        let imports = mem::take(&mut world.imports).into_iter();
+        let imports = imports.zip(&spans.imports).map(|p| (p, true));
+        let exports = mem::take(&mut world.exports).into_iter();
+        let exports = exports.zip(&spans.exports).map(|p| (p, false));
+        for (((mut name, mut item), span), import) in imports.chain(exports) {
             // Update the `id` eagerly here so `item.stability(..)` below
             // works.
             if let WorldItem::Type(id) = &mut item {
@@ -2360,77 +2874,29 @@ impl Remap {
                 continue;
             }
             self.update_world_key(&mut name, Some(*span))?;
-            match item {
-                WorldItem::Interface { id, stability } => {
-                    let id = self.map_interface(id, Some(*span))?;
-                    self.add_world_import(resolve, world, name, id, &stability);
+            match &mut item {
+                WorldItem::Interface { id, .. } => {
+                    *id = self.map_interface(*id, Some(*span))?;
                 }
-                WorldItem::Function(mut f) => {
-                    self.update_function(resolve, &mut f, Some(*span))?;
-                    import_funcs.push((name.unwrap_name(), f, *span));
+                WorldItem::Function(f) => {
+                    self.update_function(resolve, f, Some(*span))?;
                 }
-                WorldItem::Type(id) => {
-                    import_types.push((name.unwrap_name(), id, *span));
+                WorldItem::Type(_) => {
+                    // already mapped above
                 }
             }
+
+            let dst = if import {
+                &mut world.imports
+            } else {
+                &mut world.exports
+            };
+            let prev = dst.insert(name, item);
+            assert!(prev.is_none());
         }
 
-        for (_name, id, _span) in import_types.iter() {
-            if let TypeDefKind::Type(Type::Id(other)) = resolve.types[*id].kind {
-                if let TypeOwner::Interface(owner) = resolve.types[other].owner {
-                    let name = WorldKey::Interface(owner);
-                    self.add_world_import(
-                        resolve,
-                        world,
-                        name,
-                        owner,
-                        &resolve.types[*id].stability,
-                    );
-                }
-            }
-        }
-
-        let mut export_funcs = Vec::new();
-        let mut export_interfaces = IndexMap::new();
-        for ((mut name, item), span) in mem::take(&mut world.exports)
-            .into_iter()
-            .zip(&spans.exports)
-        {
-            let stability = item.stability(resolve);
-            if !resolve
-                .include_stability(stability, pkg_id)
-                .with_context(|| {
-                    format!(
-                        "failed to process feature gate for exported item [{}] in package [{}]",
-                        resolve.name_world_key(&name),
-                        resolve.packages[*pkg_id].name,
-                    )
-                })?
-            {
-                continue;
-            }
-            self.update_world_key(&mut name, Some(*span))?;
-            match item {
-                WorldItem::Interface { id, stability } => {
-                    let id = self.map_interface(id, Some(*span))?;
-                    let prev = export_interfaces.insert(id, (name, *span, stability));
-                    assert!(prev.is_none());
-                }
-                WorldItem::Function(mut f) => {
-                    self.update_function(resolve, &mut f, Some(*span))?;
-                    let name = match name {
-                        WorldKey::Name(name) => name,
-                        WorldKey::Interface(_) => unreachable!(),
-                    };
-                    export_funcs.push((name, f, *span));
-                }
-                WorldItem::Type(_) => unreachable!(),
-            }
-        }
-
-        self.add_world_exports(resolve, world, &export_interfaces)?;
-
-        // Resolve all includes of the world
+        // Resolve all `include` statements of the world which will add more
+        // entries to the imports/exports list for this world.
         assert_eq!(world.includes.len(), spans.includes.len());
         let includes = mem::take(&mut world.includes);
         let include_names = mem::take(&mut world.include_names);
@@ -2454,71 +2920,6 @@ impl Remap {
             self.resolve_include(world, include_world, names, *span, resolve)?;
         }
 
-        for (name, id, span) in import_types {
-            let prev = world
-                .imports
-                .insert(WorldKey::Name(name.clone()), WorldItem::Type(id));
-            if prev.is_some() {
-                bail!(Error::new(
-                    span,
-                    format!("export of type `{name}` shadows previously imported interface"),
-                ))
-            }
-        }
-
-        for (name, func, span) in import_funcs {
-            let prev = world
-                .imports
-                .insert(WorldKey::Name(name.clone()), WorldItem::Function(func));
-            if prev.is_some() {
-                bail!(Error::new(
-                    span,
-                    format!("import of function `{name}` shadows previously imported interface"),
-                ))
-            }
-        }
-
-        for (name, func, span) in export_funcs {
-            let prev = world
-                .exports
-                .insert(WorldKey::Name(name.clone()), WorldItem::Function(func));
-            if prev.is_some() {
-                bail!(Error::new(
-                    span,
-                    format!("export of function `{name}` shadows previously exported interface"),
-                ))
-            }
-        }
-
-        // After all that sort functions in exports to come before interfaces in
-        // exports. This is not strictly required for correctness but make
-        // iterating over a world much easier for consumers. Exported functions
-        // are guaranteed to use types from either imported interfaces or
-        // imported types into the world itself. Currently there is no means by
-        // which an export function, at the root, can use types from any other
-        // exported interfaces (can't be modeled syntactically in WIT). This
-        // means that by placing all functions first it guarantees that visitors
-        // which visit imports first then exports will walk over types and
-        // references in the order of what they're actually using.
-        //
-        // For example if an interface is both imported and exported and an
-        // exported function uses a type from that interface, then a visitor
-        // should visit the imported interface, then the exported function, then
-        // the exported interface. That way tables about "where was this type
-        // defined" will be correct as the last-inserted item will be used and
-        // correctly account for this.
-        world.exports.sort_by(|_, a, _, b| {
-            let rank = |item: &WorldItem| match item {
-                WorldItem::Type(_) => unreachable!(),
-                WorldItem::Function(_) => 0,
-                WorldItem::Interface { .. } => 1,
-            };
-            rank(a).cmp(&rank(b))
-        });
-
-        log::trace!("imports = {:?}", world.imports);
-        log::trace!("exports = {:?}", world.exports);
-
         Ok(())
     }
 
@@ -2530,179 +2931,6 @@ impl Remap {
             }
         }
         Ok(())
-    }
-
-    fn add_world_import(
-        &self,
-        resolve: &Resolve,
-        world: &mut World,
-        key: WorldKey,
-        id: InterfaceId,
-        stability: &Stability,
-    ) {
-        if world.imports.contains_key(&key) {
-            return;
-        }
-        for dep in resolve.interface_direct_deps(id) {
-            self.add_world_import(resolve, world, WorldKey::Interface(dep), dep, stability);
-        }
-        let prev = world.imports.insert(
-            key,
-            WorldItem::Interface {
-                id,
-                stability: stability.clone(),
-            },
-        );
-        assert!(prev.is_none());
-    }
-
-    /// This function adds all of the interfaces in `export_interfaces` to the
-    /// list of exports of the `world` specified.
-    ///
-    /// This method is more involved than adding imports because it is fallible.
-    /// Chiefly what can happen is that the dependencies of all exports must be
-    /// satisfied by other exports or imports, but not both. For example given a
-    /// situation such as:
-    ///
-    /// ```wit
-    /// interface a {
-    ///     type t = u32
-    /// }
-    /// interface b {
-    ///     use a.{t}
-    /// }
-    /// interface c {
-    ///     use a.{t}
-    ///     use b.{t as t2}
-    /// }
-    /// ```
-    ///
-    /// where `c` depends on `b` and `a` where `b` depends on `a`, then the
-    /// purpose of this method is to reject this world:
-    ///
-    /// ```wit
-    /// world foo {
-    ///     export a
-    ///     export c
-    /// }
-    /// ```
-    ///
-    /// The reasoning here is unfortunately subtle and is additionally the
-    /// subject of WebAssembly/component-model#208. Effectively the `c`
-    /// interface depends on `b`, but it's not listed explicitly as an import,
-    /// so it's then implicitly added as an import. This then transitively
-    /// depends on `a` so it's also added as an import. At this point though `c`
-    /// also depends on `a`, and it's also exported, so naively it should depend
-    /// on the export and not implicitly add an import. This means though that
-    /// `c` has access to two copies of `a`, one imported and one exported. This
-    /// is not valid, especially in the face of resource types.
-    ///
-    /// Overall this method is tasked with rejecting the above world by walking
-    /// over all the exports and adding their dependencies. Each dependency is
-    /// recorded with whether it's required to be imported, and then if an
-    /// export is added for something that's required to be an error then the
-    /// operation fails.
-    fn add_world_exports(
-        &self,
-        resolve: &Resolve,
-        world: &mut World,
-        export_interfaces: &IndexMap<InterfaceId, (WorldKey, Span, Stability)>,
-    ) -> Result<()> {
-        let mut required_imports = HashSet::new();
-        for (id, (key, span, stability)) in export_interfaces.iter() {
-            let ok = add_world_export(
-                resolve,
-                world,
-                export_interfaces,
-                &mut required_imports,
-                *id,
-                key,
-                true,
-                &stability,
-            );
-            if !ok {
-                bail!(Error::new(
-                    *span,
-                    // FIXME: this is not a great error message and basically no
-                    // one will know what to do when it gets printed. Improving
-                    // this error message, however, is a chunk of work that may
-                    // not be best spent doing this at this time, so I'm writing
-                    // this comment instead.
-                    //
-                    // More-or-less what should happen here is that a "path"
-                    // from this interface to the conflicting interface should
-                    // be printed. It should be explained why an import is being
-                    // injected, why that's conflicting with an export, and
-                    // ideally with a suggestion of "add this interface to the
-                    // export list to fix this error".
-                    //
-                    // That's a lot of info that's not easy to get at without
-                    // more refactoring, so it's left to a future date in the
-                    // hopes that most folks won't actually run into this for
-                    // the time being.
-                    format!(
-                        "interface transitively depends on an interface in \
-                         incompatible ways",
-                    ),
-                ));
-            }
-        }
-        return Ok(());
-
-        fn add_world_export(
-            resolve: &Resolve,
-            world: &mut World,
-            export_interfaces: &IndexMap<InterfaceId, (WorldKey, Span, Stability)>,
-            required_imports: &mut HashSet<InterfaceId>,
-            id: InterfaceId,
-            key: &WorldKey,
-            add_export: bool,
-            stability: &Stability,
-        ) -> bool {
-            if world.exports.contains_key(key) {
-                if add_export {
-                    return true;
-                } else {
-                    return false;
-                }
-            }
-            // If this is an import and it's already in the `required_imports`
-            // set then we can skip it as we've already visited this interface.
-            if !add_export && required_imports.contains(&id) {
-                return true;
-            }
-            let ok = resolve.interface_direct_deps(id).all(|dep| {
-                let key = WorldKey::Interface(dep);
-                let add_export = add_export && export_interfaces.contains_key(&dep);
-                add_world_export(
-                    resolve,
-                    world,
-                    export_interfaces,
-                    required_imports,
-                    dep,
-                    &key,
-                    add_export,
-                    stability,
-                )
-            });
-            if !ok {
-                return false;
-            }
-            let item = WorldItem::Interface {
-                id,
-                stability: stability.clone(),
-            };
-            if add_export {
-                if required_imports.contains(&id) {
-                    return false;
-                }
-                world.exports.insert(key.clone(), item);
-            } else {
-                required_imports.insert(id);
-                world.imports.insert(key.clone(), item);
-            }
-            true
-        }
     }
 
     fn resolve_include(

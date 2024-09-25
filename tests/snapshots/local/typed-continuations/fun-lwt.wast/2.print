@@ -6,6 +6,8 @@
   (import "lwt" "yield" (tag $yield (;0;) (type $func)))
   (import "lwt" "fork" (tag $fork (;1;) (type 2) (param (ref $cont))))
   (import "spectest" "print_i32" (func $log (;0;) (type 3)))
+  (export "main" (func $main))
+  (elem (;0;) declare func $thread1 $thread2 $thread3)
   (func $main (;1;) (type $func)
     i32.const 0
     call $log
@@ -55,6 +57,4 @@
     i32.const 32
     call $log
   )
-  (export "main" (func $main))
-  (elem (;0;) declare func $thread1 $thread2 $thread3)
 )

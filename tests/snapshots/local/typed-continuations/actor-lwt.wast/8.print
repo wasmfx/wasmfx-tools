@@ -10,6 +10,7 @@
   (import "queue" "queue-empty" (func $queue-empty (;0;) (type 3)))
   (import "queue" "dequeue" (func $dequeue (;1;) (type 4)))
   (import "queue" "enqueue" (func $enqueue (;2;) (type 2)))
+  (export "run" (func $run))
   (func $run (;3;) (type 2) (param $main (ref $cont))
     local.get $main
     call $enqueue
@@ -32,5 +33,4 @@
       br $l
     end
   )
-  (export "run" (func $run))
 )
